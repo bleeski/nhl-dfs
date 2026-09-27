@@ -50,6 +50,10 @@ class GoalieLine:
     assists: int = 0
     sog: int = 0
     blocks: int = 0  # offensive stats a goalie accrues
+    sh_points: int = 0  # a goalie can earn an SH assist; not on the card's interface, added
+    # because the rule files' "Players" section and "Goalies WILL receive points for all
+    # stats they accrue" require it. No shootout_goals field: a goalie is never a shootout
+    # shooter in real play, so the card's omission there is not a gap.
 
     def __post_init__(self) -> None:
         if self.decision not in ("W", "L", "OTL", "ND"):
@@ -90,6 +94,7 @@ def score_goalie_tenths(g: GoalieLine) -> int:
         + g.blocks * BLOCK_TENTHS
         + g.saves * GOALIE_SAVE_TENTHS
         + g.goals_against * GOALIE_GOAL_AGAINST_TENTHS
+        + g.sh_points * SH_POINT_BONUS_TENTHS
     )
     if g.decision == "W":
         total += GOALIE_WIN_TENTHS

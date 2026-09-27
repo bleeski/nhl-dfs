@@ -76,9 +76,10 @@ def test_classic_goalie_does_not_count_toward_three_teams():
 
 def test_classic_goalie_in_util_fails():
     rows = _legal_classic_rows()
-    rows[7] = _classic_row(8, "NYR", "G", {"G"}, salary=4000)  # goalie role in UTIL slot
+    rows[7] = _classic_row(8, "NYR", "G", {"G"}, salary=4000)  # goalie role in UTIL slot (index 7)
     result = check_lineup(rows, Mode.CLASSIC)
     assert not result.ok
+    assert any("slot 7 (UTIL)" in r for r in result.reasons)
 
 
 def test_classic_salary_50001_fails():
@@ -106,6 +107,10 @@ def test_slot_accepts_util_only_for_skaters():
     goalie = _classic_row(2, "TOR", "G", {"G"})
     assert slot_accepts("UTIL", skater, Mode.CLASSIC)
     assert not slot_accepts("UTIL", goalie, Mode.CLASSIC)
+    # Even if a malformed row's roster_positions incorrectly lists UTIL for a goalie,
+    # is_goalie still vetoes the slot; this is what exercises the "not row.is_goalie" guard.
+    mislabeled_goalie = _classic_row(3, "TOR", "G", {"G", "UTIL"})
+    assert not slot_accepts("UTIL", mislabeled_goalie, Mode.CLASSIC)
 
 
 def test_slot_accepts_g_only_for_goalie():
@@ -161,11 +166,31 @@ def test_showdown_two_opposing_goalies_pass():
 
 
 def test_showdown_four_team_pool_two_teams_represented_passes():
-    # Pool has players from 4 possible teams but this lineup only uses 2 of them; that's legal
-    # for Showdown (which only requires >=2 teams among the six selected, not among the pool).
-    rows = _legal_showdown_rows()
-    result = check_lineup(rows, Mode.SHOWDOWN)
-    assert result.ok, result.reasons
+    # A pool spanning 4 teams: a lineup using only 2 of them is legal (>=2 is the floor,
+    # not a ceiling), and a lineup spanning all 4 represented teams is also legal.
+    two_of_four = [
+        _showdown_row(1, "TOR", {"CPT"}, salary=6000),
+        _showdown_row(2, "TOR", {"FLEX"}),
+        _showdown_row(3, "TOR", {"FLEX"}),
+        _showdown_row(4, "BOS", {"FLEX"}),
+        _showdown_row(5, "BOS", {"FLEX"}),
+        _showdown_row(6, "BOS", {"FLEX"}),
+    ]
+    result_two = check_lineup(two_of_four, Mode.SHOWDOWN)
+    assert result_two.ok, result_two.reasons
+    assert result_two.teams == {"TOR", "BOS"}
+
+    four_of_four = [
+        _showdown_row(1, "TOR", {"CPT"}, salary=6000),
+        _showdown_row(2, "TOR", {"FLEX"}),
+        _showdown_row(3, "BOS", {"FLEX"}),
+        _showdown_row(4, "BOS", {"FLEX"}),
+        _showdown_row(5, "NYR", {"FLEX"}),
+        _showdown_row(6, "CHI", {"FLEX"}),
+    ]
+    result_four = check_lineup(four_of_four, Mode.SHOWDOWN)
+    assert result_four.ok, result_four.reasons
+    assert result_four.teams == {"TOR", "BOS", "NYR", "CHI"}
 
 
 def test_lineup_key_ignores_flex_order_and_distinguishes_captains():

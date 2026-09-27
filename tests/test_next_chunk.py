@@ -63,7 +63,17 @@ def fixture_root(tmp_path: Path) -> Path:
     subprocess.run(["git", "init", "-q"], cwd=str(tmp_path), check=True)
     subprocess.run(["git", "add", "-A"], cwd=str(tmp_path), check=True)
     subprocess.run(
-        ["git", "commit", "-q", "-m", "fixture init"],
+        [
+            "git",
+            "-c",
+            "user.name=fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "fixture init",
+        ],
         cwd=str(tmp_path),
         check=True,
         env=dict(os.environ),
@@ -205,6 +215,47 @@ def test_block_sets_blocked_with_reason(fixture_root: Path):
     content = (fixture_root / "BUILD_STATUS.md").read_text(encoding="utf-8")
     assert "| A2 | BLOCKED |" in content
     assert "needs Ben's input" in content
+
+
+def test_start_preserves_crlf_line_endings(tmp_path: Path):
+    # BUILD_STATUS.md is CRLF on disk once core.autocrlf checks it out; next_chunk.py must
+    # not normalize every other line to LF while editing the one row it touches.
+    crlf_tracker = TRACKER.replace("\n", "\r\n")
+    (tmp_path / "BUILD_STATUS.md").write_bytes(crlf_tracker.encode("utf-8"))
+    (tmp_path / "chunks.yaml").write_text(CHUNKS_YAML, encoding="utf-8", newline="\n")
+    subprocess.run(["git", "init", "-q"], cwd=str(tmp_path), check=True)
+    subprocess.run(["git", "add", "-A"], cwd=str(tmp_path), check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "fixture init",
+        ],
+        cwd=str(tmp_path),
+        check=True,
+        env=dict(os.environ),
+    )
+
+    before_raw = (tmp_path / "BUILD_STATUS.md").read_bytes()
+    result = run_next_chunk(tmp_path, "--start", "A0")
+    assert result.returncode == 0
+    after_raw = (tmp_path / "BUILD_STATUS.md").read_bytes()
+
+    before_lines = before_raw.split(b"\r\n")
+    after_lines = after_raw.split(b"\r\n")
+    assert len(before_lines) == len(after_lines)
+    changed = [i for i, (b, a) in enumerate(zip(before_lines, after_lines)) if b != a]
+    assert len(changed) == 1
+    assert b"IN_PROGRESS" in after_lines[changed[0]]
+    # Every line, including the edited one, is still CRLF-terminated (no line lost its \r).
+    assert after_raw.count(b"\r\n") == before_raw.count(b"\r\n")
+    assert b"\n" not in after_raw.replace(b"\r\n", b"")
 
 
 def test_flip_to_todo_message_when_requires_files_now_present(fixture_root: Path):

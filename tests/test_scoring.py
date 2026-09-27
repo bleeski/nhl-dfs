@@ -27,6 +27,17 @@ def test_sh_point_bonus_and_shootout_goal():
     assert score_skater_tenths(SkaterLine(shootout_goals=1)) != score_skater_tenths(SkaterLine(goals=1))
 
 
+def test_shootout_goal_never_triggers_goal_based_bonuses():
+    # 2 real goals + 1 shootout goal must NOT cross the 3-goal hat trick threshold.
+    line = SkaterLine(goals=2, shootout_goals=1)
+    assert score_skater_tenths(line) == 2 * 85 + 15
+
+    # 1 goal + 1 assist + 1 shootout goal must NOT cross the 3+ points threshold
+    # (points = goals + assists only; a shootout goal is not a point).
+    line2 = SkaterLine(goals=1, assists=1, shootout_goals=1)
+    assert score_skater_tenths(line2) == 85 + 50 + 15
+
+
 def test_hat_trick_boundary_2_vs_3_goals():
     two_goals = score_skater_tenths(SkaterLine(goals=2))
     three_goals = score_skater_tenths(SkaterLine(goals=3))
@@ -108,6 +119,13 @@ def test_goalie_35_plus_saves_boundary():
 def test_goalie_assist_earns_50():
     line = GoalieLine(decision="ND", assists=1)
     assert score_goalie_tenths(line) == 50
+
+
+def test_goalie_sh_point_bonus():
+    # Rule files put the SH bonus under "Players" and say goalies earn every stat they
+    # accrue; this field is not on the card's GoalieLine interface but the rule files win.
+    line = GoalieLine(decision="ND", assists=1, sh_points=1)
+    assert score_goalie_tenths(line) == 50 + 20
 
 
 def test_goalie_offensive_bonuses_apply_like_a_skater():

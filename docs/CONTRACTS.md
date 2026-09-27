@@ -29,9 +29,11 @@ Captain scoring is integer twentieths (tenths x 1.5 expressed as x3).
 | Captain | x1.5 | multiplies the entire base score including every bonus and penalty, exactly once, using the salary file's Captain salary/ID |
 
 Goalies earn every stat in the top block too (goals, assists, SOG, blocks,
-SH bonus, shootout goals, and the four threshold bonuses), per "Goalies
-WILL receive points for all stats they accrue, including goals and
-assists." No plus/minus, hits, faceoff, or penalty-minute scoring exists.
+SH bonus, and the four threshold bonuses), per "Goalies WILL receive
+points for all stats they accrue, including goals and assists." A goalie
+never scores a shootout goal in real play, so `GoalieLine` has no
+`shootout_goals` field. No plus/minus, hits, faceoff, or penalty-minute
+scoring exists.
 
 ## Roster geometry
 
@@ -58,13 +60,14 @@ goalie. `G` accepts only goalie rows. No other slot rule exists.
   raises rather than guessing.
 - `person_key`: `f"{normalize_name(name)}|{team}|{position_group(position)}"`.
 
-## The four per-row states (plan section 2)
+## The four per-row states (plan, "Decisions that shape the design")
 
-Kept apart, never conflated, each with its own UNKNOWN/CONFLICTED escape
-hatch:
+Kept apart, never conflated:
 
-1. **Participation** - is the person expected to play (`Participation`).
-2. **DK eligibility** - is the row rosterable in the DK pool (`Eligibility`).
+1. **Participation** - is the person expected to play (`Participation`;
+   carries its own `UNKNOWN` member for unresolved news).
+2. **DK eligibility** - is the row rosterable in the DK pool (`Eligibility`:
+   `ROSTERABLE` | `DISABLED`).
 3. **Actual lock** - has the real game started (part of `CellLock`).
 4. **Engine's edit-stop buffer** - the engine's own pre-lock safety margin,
    independent of the real lock (the other part of `CellLock`).
@@ -88,5 +91,8 @@ or confirmed participation.
 line as an enum rather than a bare bool), `NewsState`, `ModelStatus`,
 `SearchStatus`, `DeliveryStatus`, `ObsStatus`, `GoalieState`,
 `Participation`, `Eligibility`, `CellLock`, `PayoutSource`,
-`OutcomeCalibration`, `FieldCalibration`, `FeasibleStatus`. A status the
-engine does not recognize is `UNKNOWN`, never coerced to a known value.
+`OutcomeCalibration`, `FieldCalibration`, `FeasibleStatus`. A DK
+participation status the engine does not recognize is `UNKNOWN`, never
+coerced to a known value (CLAUDE.md); other vocabularies here that have no
+`UNKNOWN` member raise on an unrecognized input instead (see
+`contracts/ids.py:position_group`) rather than guess.
