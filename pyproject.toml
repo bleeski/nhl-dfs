@@ -1,0 +1,22 @@
+[project]
+name = "nhl-dfs"
+version = "0.1.0"
+description = "Deterministic NHL DFS lineup engine (DraftKings Classic and Showdown)"
+requires-python = ">=3.11"
+dependencies = [
+  "numpy>=1.26",
+  "pandas>=2.2",
+  "pyarrow>=16.0",
+  "scipy>=1.11",
+  "pyyaml>=6.0",
+  "requests>=2.31",
+  "pytest>=8.0",
+  "pytest-timeout>=2.3",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

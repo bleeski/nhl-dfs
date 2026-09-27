@@ -1,0 +1,21 @@
+certifi==2026.7.22
+charset-normalizer==3.5.1
+colorama==0.4.6
+idna==3.20
+iniconfig==2.3.0
+-e file:///C:/Users/benja/Documents/Claude/nhl-dfs
+numpy==2.4.6
+packaging==26.3
+pandas==3.0.6
+pluggy==1.6.0
+pyarrow==25.0.1
+pygments==2.21.0
+pytest==9.1.1
+pytest-timeout==2.4.0
+python-dateutil==2.9.0.post0
+pyyaml==6.0.3
+requests==2.34.2
+scipy==1.17.1
+six==1.17.0
+tzdata==2026.4
+urllib3==2.8.0

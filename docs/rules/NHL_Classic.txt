@@ -1,0 +1,138 @@
+NHL Classic
+In salary cap contests, participants will create a lineup by selecting players listed in the Player Pool. Each player listed has an assigned salary and a valid lineup must not exceed the salary cap of $50,000.
+
+Contest results will be determined by the total points accumulated by each individual lineup entry (scoring rules summarized below).
+
+Participation in each contest must be made only as specified in the Terms of Use. Failure to comply with these Terms of Use will result in disqualification and, if applicable, prize forfeiture.
+
+Scoring
+Players
+
+Goal
+
++8.5 Pts
+
+Assist
+
++5 Pts
+
+Shot on Goal
+
++1.5 Pts
+
+Blocked Shot
+
++1.3 Pts
+
+Short Handed Point Bonus (Goal/Assist)
+
++2 Pts
+
+Shootout Goal
+
++1.5 Pts
+
+Hat Trick Bonus
+
++3 Pts
+
+5+ Shots
+
++3 Pts
+
+3+ Blocked Shots
+
++3 Pts
+
+3+ Points
+
++3 Pts
+
+Goalies
+
+Win
+
++6 Pts
+
+Save
+
++0.7 Pts
+
+Goal Against
+
+-3.5 Pts
+
+Shutout Bonus
+
++4 Pts
+
+Overtime Loss
+
++2 Pts
+
+35+ Saves
+
++3 Pts
+
+Scoring Notes
+Goalies WILL receive points for all stats they accrue, including goals and assists.
+The Goalie Shutout Bonus is credited to goalies if they complete the entire game with 0 goals allowed in regulation + overtime. Shootout goals will not prevent a shutout. A goalie must be the only goalie of record to get credit for a shutout.
+Lineup Requirements
+Lineups will consist of 9 players and must include skaters (non-goalies) from at least 3 different NHL teams. The 9 roster positions are:
+
+2
+
+C
+
+3
+
+W
+
+(LW/RW)
+
+2
+
+D
+
+1
+
+UTIL
+
+(LW/RW/C/D)
+
+1
+
+G
+
+Player Pool
+The Player Pool will consist of all NHL players expected to be on the active roster for any team scheduled to play in the contest Game Set. Occasionally a player may be missing from the Player Pool due to trades or other unforeseen circumstances.
+
+In most circumstances, once the Player Pool is established for a Game Set, including positions and salaries, the Player Pool will not be adjusted. In the rare event that there is a mistake within the Player Pool that would significantly impact game quality, DraftKings reserves the right to correct the mistake after contests for that Game Set have become available. This may result in valid lineups becoming invalid. This would most likely occur shortly after the Player Pool becomes available, far in advance of the contest start time, and participants who have entered contests for the Game Set prior to the adjustment will be notified via email.
+
+A "Game Set" is a set of games used for contests; each contest is tied to one Game Set. Contests tied to the same Game Set can be created at different times. Therefore, game policies are based on the timing of a Game Set being made available, not each individual contest.
+
+Position Eligibility
+Player positions are determined at the sole discretion of DraftKings.
+
+Lineup Edits
+Lineups may be edited at any time leading up to games. Each individual player will become "locked" at the scheduled start time of their team’s game. A locked player cannot be added or removed from a roster spot. Locked roster spots for all entries are displayed in contest GameCenters.
+
+If the scheduled start time for a game changes after contests for a Game Set containing that game become available, DraftKings will take measures to ensure the change is reflected on Draft Screens and for lineup editing purposes. In the rare case that a game starts before the scheduled start time, all players within that game will become locked as soon as our feed reflects that the game has begun. Additionally, any swaps that were made after the real-life start time of the game will result in those lineups being disqualified and refunded.
+
+Cancelled, Postponed, and Rescheduled Games
+In the event that a game is cancelled or postponed & rescheduled to a time outside of the original Scoring Period, the game will be disabled from the Game Set and players listed to play in that game will not be eligible to accrue points.
+
+The Scoring Period for NHL is defined as the timeframe between the scheduled start of the first game within the Game Set and 11:59pm ET on the day after the last scheduled game within the Game Set.
+
+In the event a game is postponed, Draftkings will make a decision no later than 11:59pm ET of the day of the game on how to handle the postponed game.
+
+DraftKings may choose to adjust the Scoring Period for a Game Set at their sole discretion to accommodate schedule changes to any time before 12:00am ET on the day after the Game Set is scheduled to start.
+
+Any games that are disabled will be indicated as such on Draft Screens. Emails and other notifications may also be used to notify users of disabled games.
+
+If canceled or games rescheduled for a later date result in a Game Set including only one active game, then all contests for that Game Set will be canceled and refunded.
+
+Games are "known" to be canceled or postponed once their status is updated as such by DraftKings’ NHL stats-provider, STATS LLC.
+
+Suspended or Shortened Games
+DraftKings uses official NHL statistics and only includes statistics from games NHL deems to be official. If the NHL declares a game "suspended" then the statistics generated before the game is suspended will count in Game Sets containing said game. Any statistics generated on a later date when the game resumes will not be included.

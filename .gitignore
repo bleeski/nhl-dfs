@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+data/raw/
+data/cache/
+data/standings/
+data/ledger/
+tests/fixtures/real/
+runs/
+outputs/
+*.egg-info/
