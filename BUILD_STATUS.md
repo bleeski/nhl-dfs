@@ -6,7 +6,7 @@ Tracker for `BUILD_CHUNKS.md` (final, 26 September 2026). Every development sess
 
 | Chunk | Status | Depends on | Started | Finished | Commit | Exit checks | Notes |
 |---|---|---|---|---|---|---|---|
-| C0a | TODO | | | | | | Copies the two DK rule files from Downloads into docs/rules/. |
+| C0a | IN_PROGRESS | | 2026-09-26 | | | | Copies the two DK rule files from Downloads into docs/rules/. |
 | C0b | BLOCKED | C0a | | | | | Needs real Classic and Showdown DKSalaries.csv + DKEntries.csv under tests/fixtures/real/<date>/ (gitignored). Flip to TODO when in place. |
 | C1 | TODO | C0b | | | | | Register the capture task after the session (tools/register_capture_task.ps1). |
 | C2a | TODO | C0b | | | | | May be done before or after C1. |
