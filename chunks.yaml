@@ -1,0 +1,121 @@
+# Machine-readable dependency graph for BUILD_CHUNKS.md (final, 26 September 2026). Read by tools/next_chunk.py (built in C0a).
+# Status lives in BUILD_STATUS.md, never here. checks run from the repo root; all must exit 0.
+version: 2
+chunks:
+  - id: C0a
+    title: Repo scaffold, contracts, exact scoring, tracker tooling
+    depends: []
+    marker: c0a
+    checks:
+      - pytest -m c0a -q
+      - python tools/next_chunk.py --status
+  - id: C0b
+    title: Intake, byte-splicing export, independent referee, real-file fixtures
+    depends: [C0a]
+    marker: c0b
+    requires_files:
+      - tests/fixtures/real/*/classic/DKSalaries.csv
+      - tests/fixtures/real/*/classic/DKEntries.csv
+      - tests/fixtures/real/*/showdown/DKSalaries.csv
+      - tests/fixtures/real/*/showdown/DKEntries.csv
+    checks:
+      - pytest -m c0b -q
+  - id: C1
+    title: Adapters, cache, observations, prospective capture
+    depends: [C0b]
+    marker: c1
+    checks:
+      - pytest -m c1 -q
+  - id: C2a
+    title: Priors, feasibility fallback with result states, HiGHS candidate builder
+    depends: [C0b]
+    marker: c2a
+    checks:
+      - pytest -m c2a -q
+  - id: C2b
+    title: Local-first baseline run, atomic publish under a slate lock, manifest, CLI
+    depends: [C2a, C1]
+    marker: c2b
+    checks:
+      - pytest -m c2b -q
+  - id: C2c
+    title: Four-state lock model, late swap, refresh (baseline objective)
+    depends: [C2b]
+    marker: c2c
+    milestone: "1: uploadable legal file, offline, with lock-safe late swap"
+    checks:
+      - pytest -m c2c -q
+  - id: C3
+    title: Ownership prior, field sampler, duplicate proxy, evidence gates, provisional leverage selection
+    depends: [C2c]
+    marker: c3
+    milestone: "2: provisional leverage-aware portfolio on priors with real payout metadata"
+    checks:
+      - pytest -m c3 -q
+  - id: C4
+    title: History cache (MoneyPuck or NHL per-game reports), identity crosswalk, as-of features
+    depends: [C1]
+    marker: c4
+    checks:
+      - pytest -m c4 -q
+  - id: C5
+    title: Opportunity, event-rate, and goalie models, per person
+    depends: [C4]
+    marker: c5
+    checks:
+      - pytest -m c5 -q
+  - id: C6
+    title: Aggregate joint simulator, market fit, scoring arrays, calibration harness
+    depends: [C5, C1]
+    marker: c6
+    checks:
+      - pytest -m c6 -q
+  - id: C7
+    title: Roles and news, deterministic
+    depends: [C5, C1]
+    marker: c7
+    checks:
+      - pytest -m c7 -q
+  - id: C8
+    title: Scenario objectives by contest family, evidence states, frontier, allocation, full run
+    depends: [C6, C3]
+    marker: c8
+    milestone: "3: scenario-based, objective-aware portfolio"
+    checks:
+      - pytest -m c8 -q
+      - python tests/bench_field.py
+  - id: C9
+    title: Objective-aware refresh and late swap
+    depends: [C8, C7, C2c]
+    marker: c9
+    checks:
+      - pytest -m c9 -q
+  - id: C10
+    title: Claude Code layer, agents, controller, rehearsal, measured usage
+    depends: [C9, C7]
+    marker: c10
+    checks:
+      - pytest -m c10 -q
+  - id: C11
+    title: Settle, financial ledger, grading, run notes, backlog, gate reports
+    depends: [C8, C3, C0b]
+    marker: c11
+    requires_files:
+      - data/standings/inbox/*.csv
+    milestone: "4: learning loop and financial ledger live"
+    checks:
+      - pytest -m c11 -q
+  - id: C12
+    title: Field-model fit by contest family
+    depends: [C11]
+    marker: c12
+    gated_on: "learn/gates.allows('field_fit') for the mode: >=30 distinct Classic slate groups with >=15,000 labels, or >=50 Showdown games with >=5,000 labels; holdout latest >=10 Classic groups or >=15 Showdown games; mixture weights need allows('mixture_fit')"
+    checks:
+      - pytest -m c12 -q
+  - id: C13
+    title: Segment simulator challenger
+    depends: [C11, C6]
+    marker: c13
+    gated_on: "a docs/calibration/ report showing line-pair co-ceiling or bonus-rate error outside tolerance, and a preregistration in docs/experiments/ written before code"
+    checks:
+      - pytest -m c13 -q
