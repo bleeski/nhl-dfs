@@ -6,7 +6,7 @@ Tracker for `BUILD_CHUNKS.md` (final, 26 September 2026). Every development sess
 
 | Chunk | Status | Depends on | Started | Finished | Commit | Exit checks | Notes |
 |---|---|---|---|---|---|---|---|
-| C0a | IN_PROGRESS | | 2026-09-26 | | | | Copies the two DK rule files from Downloads into docs/rules/. |
+| C0a | DONE |  | 2026-09-26 | 2026-09-26 | ba1d573 | PASS | Copies the two DK rule files from Downloads into docs/rules/. |
 | C0b | BLOCKED | C0a | | | | | Needs real Classic and Showdown DKSalaries.csv + DKEntries.csv under tests/fixtures/real/<date>/ (gitignored). Flip to TODO when in place. |
 | C1 | TODO | C0b | | | | | Register the capture task after the session (tools/register_capture_task.ps1). |
 | C2a | TODO | C0b | | | | | May be done before or after C1. |
@@ -53,3 +53,4 @@ One line per session, newest last: `YYYY-MM-DD · <chunk> · <outcome: DONE / IN
 
 - 2026-09-26 · plan revision 2 · chunk plan, dependency graph, and tracker created; no code yet.
 - 2026-09-26 · plan revision 3 · two critiques synthesized (reviews/NHL_DFS_CRITIQUE_SYNTHESIS_2026-09-26.md); chunks renumbered in objective order (17); tracker reset; no code yet.
+- 2026-09-26 · C0a · DONE · deviations: (1) FileStatus enum members were not specified by the card; grepped the plan for FILE_VALID/per-row and implemented FileStatus(TRUE, FALSE) to mirror the plan's `FILE_VALID=TRUE` report line as an enum, matching the style of every other status vocabulary; (2) `next_chunk.py` bare mode reports the next chunk by dependency-satisfaction alone (not restricted to TODO/IN_PROGRESS status), since the literal how-a-session-works rule would print nothing once C0b is BLOCKED, contradicting this chunk's own exit check; (3) `--block` writes its `--reason` into the Notes cell (prepending to any existing note) since no other tracker column fits, though the header note assigns Notes to sessions by hand; (4) `--root` added to `next_chunk.py` for hermetic testing (tests/test_next_chunk.py never touches the real repo's tracker or checks); (5) `requirements.lock` generated via `uv pip freeze` rather than `pip freeze`, since pip is not installed inside a uv-managed venv; uv.lock is the primary pinned lock file. No new [BEN] flags. No backlog rows (no earlier-chunk defects encountered; there is no earlier chunk).
