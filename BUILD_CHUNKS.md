@@ -25,7 +25,7 @@ Seventeen chunks in objective order, each sized for one Claude Code session with
 
 8. Run the card's exit checks. All must pass. If one cannot pass in this session, the row becomes BLOCKED with the reason; never DONE. A chunk whose purpose is an experiment (C12, C13) completes successfully with "challenger rejected"; an improvement is never required to finish.
 9. `python tools/next_chunk.py --done <id> --commit <hash>` sets DONE, the finish date, and the commit. Append a session-log line to `BUILD_STATUS.md` (date, chunk, outcome, deviations from the card, new `[BEN: ...]` flags, backlog IDs).
-10. Commit with explicit staging: review `git status`, `git add` the paths the card lists plus `BUILD_STATUS.md`, then `git commit -m "<id>: <title> (DONE)"`. Never `git commit -a`. Stop. One chunk per session; if it finishes early, improve its tests or end the session.
+10. Commit with explicit staging: review `git status`, `git add` the paths the card lists plus `BUILD_STATUS.md`, then `git commit -m "<id>: <title> (DONE)"`. Never `git commit -a`. Then either stop or, if context use is well under 60%, start the next eligible chunk in the same session (the rule exists to avoid compaction, not to cap chunks per session).
 
 **Sizing rule.** A chunk is 600 to 1,500 lines of code and tests, at most eight new modules, and no open-ended research. Where a card says "discover" or "benchmark", the result is written to a file the next session can read.
 
