@@ -1,0 +1,47 @@
+# engineering placeholders; replace from history in C5
+#
+# Population priors for the baseline projection (plan section 10, ladder step 1).
+# Units: integer tenths of a DK point, uncaptained (a Showdown Captain's 1.5x is
+# applied once, in models/priors.py:prior_objective, never here).
+#
+# mean = w * APPG + (1 - w) * bucket_mean
+#   w (appg_weight) is a challenger setting, not an established edge.
+#   APPG_ZERO rows get w = 0 (bucket only) and keep their flag; MISSING rows use the bucket.
+#   sd is the bucket sd for every row: deliberately broad.
+#
+# Buckets are keyed by mode, then position group (F, D, G), then salary band.
+# A band covers salaries up to and including max_salary; the last band of each
+# group is open-ended (max_salary: null). Showdown bands use the FLEX salary.
+
+appg_weight: 0.6
+
+buckets:
+  classic:
+    F:
+      - {max_salary: 3499, mean_tenths: 40, sd_tenths: 45}
+      - {max_salary: 4999, mean_tenths: 72, sd_tenths: 55}
+      - {max_salary: 6499, mean_tenths: 102, sd_tenths: 65}
+      - {max_salary: null, mean_tenths: 133, sd_tenths: 75}
+    D:
+      - {max_salary: 3499, mean_tenths: 44, sd_tenths: 45}
+      - {max_salary: 4999, mean_tenths: 78, sd_tenths: 55}
+      - {max_salary: 6499, mean_tenths: 107, sd_tenths: 65}
+      - {max_salary: null, mean_tenths: 134, sd_tenths: 75}
+    G:
+      - {max_salary: 7499, mean_tenths: 80, sd_tenths: 95}
+      - {max_salary: 7999, mean_tenths: 95, sd_tenths: 95}
+      - {max_salary: null, mean_tenths: 110, sd_tenths: 95}
+  showdown:
+    F:
+      - {max_salary: 3999, mean_tenths: 40, sd_tenths: 45}
+      - {max_salary: 5999, mean_tenths: 70, sd_tenths: 55}
+      - {max_salary: 7999, mean_tenths: 100, sd_tenths: 65}
+      - {max_salary: null, mean_tenths: 130, sd_tenths: 75}
+    D:
+      - {max_salary: 3999, mean_tenths: 44, sd_tenths: 45}
+      - {max_salary: 5999, mean_tenths: 75, sd_tenths: 55}
+      - {max_salary: 7999, mean_tenths: 105, sd_tenths: 65}
+      - {max_salary: null, mean_tenths: 130, sd_tenths: 75}
+    G:
+      - {max_salary: 8999, mean_tenths: 80, sd_tenths: 95}
+      - {max_salary: null, mean_tenths: 100, sd_tenths: 95}
