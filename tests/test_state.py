@@ -163,3 +163,27 @@ def test_lock_times_out_while_another_process_holds_it(tmp_path):
         p.wait(timeout=30)
     with FileLock(lock, timeout_s=5):  # released when the holder exits
         pass
+
+
+def _wait_for_holder(log):
+    deadline = time.monotonic() + 20
+    while not (log.exists() and "enter" in log.read_text()):
+        assert time.monotonic() < deadline, "holder never took the lock"
+        time.sleep(0.05)
+
+
+def test_publish_takes_the_slate_lock(tmp_path):
+    run, out = _run(tmp_path), tmp_path / "outputs"
+    publish(run, b"one", _report(b"one"), SLATE, outputs_root=out)
+    lock, log = out / SLATE / ".lock", tmp_path / "log.txt"
+    p = subprocess.Popen([sys.executable, "-c", _HOLDER, str(lock), str(log), "h", "3"], cwd=REPO_ROOT)
+    try:
+        _wait_for_holder(log)
+        with pytest.raises(LockTimeout):
+            publish(run, b"two", _report(b"two"), SLATE, outputs_root=out, lock_timeout_s=0.3)
+        assert run.version_numbers() == [1]
+        assert (out / SLATE / "DKEntries.csv").read_bytes() == b"one"
+    finally:
+        p.wait(timeout=30)
+    r = publish(run, b"two", _report(b"two"), SLATE, outputs_root=out)
+    assert r.version == 2 and (out / SLATE / "DKEntries.csv").read_bytes() == b"two"

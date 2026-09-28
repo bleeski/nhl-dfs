@@ -228,3 +228,16 @@ def test_status_with_no_runs(tmp_path):
     from nhl_dfs import cli
 
     assert cli.last_run_lines(tmp_path / "none") == ["last run: none"]
+
+
+def test_a_busy_slate_lock_is_reported_not_raised(tmp_path, monkeypatch):
+    from nhl_dfs.build.state import LockTimeout
+
+    def busy(*a, **k):
+        raise LockTimeout("could not lock outputs/x/.lock within 60s")
+
+    monkeypatch.setattr(run_mod, "publish", busy)
+    r = _run(tmp_path, *mini_pair("classic"))
+    assert r.statuses["FILE_VALID"] == "FALSE" and r.statuses["DELIVERY_STATUS"] == "FAILED"
+    assert any("another run on this slate" in msg for msg in r.messages)
+    assert (r.run.path / "RUN_NOTES.md").exists() and (r.run.path / "manifest.json").exists()

@@ -39,7 +39,7 @@ from nhl_dfs.build.assign import Assignment, Caps, assign, load_caps
 from nhl_dfs.build.candidates import Candidate
 from nhl_dfs.build.manifest import exposures_top20, write_manifest
 from nhl_dfs.build.notes import chicago, write_run_notes
-from nhl_dfs.build.state import PublishRefused, RunDir, new_run, publish, sha256
+from nhl_dfs.build.state import LockTimeout, PublishRefused, RunDir, new_run, publish, sha256
 from nhl_dfs.contracts.geometry import Mode, lineup_key
 from nhl_dfs.contracts.statuses import (
     DeliveryStatus,
@@ -423,6 +423,10 @@ def _export_and_publish(run: RunDir, entries: EntriesFile, pool: SalaryPool, a: 
     except PublishRefused as exc:
         messages.append(f"publish refused: {exc}")
         m["failed"].append(f"phase {phase}: publish refused")
+        return None
+    except LockTimeout as exc:  # another run holds this slate; never wait forever, never half-publish
+        messages.append(f"publish skipped: {exc} (another run on this slate is publishing; rerun when it finishes)")
+        m["failed"].append(f"phase {phase}: slate lock busy")
         return None
     rec = {
         "version": res.version,
