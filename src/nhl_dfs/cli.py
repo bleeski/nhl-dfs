@@ -1,6 +1,6 @@
 """Command-line entry point: `python -m nhl_dfs.cli <command>`.
 
-`status`, `verify`, `probe`, and `run --baseline` are real (C2b).
+`status`, `verify`, `probe`, `run --baseline` (C2b), `late-swap`, and `refresh` (C2c) are real.
 """
 
 from __future__ import annotations
@@ -194,6 +194,10 @@ def cmd_run(args: argparse.Namespace) -> int:
     runs_root = Path(args.runs_root)
     outputs_root = Path(args.outputs_root) if args.outputs_root else runs_root.parent / "outputs"
     result = run_slate(args.salary, args.entries, offline=args.offline, out_root=runs_root, outputs_root=outputs_root)
+    return _print_result(result)
+
+
+def _print_result(result) -> int:
     for k, v in result.statuses.items():
         print(f"{k}={v}")
     print(f"run={result.run.run_id} slate={result.slate_id}")
@@ -205,6 +209,53 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(f"note: {msg}")
     print(f"notes: {result.notes_path}")
     return 0 if result.ok else 1
+
+
+def _as_of(text: str | None):
+    """--as-of 2026-10-15T23:10:00Z: a labeled rehearsal clock (UTC)."""
+    if not text:
+        return None
+    from datetime import datetime, timezone
+
+    t = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    if t.tzinfo is None:
+        raise SystemExit("--as-of needs a UTC offset, for example 2026-10-15T23:10:00Z")
+    return t.astimezone(timezone.utc)
+
+
+def _roots(args) -> tuple[Path, Path]:
+    runs_root = Path(args.runs_root)
+    return runs_root, Path(args.outputs_root) if args.outputs_root else runs_root.parent / "outputs"
+
+
+def cmd_late_swap(args: argparse.Namespace) -> int:
+    from nhl_dfs.build import late_swap
+
+    if not (args.run and args.entries):
+        print("late-swap needs --run <id> and --entries <current DKEntries.csv downloaded from DK>")
+        return 2
+    runs_root, outputs_root = _roots(args)
+    print(f"mode: {'fast repair (only entries that need it)' if args.fast else 'full re-optimize of open cells'}")
+    result = late_swap.run(args.run, args.entries, offline=args.offline, fast=args.fast, runs_root=runs_root,
+                           outputs_root=outputs_root, salary_path=args.salary, as_of=_as_of(args.as_of))
+    return _print_result(result)
+
+
+def cmd_refresh(args: argparse.Namespace) -> int:
+    from nhl_dfs.build import refresh
+
+    if not args.run:
+        print("refresh needs --run <id>")
+        return 2
+    runs_root, outputs_root = _roots(args)
+    try:
+        result = refresh.run(args.run, offline=args.offline, runs_root=runs_root, outputs_root=outputs_root,
+                             salary_path=args.salary, as_of=_as_of(args.as_of))
+    except refresh.NoDeliveredVersion as exc:
+        print("FILE_VALID=FALSE")
+        print(f"reason: {exc}")
+        return 1
+    return _print_result(result)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -233,6 +284,19 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--runs-root", type=str, default=str(RUNS_ROOT))
     run_parser.add_argument("--outputs-root", type=str, default=None)
     run_parser.set_defaults(func=cmd_run)
+
+    for name, func in (("late-swap", cmd_late_swap), ("refresh", cmd_refresh)):
+        sp = sub.add_parser(name)
+        sp.add_argument("--run", type=str, default=None)
+        if name == "late-swap":
+            sp.add_argument("--entries", type=str, default=None)
+            sp.add_argument("--fast", action="store_true")
+        sp.add_argument("--offline", action="store_true")
+        sp.add_argument("--salary", type=str, default=None, help="a fresh DKSalaries.csv of the same slate (status update)")
+        sp.add_argument("--as-of", type=str, default=None, help="REHEARSAL clock in UTC, e.g. 2026-10-15T23:10:00Z")
+        sp.add_argument("--runs-root", type=str, default=str(RUNS_ROOT))
+        sp.add_argument("--outputs-root", type=str, default=None)
+        sp.set_defaults(func=func)
 
     return parser
 
