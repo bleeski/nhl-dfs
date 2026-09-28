@@ -1,0 +1,42 @@
+# Keyless sources behind data/http.py. Seconds everywhere. Plan section 3.
+http:
+  user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
+  timeout_s: 6
+  retries: 1            # one retry after retry_after_s for timeouts, connection errors, 5xx
+  retry_after_s: 1
+  max_calls_per_run: 200  # every request attempt counts; past this SourceUnavailable("budget")
+  min_interval_s:       # per-host spacing between requests
+    default: 0.5
+    www.dailyfaceoff.com: 3.0
+    www.covers.com: 2.0
+
+ttl_s:
+  dk_lobby: 900
+  dk_contest: 900
+  dk_draftables: 300
+  nhl_schedule: 900
+  nhl_roster: 21600
+  nhl_boxscore: 3600
+  nhl_gamelog: 21600
+  nhl_report: 21600
+  nhl_partner_odds: 600
+  covers: 600
+  dailyfaceoff: 600
+  nhl_standings: 86400
+
+urls:
+  dk_lobby: "https://www.draftkings.com/lobby/getcontests?sport=NHL"
+  dk_contest: "https://api.draftkings.com/contests/v1/contests/{contest_id}?format=json"
+  dk_draftables: "https://api.draftkings.com/draftgroups/v1/draftgroups/{draft_group_id}/draftables?format=json"
+  nhl_schedule: "https://api-web.nhle.com/v1/schedule/{date}"
+  nhl_roster: "https://api-web.nhle.com/v1/roster/{team}/current"
+  nhl_boxscore: "https://api-web.nhle.com/v1/gamecenter/{game_id}/boxscore"
+  nhl_gamelog: "https://api-web.nhle.com/v1/player/{nhl_id}/game-log/{season}/{game_type}"
+  nhl_report: "https://api.nhle.com/stats/rest/en/skater/{report}?isAggregate=false&isGame=true&start={start}&limit={limit}&cayenneExp={exp}"
+  nhl_partner_odds: "https://api-web.nhle.com/v1/partner-game/US/now"
+  covers: "https://www.covers.com/sport/hockey/nhl/odds"
+  df_goalies: "https://www.dailyfaceoff.com/starting-goalies"
+  df_lines: "https://www.dailyfaceoff.com/teams/{slug}/line-combinations"
+
+report_page_limit: 100
+covers_preferred_books: ["DraftKings", "FanDuel", "BetMGM"]

@@ -14,6 +14,68 @@ if str(TESTS) not in sys.path:
 
 MINI = TESTS / "fixtures" / "mini"
 REAL = TESTS / "fixtures" / "real"
+HTTP = TESTS / "fixtures" / "http"
+
+
+@pytest.fixture(autouse=True)
+def _no_real_network(monkeypatch):
+    """Any test that forgets to inject a transport fails instead of going online."""
+    def refuse(*args, **kwargs):
+        raise RuntimeError("real network call attempted in a test; inject a transport")
+
+    import nhl_dfs.data.http as http_mod
+
+    monkeypatch.setattr(http_mod, "requests_transport", refuse)
+    monkeypatch.setattr(http_mod, "_DEFAULT", None)
+    try:
+        import requests
+
+        monkeypatch.setattr(requests, "get", refuse)
+        monkeypatch.setattr(requests.Session, "request", refuse)
+    except ImportError:
+        pass
+
+
+def fixture_bytes(name: str) -> bytes:
+    return (HTTP / name).read_bytes()
+
+
+class FakeTransport:
+    """Replays recorded responses. routes: list of (url substring, status, body or callable(url))."""
+
+    def __init__(self, routes):
+        self.routes = routes
+        self.calls: list[str] = []
+        self.sleeps: list[float] = []
+
+    def __call__(self, url, headers, timeout_s):
+        self.calls.append(url)
+        for needle, status, body in self.routes:
+            if needle in url:
+                if isinstance(body, BaseException):
+                    raise body
+                data = body(url) if callable(body) else body
+                return status, data, {}
+        raise AssertionError(f"no recorded response for {url}")
+
+
+@pytest.fixture
+def make_cache(tmp_path):
+    from nhl_dfs.data.http import HttpCache, load_sources_config
+
+    def build(routes, *, config=None, offline=False, clock=None):
+        transport = FakeTransport(routes)
+        cache = HttpCache(
+            tmp_path / "raw",
+            config=config or load_sources_config(),
+            transport=transport,
+            offline=offline,
+            clock=clock,
+            sleep=transport.sleeps.append,
+        )
+        return cache, transport
+
+    return build
 
 
 def real_pair(mode: str) -> tuple[Path, Path]:

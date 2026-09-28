@@ -1,0 +1,7 @@
+# Prospective capture schedule (tools/capture.py --once, registered by
+# tools/register_capture_task.ps1). Times are wall-clock in `timezone`.
+timezone: America/Chicago
+times: ["08:30", "11:30", "14:30", "16:30", "17:30", "18:00", "18:30", "18:50", "19:20", "19:50", "20:50", "21:20"]
+task_name_prefix: nhl-dfs-capture
+task_time_limit_minutes: 10
+contest_details_per_draft_group: 2   # largest field sizes first
