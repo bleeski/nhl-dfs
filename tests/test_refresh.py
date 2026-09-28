@@ -44,30 +44,57 @@ def test_refresh_uses_the_last_delivered_version_as_an_assumed_parent(tmp_path, 
     assert r.manifest["manual_changes"] == []
 
 
-def test_refresh_applies_the_same_pins_as_late_swap(tmp_path, base):
-    delivered = base.run.version_file(1)
-    a = late_swap.run(base.run.run_id, delivered, offline=True, fast=True, runs_root=tmp_path / "runs", as_of=MID)
-    b = refresh.run(base.run.run_id, offline=True, runs_root=tmp_path / "runs", as_of=MID)
-    assert a.manifest["locks"] == b.manifest["locks"]
-    assert a.manifest["changed_cells"] == b.manifest["changed_cells"]
-    assert a.run.version_file(1).read_bytes() == b.run.version_file(1).read_bytes()
-
-
-def test_refresh_with_a_fresh_salary_file_repairs_a_new_out(tmp_path, base):
-    delivered = base.run.version_file(1)
+def _fresh_with_out(tmp_path, delivered, eid="7100000001"):
+    """A re-downloaded salary file marking one open (late-game) rostered skater OUT."""
     pool = read_salary(LS / "classic" / "DKSalaries.csv")
-    # an open (late-game) player the baseline rostered, now marked OUT in a re-downloaded salary file
     late = {x.role_id for x in pool.rows if x.team in ("EEE", "FFF") and not x.is_goalie}
-    victim = next(rid for rid in _roster(delivered, "7100000001") if rid in late)
+    victim = next(rid for rid in _roster(delivered, eid) if rid in late)
     text = (LS / "classic" / "DKSalaries.csv").read_bytes().decode("utf-8-sig")
     rows = list(csv.reader(io.StringIO(text, newline="")))
     for rec in rows[1:]:
         if rec and rec[3] == victim:
             rec[9] = "OUT"
     buf = io.StringIO(newline="")
-    csv.writer(buf, lineterminator="\r\n").writerows(rows)
+    csv.writer(buf, lineterminator=chr(13) + chr(10)).writerows(rows)
     fresh = tmp_path / "DKSalaries.csv"
-    fresh.write_bytes(b"\xef\xbb\xbf" + buf.getvalue().encode("utf-8"))
+    fresh.write_bytes(bytes([0xEF, 0xBB, 0xBF]) + buf.getvalue().encode("utf-8"))
+    return fresh, victim
+
+
+def test_refresh_applies_the_same_pins_and_repairs_as_late_swap(tmp_path, base):
+    delivered = base.run.version_file(1)
+    fresh, _ = _fresh_with_out(tmp_path, delivered)
+    a = late_swap.run(base.run.run_id, delivered, offline=True, fast=True, runs_root=tmp_path / "runs",
+                      as_of=MID, salary_path=fresh)
+    b = refresh.run(base.run.run_id, offline=True, runs_root=tmp_path / "runs", as_of=MID, salary_path=fresh)
+    assert b.manifest["parent_file"]["sha256"] == base.manifest["export_sha256"]  # rehearsal never moved published.json
+    assert a.manifest["locks"] == b.manifest["locks"]
+    assert a.manifest["changed_cells"] and a.manifest["changed_cells"] == b.manifest["changed_cells"]
+    assert a.run.version_file(1).read_bytes() == b.run.version_file(1).read_bytes()
+
+
+def test_rehearsal_never_touches_the_public_file(tmp_path, base):
+    public = base.public_path
+    stamp = public.parent / "published.json"
+    before, stamp_before = public.read_bytes(), stamp.read_bytes()
+    r = late_swap.run(base.run.run_id, LS / "classic" / "DKEntries.current.csv", offline=True, fast=True,
+                      runs_root=tmp_path / "runs", as_of=MID)
+    assert r.statuses["FILE_VALID"] == "TRUE" and r.run.version_numbers() == [1]
+    assert r.statuses["DELIVERY_STATUS"] == "DEGRADED_REVIEW"
+    assert public.read_bytes() == before and stamp.read_bytes() == stamp_before
+    assert str(r.run.path) in r.manifest["public_path"] and any("do not upload" in m for m in r.messages)
+
+
+def test_real_clock_late_swap_publishes_to_outputs(tmp_path, base):
+    r = late_swap.run(base.run.run_id, LS / "classic" / "DKEntries.current.csv", offline=True, fast=True,
+                      runs_root=tmp_path / "runs", clock=lambda: MID)
+    assert r.public_path == base.public_path and r.statuses["DELIVERY_STATUS"] == "CHECKED"
+    assert r.public_path.read_bytes() == r.run.version_file(1).read_bytes()
+
+
+def test_refresh_with_a_fresh_salary_file_repairs_a_new_out(tmp_path, base):
+    delivered = base.run.version_file(1)
+    fresh, victim = _fresh_with_out(tmp_path, delivered)
     r = refresh.run(base.run.run_id, offline=True, runs_root=tmp_path / "runs", as_of=MID, salary_path=fresh)
     assert r.statuses["FILE_VALID"] == "TRUE"
     out = r.run.version_file(1)

@@ -21,6 +21,9 @@ residual exposure caps and pairwise distinctness (relaxed in the plan's order, r
 Only changed cells are rewritten (other bytes, including bare-ID cells, stay identical). The
 lock state is recomputed with a fresh clock right before writing; if any change crossed a lock
 boundary during the computation, nothing is published and the predecessor stands.
+
+A rehearsal clock (as_of) drives locks only: the run id is real-time, the file is written to
+<run>/rehearsal_outputs/ (never outputs/ or its published.json), and DELIVERY is DEGRADED_REVIEW.
 """
 
 from __future__ import annotations
@@ -461,8 +464,10 @@ def swap_core(
     report = check_file(staging, run.inputs / "DKSalaries.csv", run.inputs / "DKEntries.csv", locked=locked_text)
     if not report.ok:
         return fail("referee rejected the late-swap file: " + "; ".join(report.reasons[:5]))
+    # A rehearsal clock can call a started game open, so its file never reaches outputs/.
+    target_root = run.path / "rehearsal_outputs" if rehearsal is not None else outputs_root
     try:
-        res = publish(run, data, report, slate_id, outputs_root=outputs_root)
+        res = publish(run, data, report, slate_id, outputs_root=target_root)
     except (PublishRefused, LockTimeout) as exc:
         return fail(f"publish failed: {exc}")
     m["versions"].append({"version": res.version, "phase": kind, "sha256": report.out_sha256,
@@ -473,7 +478,11 @@ def swap_core(
     m["export_sha256"] = report.out_sha256
     m["statuses"]["FILE_VALID"] = FileStatus.TRUE.value
     m["statuses"]["SEARCH_STATUS"] = (SearchStatus.INFEASIBLE if unrepaired else SearchStatus.FEASIBLE).value
-    degraded = bool(unrepaired or unknown or assumed_parent or ls.unreadable_entries or not res.public_replaced
+    if rehearsal is not None:
+        m["public_path"] = str(res.public_path)
+        messages.append(f"REHEARSAL: written to {res.public_path}, not to outputs/; do not upload")
+    degraded = bool(rehearsal is not None or unrepaired or unknown or assumed_parent or ls.unreadable_entries
+                    or not res.public_replaced
                     or any(o.route == "feasible" for o in outcomes.values()))
     m["statuses"]["DELIVERY_STATUS"] = (DeliveryStatus.DEGRADED_REVIEW if degraded else DeliveryStatus.CHECKED).value
     assignment = Assignment(
