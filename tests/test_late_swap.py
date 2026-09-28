@@ -234,3 +234,25 @@ def test_150_entries_late_swap_is_fast(tmp_path):
     r = swap(tmp_path, b, many, as_of=G1 + timedelta(minutes=10))
     assert time.perf_counter() - t0 <= 30.0
     assert r.statuses["FILE_VALID"] == "TRUE", r.messages[:3]
+
+
+@pytest.mark.parametrize("mode", ["classic", "showdown"])
+def test_real_post_lock_export_cells_are_readable(mode):
+    """DK's current-entries export AFTER lock has never been seen; the late-swap rules assume its
+    cells are "Name (ID)" or bare IDs. Skips loudly until Ben saves one real post-lock export as
+    tests/fixtures/real/<date>/<mode>/DKEntries.postlock.csv next to that slate's DKSalaries.csv."""
+    import warnings
+
+    from conftest import REAL
+    from nhl_dfs.build.locks import compute
+
+    hits = sorted(REAL.glob(f"*/{mode}/DKEntries.postlock.csv"))
+    if not hits:
+        msg = f"REAL FIXTURE MISSING: tests/fixtures/real/<date>/{mode}/DKEntries.postlock.csv (a DK export after lock)"
+        warnings.warn(msg)
+        pytest.skip(msg)
+    path = hits[-1]
+    pool = read_salary(path.parent / "DKSalaries.csv")
+    cur = read_entries(path)
+    state = compute(cur, pool, None, datetime.now(timezone.utc), 300)
+    assert not state.unreadable_entries, "post-lock cell format differs from the assumed Name (ID) / bare ID"
