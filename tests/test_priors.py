@@ -128,7 +128,7 @@ def test_mini_pools_get_a_prior_for_every_row(mode):
 
 @pytest.mark.parametrize("mode", ["classic", "showdown"])
 def test_real_pools_zero_appg_rows_are_bucket_only(mode):
-    pool = read_salary(real_pair(mode)[0])
+    pool = read_salary(real_pair(mode, "2026-09-29")[0])
     t = prior_table(pool)
     assert set(t) == set(pool.by_role_id)
     zeros = [r for r in pool.rows if r.appg_flag == "APPG_ZERO"]

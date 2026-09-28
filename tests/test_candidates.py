@@ -136,7 +136,7 @@ def test_solver_unavailable_raises_for_the_caller_to_route(monkeypatch):
 def test_real_pool_gives_150_distinct_legal_candidates(mode):
     # Correctness only. Wall clock is measured by tools/bench_candidates.py and recorded in the
     # tracker; it is kept out of this suite so a slow machine cannot block later chunks.
-    pool, obj = _load(real_pair(mode))
+    pool, obj = _load(real_pair(mode, "2026-09-29"))
     cands = generate(pool, pool.mode, obj, 150, seed=20260929, perturb_sd=2.0, time_limit_total_s=60.0)
     assert len(cands) == 150 and len({c.key for c in cands}) == 150
     assert _min_diff(pool, cands) >= 2
