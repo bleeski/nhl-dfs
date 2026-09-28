@@ -1,0 +1,16 @@
+# Exposure caps for baseline assignment (C2b). Engineering placeholders; the objective-aware
+# allocation (C8) replaces them. Caps are advisory preferences: when they cannot be met, the
+# assigner relaxes them in the plan's order and records each relaxation.
+
+# Max share of entries holding one person (any slot), and one person as Showdown Captain.
+# Count cap = max(1, ceil(share * entries)).
+person_max_share: 0.6
+captain_max_share: 0.4
+
+# Classic: at most this many people shared by any two entries (card C2b).
+classic_max_overlap: 7
+
+# UTIL late-swap preference (Classic). Inside a lineup the UTIL always holds the latest-starting
+# skater a legal slot swap allows (objective-neutral). Across candidates, one within this many
+# points of the best allowed candidate is preferred when its UTIL starts later.
+util_tie_band_points: 0.25

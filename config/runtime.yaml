@@ -1,0 +1,22 @@
+# Runtime settings for `nhl.ps1 run` (C2b). Times in seconds.
+
+# Phase B (network enhancement) wall-clock budget, for the whole pass. Phase A never waits on it.
+network_pass_budget_s: 25
+
+# Engine edit-stop buffer before a game's real lock (plan: four per-row states). C2b refuses a
+# run once any slate game has started and warns inside this buffer; C2c uses it for late swap.
+edit_stop_buffer_s: 300
+
+candidates:
+  # Bank size = min(bank_per_entry * entries + bank_extra, bank_max).
+  bank_per_entry: 2
+  bank_extra: 20
+  bank_max: 400
+  perturb_sd_points: 2.0
+  time_limit_total_s: 14.0
+  min_pairwise_diff: 2
+
+fallback:
+  # feasible.find_one budgets: first try, then one retry on TIMEOUT.
+  budget_s: 2.0
+  retry_budget_s: 10.0
