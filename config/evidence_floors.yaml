@@ -1,0 +1,43 @@
+# Evidence floors (plan section 12, "Minimum evidence before model changes"), per mode.
+# Read only by src/nhl_dfs/learn/gates.py. Every fit (historical or live) and every promotion
+# consults that one gate. These are eligibility floors, not statistical guarantees. Never lower
+# a number here to get a fit to run; if NHL volume makes a floor slow, stay in prior/shadow mode.
+#
+# Count names (learn/gates.py EvidenceCounts):
+#   slate_dates          independent slate dates in evaluation history
+#   skater_games         skater-games in evaluation history
+#   goalie_starts        goalie starts in evaluation history
+#   slate_groups         distinct slate groups (Classic) or distinct games (Showdown) with labels
+#   ownership_labels     valid player-contest (Classic) or person-role (Showdown) ownership labels
+#   holdout_groups       latest groups reserved for validation (a requirement on the split, and
+#                        it must fit inside slate_groups)
+#   holdout_dates        latest dates reserved for validation
+#   groups_per_family    slate groups for the contest family the change targets
+#   prospective_groups   untouched / prospective groups never used in fitting
+#   complete_payout_dates slate dates with complete fees, payouts and prospective forecasts
+#
+# Tiers are listed lowest first. An action is allowed when every count in its tier meets the floor.
+
+tiers:
+  classic:
+    rate_correction:   {slate_dates: 20, skater_games: 5000, goalie_starts: 300}
+    ownership_fit:     {slate_groups: 30, ownership_labels: 15000, holdout_groups: 10}
+    context_compare:   {slate_dates: 60, skater_games: 20000, goalie_starts: 1000, holdout_dates: 20}
+    strategy_change:   {slate_groups: 100, groups_per_family: 30, prospective_groups: 30}
+    economic_weights:  {complete_payout_dates: 200}
+  showdown:
+    rate_correction:   {slate_dates: 20, skater_games: 5000, goalie_starts: 300}
+    ownership_fit:     {slate_groups: 50, ownership_labels: 5000, holdout_groups: 15}
+    context_compare:   {slate_dates: 60, skater_games: 20000, goalie_starts: 1000, holdout_dates: 20}
+    strategy_change:   {slate_groups: 100, groups_per_family: 30, prospective_groups: 30}
+    economic_weights:  {complete_payout_dates: 200}
+
+# Which tier each gated action needs (plan sections 6 and 12). prefit and field_fit are the
+# ownership row; field-mixture weights are "the higher evidence tier" (section 6), which is the
+# >=100-group row, as are stack priors and exposure defaults (strategy_change).
+actions:
+  prefit: ownership_fit
+  field_fit: ownership_fit
+  mixture_fit: strategy_change
+  rate_correction: rate_correction
+  strategy_change: strategy_change
