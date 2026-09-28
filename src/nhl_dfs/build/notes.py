@@ -61,9 +61,44 @@ def render(m: dict[str, Any]) -> str:
     lines.append("- What worked: " + "; ".join(worked))
     lines.append("- What failed: " + "; ".join(failed))
     lines.append(f"- Keep / change: {m.get('recommendation', 'keep')}")
+    if m.get("provisional"):
+        lines += _provisional_lines(m["provisional"])
     if m.get("messages"):
         lines += ["", "## Messages", ""] + [f"- {x}" for x in m["messages"]]
     return "\n".join(lines) + "\n"
+
+
+def _provisional_lines(p: dict[str, Any]) -> list[str]:
+    """C3 section. Every figure is labeled provisional; no probability or ceiling is reported."""
+    ev = p["evidence"]
+    ver = f"v{p['version']}" if p.get("version") else "not published (previous version stays current)"
+    out = [
+        "",
+        "## Provisional leverage pass (PROVISIONAL)",
+        "",
+        f"- {p['label']}. Version: {ver}.",
+        "- Evidence: " + " ".join(f"{k}={v}" for k, v in ev.items()),
+        f"- Prefit: {p.get('prefit', 'not run')}",
+        "- Fields: " + "; ".join(
+            f"{fam} {f['n_draws']}/{f['n_requested']} draws, {f['repeats']} repeats"
+            + (" DEGRADED" if f["degraded"] else "") for fam, f in p["fields"].items()),
+    ]
+    if p.get("network"):
+        out.append("- Contest detail problems: " + "; ".join(p["network"]))
+    out += ["", "| Contest | Family (source) | PAYOUT_SOURCE | Field size (source) |", "|---|---|---|---|"]
+    for c in p["contests"]:
+        out.append(f"| {c['contest_id']} {c['name']} | {c['family']} ({c['family_source']}) | {c['PAYOUT_SOURCE']} "
+                   f"| {c['field_size']} ({c['field_size_source']}) |")
+    out += ["", "| Entry | Contest | Family | Prior mean pts, DTD-adjusted (provisional) | Lineup own % sum "
+            "(provisional) | Dup proxy (provisional) | Field dup est. (provisional) | Band pts | DTD |",
+            "|---|---|---|---:|---:|---:|---:|---:|---:|"]
+    for e in p["entries"]:
+        out.append(f"| {e['entry_id']} | {e['contest_id']} | {e['family']} | {e['mean_pts']:.1f} | {e['own_sum_pct']:.1f} "
+                   f"| {e['dup_proxy']:.2f} | {e['field_dup_est']:.1f} | {e['band_pts']:.1f} | {e['dtd_players']} |")
+    out += ["", "Dup proxy: sum of log ownership + salary-left term + Captain log ownership; higher means more "
+            "likely duplicated. Field dup est.: sampled copies of the lineup scaled to the field size. Both are "
+            "uncalibrated scenario proxies, not measured facts."]
+    return out
 
 
 def write_run_notes(run: RunDir, manifest: dict[str, Any]) -> Path:

@@ -207,11 +207,17 @@ def test_cli_run_verify_and_status(tmp_path, pinned_cli, capsys):
     cli = pinned_cli
     salary, entries = mini_pair("showdown")
     runs = tmp_path / "runs"
-    assert cli.main(["run", "--salary", str(salary), "--entries", str(entries), "--offline"]) == 2
+    # C3 changed `run` without --baseline from "refused" to "baseline, then the provisional pass";
+    # --baseline still means baseline only. Both stay inside tmp_path.
+    roots = ["--runs-root", str(tmp_path / "full" / "runs"), "--outputs-root", str(tmp_path / "full" / "outputs")]
+    assert cli.main(["run", "--salary", str(salary), "--entries", str(entries), "--offline", *roots]) == 0
+    capsys.readouterr()
     code = cli.main(["run", "--salary", str(salary), "--entries", str(entries), "--baseline", "--offline",
                      "--runs-root", str(runs)])
     out = capsys.readouterr().out
     assert code == 0 and "FILE_VALID=TRUE" in out and "published: " in out
+    run_dir = next(p for p in runs.iterdir() if p.is_dir())
+    assert len(list(run_dir.glob("versions/v*"))) == 1  # baseline only
     run_id = next(line.split()[0][4:] for line in out.splitlines() if line.startswith("run="))
     assert cli.main(["verify", "--run", run_id, "--runs-root", str(runs)]) == 0
     assert "FILE_VALID=TRUE" in capsys.readouterr().out

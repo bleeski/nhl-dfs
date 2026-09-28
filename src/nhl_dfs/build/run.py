@@ -15,6 +15,13 @@ mapped through dk_public.map_status. OUT and IR exclude the person; DTD is QUEST
 stays in the pool (priors only, no haircut; C3/C8 price it); an unrecognized status is UNKNOWN,
 never OUT, and is reported. It is intake data, so Phase A leaves NEWS_STATE=NONE.
 
+Provisional pass (C3; skipped with baseline_only=True, i.e. `run --baseline`): after Phase B,
+or after the offline skip, on the post-Phase-B pool. Contest detail per distinct contest when
+online (PAYOUT_SOURCE=EXACT), else declared family priors (PRIOR) -> ownership prior -> one
+sampled field per contest family -> provisional leverage selection -> referee -> publish the
+next version with a compare-and-swap on the last published sha. Any failure leaves the current
+version in place and is recorded. Every figure it adds is labeled provisional.
+
 A run refuses to publish once any slate game has started: late swap is C2c's job.
 """
 
@@ -258,9 +265,8 @@ def run_slate(
     runtime: dict | None = None,
     caps: Caps | None = None,
 ) -> RunResult:
-    """Build, check and publish the baseline. outputs_root defaults to <out_root>/../outputs."""
-    if not baseline_only:
-        raise NotImplementedError("only the baseline run exists until C8")
+    """Build, check and publish the baseline, then (unless baseline_only) the provisional
+    leverage version. outputs_root defaults to <out_root>/../outputs."""
     clock = clock or (lambda: datetime.now(timezone.utc))
     runtime = runtime or load_runtime_config()
     caps = caps or load_caps()
@@ -390,13 +396,27 @@ def run_slate(
     write_manifest(run, m)  # durable before any network call
 
     # Phase B ---------------------------------------------------------------------------------
+    after_b = {"work": work, "sha": v1["sha256"], "bank": search.bank, "details": {}}
     if offline:
         m["news"]["phase_b_summary"] = "skipped (offline)"
+    else:
+        t = time.perf_counter()
+        after_b = _phase_b(run, entries, pool, work, a, objective, excluded, runtime, caps, seed, slate_id,
+                           outputs_root, v1, starts, cache, m, messages)
+        after_b.setdefault("bank", search.bank)
+        timings["phase_b_s"] = round(time.perf_counter() - t, 3)
+    if baseline_only:
         return finish()
+
+    # Provisional pass (C3) -------------------------------------------------------------------
     t = time.perf_counter()
-    _phase_b(run, entries, pool, work, a, objective, excluded, runtime, caps, seed, slate_id, outputs_root,
-             v1, starts, cache, m, messages)
-    timings["phase_b_s"] = round(time.perf_counter() - t, 3)
+    try:
+        _provisional_pass(run, entries, pool, after_b, st, starts, offline, runtime, caps, seed, slate_id,
+                          outputs_root, cache, m, messages, out_root)
+    except Exception as exc:  # the current version stays; never raised out of the run
+        m["failed"].append(f"provisional pass: {type(exc).__name__}: {str(exc)[:160]}")
+        messages.append(f"provisional pass failed ({type(exc).__name__}); the previous version stays current")
+    timings["provisional_s"] = round(time.perf_counter() - t, 3)
     return finish()
 
 
@@ -444,38 +464,45 @@ def _export_and_publish(run: RunDir, entries: EntriesFile, pool: SalaryPool, a: 
     return rec
 
 
-def _fetch_draftables(entries: EntriesFile, cache, pool: SalaryPool):
+def _fetch_draftables(entries: EntriesFile, cache, pool: SalaryPool, box: dict | None = None):
     """Network part of Phase B (worker thread): contest detail -> draft group -> draftables -> reconcile."""
     contest_id = int(entries.entries[0].contest_id)
     detail = dk_public.contest_detail(contest_id, cache=cache)
+    if box is not None:
+        box["detail"] = detail  # kept even when draftables then fails (403)
     d = dk_public.draftables(detail.draft_group_id, cache=cache)
     return detail.draft_group_id, dk_public.reconcile(pool, d)
 
 
 def _phase_b(run, entries, pool, work, a, objective, excluded_a, runtime, caps, seed, slate_id, outputs_root,
-             v1, starts, cache, m, messages) -> None:
+             v1, starts, cache, m, messages) -> dict:
+    """Returns the state the provisional pass builds on: the pool after any new exclusions
+    (even when the re-solve failed), the last published sha, and any contest detail fetched."""
     budget = float(runtime["network_pass_budget_s"])
     deadline = time.monotonic() + budget
     box: dict[str, Any] = {}
+    state: dict[str, Any] = {"work": work, "sha": v1["sha256"], "details": {}}
 
     def worker():
         try:
-            box["result"] = _fetch_draftables(entries, cache, pool)
+            box["result"] = _fetch_draftables(entries, cache, pool, box)
         except BaseException as exc:  # reported, never raised out of the run
             box["error"] = exc
 
     th = threading.Thread(target=worker, name="nhl-phase-b", daemon=True)
     th.start()
     th.join(timeout=budget)
+    if "detail" in box:
+        state["details"][str(entries.entries[0].contest_id)] = box["detail"]
     if th.is_alive():
         m["news"]["phase_b_summary"] = f"network pass exceeded {budget:.0f}s; v1 stays current"
         m["failed"].append("phase B: budget exceeded")
-        return
+        return state
     if "error" in box:
         exc = box["error"]
         m["news"]["phase_b_summary"] = f"draftables unavailable ({type(exc).__name__}: {str(exc)[:120]}); v1 stays current"
         m["failed"].append("phase B: DK draftables unavailable")
-        return
+        return state
     group_id, rec = box["result"]
     m["news"]["draft_group_id"] = group_id
     missing = [rid for rid, s in rec.rows.items() if s.obs_status is ObsStatus.MISSING]
@@ -484,6 +511,9 @@ def _phase_b(run, entries, pool, work, a, objective, excluded_a, runtime, caps, 
     out_people = {pool.by_role_id[rid].person_key for rid, s in rec.rows.items()
                   if s.participation is Participation.OUT or s.eligibility is Eligibility.DISABLED}
     new_rows = _person_rows(pool, out_people) - set(excluded_a)
+    if new_rows:
+        state["work"] = pool_without(work, new_rows)
+        state["bank"] = None  # the Phase A bank may hold newly excluded rows
     unknown = [rid for rid, s in rec.rows.items() if s.participation is Participation.UNKNOWN and s.obs_status is not ObsStatus.MISSING]
     m["news"]["draftables"] = {
         "missing": len(missing),
@@ -497,13 +527,13 @@ def _phase_b(run, entries, pool, work, a, objective, excluded_a, runtime, caps, 
     if not affected:
         m["news"]["phase_b_summary"] = f"draftables reconciled (group {group_id}); no new OUT/DISABLED in any lineup; no v2"
         m["worked"].append("phase B reconciled draftables")
-        return
+        return state
     remaining = deadline - time.monotonic()
     if remaining <= 1.0:
         m["news"]["phase_b_summary"] = f"{len(new_rows)} new exclusion(s) found but no budget left to re-solve; v1 stays current"
         m["failed"].append("phase B: out of budget before re-solve")
         messages.append("REVIEW: newly OUT/DISABLED players remain in v1: " + ", ".join(_names(pool, new_rows)))
-        return
+        return state
     work2 = pool_without(work, new_rows)
     obj2 = {k: v for k, v in objective.items() if k in work2.by_role_id}
     search = build_bank(work2, obj2, len(affected), runtime, seed=seed + 1, time_limit_s=max(1.0, remaining - 1.0))
@@ -511,16 +541,145 @@ def _phase_b(run, entries, pool, work, a, objective, excluded_a, runtime, caps, 
         m["news"]["phase_b_summary"] = f"re-solve after new exclusions failed ({search.detail}); v1 stays current"
         m["failed"].append("phase B: re-solve failed")
         messages.append("REVIEW: newly OUT/DISABLED players remain in v1: " + ", ".join(_names(pool, new_rows)))
-        return
+        return state
     fixed = {e: v for e, v in a.by_entry.items() if e not in affected}
     a2 = assign(search.bank, entries, work2, pool.mode, caps, seed=seed, later_start_utc=starts, fixed=fixed)
     v2 = _export_and_publish(run, entries, pool, a2, slate_id, outputs_root, m, messages, phase="B", expect=v1["sha256"])
     if v2 is None:
         m["news"]["phase_b_summary"] = "v2 failed its checks; v1 stays current"
-        return
+        return state
+    state["sha"] = v2["sha256"]
     _set_assignment_fields(m, a2, pool)
     if search.route != "milp" or any(r.kind == "REPEAT" for r in a2.relaxations) or not v2["public_replaced"]:
         m["statuses"]["DELIVERY_STATUS"] = DeliveryStatus.DEGRADED_REVIEW.value
     m["news"]["phase_b_summary"] = (f"{len(new_rows)} row(s) newly OUT/DISABLED ({', '.join(_names(pool, new_rows))}); "
                                     f"{len(affected)} entr{'y' if len(affected) == 1 else 'ies'} re-solved; v{v2['version']} published")
     m["worked"].append("phase B re-solved affected entries")
+    return state
+
+
+# -- provisional pass (C3) -------------------------------------------------------------------
+
+def _fetch_contest_details(contest_ids, cache, budget_s: float) -> tuple[dict, list[str]]:
+    """DK contest detail per id in a worker thread joined against one budget."""
+    box: dict[str, Any] = {"details": {}, "errors": []}
+
+    def worker():
+        for cid in contest_ids:
+            try:
+                box["details"][cid] = dk_public.contest_detail(int(cid), cache=cache)
+            except BaseException as exc:  # reported; the contest falls back to its family prior
+                box["errors"].append(f"contest {cid}: {type(exc).__name__}: {str(exc)[:80]}")
+
+    th = threading.Thread(target=worker, name="nhl-contest-detail", daemon=True)
+    th.start()
+    th.join(timeout=budget_s)
+    errors = list(box["errors"])
+    if th.is_alive():
+        errors.append(f"contest detail pass exceeded {budget_s:.0f}s")
+    return dict(box["details"]), errors
+
+
+def _provisional_pass(run, entries, pool, after_b, st, starts, offline, runtime, caps, seed, slate_id,
+                      outputs_root, cache, m, messages, out_root) -> None:
+    import json
+
+    from nhl_dfs.build import provisional as prov
+    from nhl_dfs.build.state import atomic_write
+    from nhl_dfs.models import contests as contests_mod
+    from nhl_dfs.models import ownership
+    from nhl_dfs.models import prefit as prefit_mod
+    from nhl_dfs.models.projection import PriorProjection
+
+    fam_cfg = contests_mod.load_contest_families()
+    own_cfg = ownership.load_ownership_config()
+    work: SalaryPool = after_b["work"]
+    details = dict(after_b.get("details") or {})
+    network: list[str] = []
+    if not offline:
+        ids = [cid for cid in dict.fromkeys(e.contest_id for e in entries.entries) if cid not in details]
+        got, network = _fetch_contest_details(ids, cache, float(runtime["network_pass_budget_s"]))
+        details.update(got)
+    contexts = contests_mod.resolve(entries, details, fam_cfg)
+    payout = contests_mod.overall_payout_source(contexts.values())
+
+    # Prefit behind the one gate: historical labels count toward the floors, never around them.
+    field_cal = FieldCalibration.PRIOR
+    history = Path(out_root).resolve().parent / "data" / "standings" / "history"
+    try:
+        pf = prefit_mod.fit(history, cfg=own_cfg)
+        mp = pf.by_mode[pool.mode]
+        prefit_note = f"{mp.status}: {mp.reason}"
+        if mp.status == "fitted" and mp.improves:
+            own_cfg = {**own_cfg, "weights": {**own_cfg["weights"], **mp.weights}}
+            field_cal = FieldCalibration.FITTED
+    except prefit_mod.LabelFormatError as exc:
+        prefit_note = f"error: {exc}"
+        messages.append(f"prefit skipped: {exc}")
+
+    statuses = {rid: p for rid, (p, _) in st.items() if rid in work.by_role_id}
+    proj = PriorProjection(work)
+    fb = prov.build_fields(work, proj, contexts, seed=seed, statuses=statuses, own_cfg=own_cfg)
+    atomic_write(run.path / "field.json",
+                 json.dumps(prov.field_summary(work, fb, contexts), indent=2).encode("utf-8"))
+    bank = after_b.get("bank")
+    if not bank:
+        bank = build_bank(work, prior_objective(work, prior_table(work)), len(entries.entries), runtime,
+                          seed=seed + 2).bank
+    if not bank:
+        raise RuntimeError("no candidate bank for the provisional pass")
+    a_p, scored = prov.select(bank, proj, fb.marginals, contexts, entries, caps, fam_cfg, seed=seed, pool=work,
+                              statuses=statuses, later_start_utc=starts, own_cfg=own_cfg)
+
+    evidence = {
+        "MODEL_STATUS": proj.source().value,
+        "PAYOUT_SOURCE": payout.value,
+        "OUTCOME_CALIBRATION": OutcomeCalibration.UNVALIDATED.value,
+        "FIELD_CALIBRATION": field_cal.value,
+    }
+    rows = []
+    for e in entries.entries:
+        s = scored[e.entry_id]
+        ctx = contexts[e.contest_id]
+        rows.append({
+            "entry_id": e.entry_id,
+            "contest_id": e.contest_id,
+            "family": ctx.family,
+            "PAYOUT_SOURCE": ctx.payout_source.value,
+            "mean_pts": round(s.mean_tenths / 10.0, 1),
+            "own_sum_pct": round(s.own_pct, 1),
+            "dup_proxy": round(s.dup, 2),
+            "field_dup_est": round(fb.marginals[e.contest_id].dup_counts.get(s.cand.key, 0.0), 1),
+            "band_pts": round(s.band / 10.0, 1),
+            "band_index": s.band_index,
+            "dtd_players": sum(1 for r in s.cand.role_ids if statuses.get(r) is Participation.QUESTIONABLE),
+        })
+    fields = {fam: {"n_requested": f.requested, "n_draws": f.n, "degraded": f.degraded, "detail": f.detail,
+                    "repeats": f.n - len(set(f.keys))} for fam, f in fb.fields.items()}
+    m["provisional"] = {
+        "label": "PROVISIONAL: priors only; ownership and duplicate figures are uncalibrated",
+        "evidence": evidence,
+        "contests": [c.record() for c in contexts.values()],
+        "fields": fields,
+        "field_s": round(fb.elapsed_s, 3),
+        "entries": rows,
+        "prefit": prefit_note,
+        "network": network,
+        "version": None,
+    }
+    for fam, f in fields.items():
+        if f["degraded"]:
+            messages.append(f"field for {fam} is short: {f['n_draws']} of {f['n_requested']} draws; ownership is degraded")
+    vp = _export_and_publish(run, entries, pool, a_p, slate_id, outputs_root, m, messages, phase="P",
+                             expect=after_b["sha"])
+    if vp is None:
+        m["failed"].append("provisional pass: its file was not published; the previous version stays current")
+        return
+    m["provisional"]["version"] = vp["version"]
+    _set_assignment_fields(m, a_p, pool)
+    m["statuses"].update(evidence)
+    if (not vp["public_replaced"] or any(r.kind == "REPEAT" for r in a_p.relaxations)
+            or any(f["degraded"] for f in fields.values())):
+        m["statuses"]["DELIVERY_STATUS"] = DeliveryStatus.DEGRADED_REVIEW.value
+    m["worked"].append(f"provisional pass published v{vp['version']} (PROVISIONAL, priors only, "
+                       f"PAYOUT_SOURCE={payout.value})")

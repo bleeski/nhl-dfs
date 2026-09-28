@@ -150,3 +150,156 @@ def test_caps_span_the_whole_portfolio(fam_cfg, own_cfg):
     a, _ = provisional.select(cands, proj, {}, ctx, ents, caps, fam_cfg, seed=1, pool=pool, own_cfg=own_cfg)
     if not a.relaxations:
         assert max(a.person_exposures.values()) <= caps.person_cap(10)
+
+
+# -- run level ----------------------------------------------------------------------------------
+
+import json  # noqa: E402
+
+from conftest import fixture_bytes, mini_pair, real_pair  # noqa: E402
+from nhl_dfs import cli  # noqa: E402
+from nhl_dfs.build import run as run_mod  # noqa: E402
+from nhl_dfs.build.run import run_slate  # noqa: E402
+from nhl_dfs.contracts.statuses import Eligibility, ObsStatus  # noqa: E402
+from nhl_dfs.data.sources import dk_public  # noqa: E402
+from nhl_dfs.intake.entries import cell_role_id, read_entries  # noqa: E402
+
+BEFORE = datetime(2026, 9, 28, 18, 0, tzinfo=timezone.utc)  # pinned before the 2026-09-29 slates
+
+
+def _run(tmp_path, salary, entries, **kw):
+    kw.setdefault("offline", True)
+    kw.setdefault("clock", lambda: BEFORE)
+    kw.setdefault("baseline_only", False)
+    return run_slate(salary, entries, out_root=tmp_path / "runs", outputs_root=tmp_path / "outputs", **kw)
+
+
+def _rostered(path) -> set[str]:
+    ef = read_entries(path)
+    return {cell_role_id(c) for e in ef.entries for c in e.cells if cell_role_id(c)}
+
+
+@pytest.fixture(scope="module")
+def offline_classic(tmp_path_factory):
+    tmp = tmp_path_factory.mktemp("prov")
+    return tmp, _run(tmp, *mini_pair("classic"))
+
+
+def test_offline_run_publishes_baseline_then_provisional(offline_classic):
+    tmp, r = offline_classic
+    assert r.ok and [v["phase"] for v in r.manifest["versions"]] == ["A", "P"]
+    assert all(v["public_replaced"] for v in r.manifest["versions"])
+    p = r.manifest["provisional"]
+    assert p["version"] == 2
+    assert p["evidence"] == {"MODEL_STATUS": "PRIOR", "PAYOUT_SOURCE": "PRIOR",
+                             "OUTCOME_CALIBRATION": "UNVALIDATED", "FIELD_CALIBRATION": "PRIOR"}
+    for k, v in p["evidence"].items():
+        assert r.statuses[k] == v  # the run manifest carries the evidence states
+    assert {c["PAYOUT_SOURCE"] for c in p["contests"]} == {"PRIOR"}
+    assert {c["field_size_source"] for c in p["contests"]} == {"family_prior"}
+    assert p["prefit"].startswith("gated:") and "slate_groups 0 < 30" in p["prefit"]
+    assert all(not f["degraded"] for f in p["fields"].values())
+    assert {e["entry_id"] for e in p["entries"]} == {e.entry_id for e in read_entries(mini_pair("classic")[1]).entries}
+    ok, lines = cli.verify_run(tmp / "runs", r.run.run_id)
+    assert ok, lines
+
+
+def test_run_notes_label_every_provisional_figure(offline_classic):
+    _, r = offline_classic
+    notes = r.notes_path.read_text(encoding="utf-8")
+    sec = notes[notes.index("## Provisional leverage pass (PROVISIONAL)"):]
+    assert "Lineup own % sum (provisional)" in sec and "Dup proxy (provisional)" in sec
+    assert "Field dup est. (provisional)" in sec
+    assert "OUTCOME_CALIBRATION=UNVALIDATED" in sec and "FIELD_CALIBRATION=PRIOR" in sec
+    lowered = sec.lower()
+    for banned in ("probability", "ceiling", "roi", "win%"):
+        assert banned not in lowered.replace("no probability", "")
+    assert "cash (name_pattern)" in sec and "large_gpp (default)" in sec
+
+
+def test_cash_entry_gets_the_top_mean(offline_classic):
+    _, r = offline_classic
+    rows = r.manifest["provisional"]["entries"]
+    cash = [e for e in rows if e["family"] == "cash"]
+    assert cash and cash[0]["mean_pts"] >= max(e["mean_pts"] for e in rows)
+
+
+def test_field_command_reads_the_saved_field(offline_classic, capsys):
+    tmp, r = offline_classic
+    assert (r.run.path / "field.json").exists()
+    assert cli.main(["field", "--run", r.run.run_id, "--runs-root", str(tmp / "runs")]) == 0
+    out = capsys.readouterr().out
+    assert "PROVISIONAL" in out and "mass total 900%, goalie 100%, skater 800%" in out
+
+
+def test_field_command_samples_for_a_baseline_only_run(tmp_path, capsys):
+    r = _run(tmp_path, *mini_pair("showdown"), baseline_only=True)
+    assert [v["phase"] for v in r.manifest["versions"]] == ["A"] and "provisional" not in r.manifest
+    assert cli.main(["field", "--run", r.run.run_id, "--runs-root", str(tmp_path / "runs")]) == 0
+    out = capsys.readouterr().out
+    assert "sampled now" in out and "cpt 100%, flex 500%" in out
+
+
+def test_phase_b_exclusion_never_reappears_in_the_provisional_file(tmp_path, monkeypatch):
+    salary, entries = mini_pair("classic")
+    base = _run(tmp_path / "base", salary, entries, baseline_only=True)
+    victim = sorted(_rostered(base.manifest["versions"][0]["path"]))[0]
+
+    def fake_fetch(ents, cache, pool, box=None):
+        rows = {rid: dk_public.RowState(Participation.PLAYING, Eligibility.ROSTERABLE, None, "", ObsStatus.CURRENT)
+                for rid in pool.by_role_id}
+        rows[victim] = dk_public.RowState(Participation.OUT, Eligibility.ROSTERABLE, None, "OUT", ObsStatus.CURRENT)
+        return 1, dk_public.Reconciliation(rows, [])
+
+    monkeypatch.setattr(run_mod, "_fetch_draftables", fake_fetch)
+    monkeypatch.setattr(run_mod, "_fetch_contest_details", lambda ids, cache, budget: ({}, ["stub: offline"]))
+    r = _run(tmp_path / "net", salary, entries, offline=False)
+    phases = [v["phase"] for v in r.manifest["versions"]]
+    assert phases == ["A", "B", "P"], phases
+    assert victim not in _rostered(r.manifest["versions"][-1]["path"])
+    assert r.manifest["provisional"]["network"] == ["stub: offline"]
+
+
+def test_exact_contest_detail_sets_payout_source_per_contest(tmp_path, monkeypatch, make_cache):
+    salary, entries = mini_pair("classic")
+    ids = [e.contest_id for e in read_entries(entries).entries]
+    body = fixture_bytes("dk_contest_195958173.json")
+    detail = dk_public.parse_contest_detail(json.loads(body))
+    from nhl_dfs.data.http import SourceUnavailable
+
+    def draftables_403(*a, **k):
+        raise SourceUnavailable("stub 403")
+
+    monkeypatch.setattr(run_mod, "_fetch_draftables", draftables_403)
+    monkeypatch.setattr(run_mod, "_fetch_contest_details",
+                        lambda wanted, cache, budget: ({ids[0]: detail}, []))
+    r = _run(tmp_path, salary, entries, offline=False)
+    by_id = {c["contest_id"]: c for c in r.manifest["provisional"]["contests"]}
+    assert by_id[ids[0]]["PAYOUT_SOURCE"] == "EXACT" and by_id[ids[0]]["field_size"] == detail.maximum_entries
+    assert by_id[ids[0]]["family_source"] == "contest_detail"
+    assert by_id[ids[1]]["PAYOUT_SOURCE"] == "PRIOR"
+    assert r.statuses["PAYOUT_SOURCE"] == "PRIOR"  # EXACT only when every contest is exact
+
+
+def test_provisional_failure_keeps_the_previous_version(tmp_path, monkeypatch):
+    from nhl_dfs.build import provisional as prov
+
+    def boom(*a, **k):
+        raise RuntimeError("stub failure")
+
+    monkeypatch.setattr(prov, "select", boom)
+    r = _run(tmp_path, *mini_pair("showdown"))
+    assert r.ok and [v["phase"] for v in r.manifest["versions"]] == ["A"]
+    assert any("provisional pass" in f for f in r.manifest["failed"])
+    assert r.statuses["PAYOUT_SOURCE"] == "PRIOR" and r.statuses["FIELD_CALIBRATION"] == "PRIOR"
+
+
+def test_real_showdown_offline_provisional(tmp_path):
+    salary, entries = real_pair("showdown", "2026-09-29")
+    r = _run(tmp_path, salary, entries)
+    assert r.ok and [v["phase"] for v in r.manifest["versions"]] == ["A", "P"]
+    p = r.manifest["provisional"]
+    assert {c["family"] for c in p["contests"]} == {"large_gpp"}
+    assert all(f["n_draws"] == f["n_requested"] for f in p["fields"].values())
+    ok, lines = cli.verify_run(tmp_path / "runs", r.run.run_id)
+    assert ok, lines

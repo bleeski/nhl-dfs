@@ -1,6 +1,8 @@
 """Command-line entry point: `python -m nhl_dfs.cli <command>`.
 
 `status`, `verify`, `probe`, `run --baseline` (C2b), `late-swap`, and `refresh` (C2c) are real.
+`run` without --baseline adds the provisional leverage pass, and `field --run` reports the
+sampled opponent field (C3).
 """
 
 from __future__ import annotations
@@ -188,12 +190,10 @@ def cmd_run(args: argparse.Namespace) -> int:
     if not (args.salary and args.entries):
         print("run needs --salary <DKSalaries.csv> and --entries <DKEntries.csv>")
         return 2
-    if not args.baseline:
-        print("run: only the baseline run exists until C8; add --baseline")
-        return 2
     runs_root = Path(args.runs_root)
     outputs_root = Path(args.outputs_root) if args.outputs_root else runs_root.parent / "outputs"
-    result = run_slate(args.salary, args.entries, offline=args.offline, out_root=runs_root, outputs_root=outputs_root)
+    result = run_slate(args.salary, args.entries, offline=args.offline, baseline_only=args.baseline,
+                       out_root=runs_root, outputs_root=outputs_root)
     return _print_result(result)
 
 
@@ -285,6 +285,11 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--outputs-root", type=str, default=None)
     run_parser.set_defaults(func=cmd_run)
 
+    field_parser = sub.add_parser("field")
+    field_parser.add_argument("--run", type=str, default=None)
+    field_parser.add_argument("--runs-root", type=str, default=str(RUNS_ROOT))
+    field_parser.set_defaults(func=cmd_field)
+
     for name, func in (("late-swap", cmd_late_swap), ("refresh", cmd_refresh)):
         sp = sub.add_parser(name)
         sp.add_argument("--run", type=str, default=None)
@@ -299,6 +304,66 @@ def build_parser() -> argparse.ArgumentParser:
         sp.set_defaults(func=func)
 
     return parser
+
+
+def field_lines(summary: dict) -> list[str]:
+    out = [summary.get("label", "PROVISIONAL")]
+    for fam, f in summary["families"].items():
+        mass = ", ".join(f"{k} {v:.0f}%" for k, v in f["mass"].items())
+        out.append(f"[{fam}] contests {', '.join(f['contests'])}: {f['n_draws']} of {f['n_requested']} draws"
+                   f"{' (DEGRADED)' if f['degraded'] else ''}, {f['distinct_lineups']} distinct, "
+                   f"{f['repeats']} repeats; mass {mass}")
+        out.append("  top ownership (provisional): " + "; ".join(
+            f"{r['name']} {r['team']} {r['slot']} {r['own_pct']:.1f}%" for r in f["top_ownership"][:10]))
+        if f["cpt_share_top"]:
+            out.append("  captain share (provisional): " + "; ".join(
+                f"{r['name']} {r['cpt_pct']:.1f}%" for r in f["cpt_share_top"][:5]))
+        out.append("  stacks: " + (", ".join(f"{t} {v:.0f}%" for t, v in f["stack_freq"].items()) or "none"))
+        out.append("  salary left: " + ", ".join(f"{b} {v:.0f}%" for b, v in f["salary_left_hist"].items()))
+    return out
+
+
+def cmd_field(args: argparse.Namespace) -> int:
+    import json
+
+    from nhl_dfs.build.state import open_run
+
+    if not args.run:
+        print("field needs --run <id>")
+        return 2
+    try:
+        run = open_run(Path(args.runs_root), args.run)
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"no such run: {exc}")
+        return 1
+    path = run.path / "field.json"
+    if path.exists():
+        summary = json.loads(path.read_text(encoding="utf-8"))
+        source = "saved by the run's provisional pass"
+    else:  # a baseline-only run: sample now from the run's own inputs, offline, family priors
+        from nhl_dfs.build import provisional
+        from nhl_dfs.build.run import _person_rows, pool_without, salary_statuses
+        from nhl_dfs.contracts.statuses import Participation
+        from nhl_dfs.intake.entries import read_entries
+        from nhl_dfs.intake.salary import read_salary
+        from nhl_dfs.models import contests
+        from nhl_dfs.models.projection import PriorProjection
+
+        pool = read_salary(run.inputs / "DKSalaries.csv")
+        entries = read_entries(run.inputs / "DKEntries.csv")
+        st = salary_statuses(pool)
+        out = {pool.by_role_id[r].person_key for r, (p, _) in st.items() if p is Participation.OUT}
+        work = pool_without(pool, _person_rows(pool, out))
+        ctx = contests.resolve(entries)
+        statuses = {r: p for r, (p, _) in st.items() if r in work.by_role_id}
+        seed = int(pool.sha256[:8], 16)
+        fb = provisional.build_fields(work, PriorProjection(work), ctx, seed=seed, statuses=statuses)
+        summary = provisional.field_summary(work, fb, ctx)
+        source = "sampled now from the run's inputs (offline, family priors)"
+    print(f"field for run {args.run} ({source})")
+    for line in field_lines(summary):
+        print(line)
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
