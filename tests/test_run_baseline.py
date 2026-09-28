@@ -190,3 +190,41 @@ def test_phase_a_timing_on_the_real_fixture(tmp_path, mode, n, limit_s):
         assert r.manifest["overlap_max"] <= 7
     cap = max(1, math.ceil(0.6 * n))
     assert max(p["entries"] for p in r.manifest["exposures_top20"]) <= cap
+
+
+@pytest.fixture
+def pinned_cli(monkeypatch):
+    """cli run with the clock pinned before the slate (the CLI itself uses the real clock)."""
+    import functools
+
+    from nhl_dfs import cli
+
+    monkeypatch.setattr(run_mod, "run_slate", functools.partial(run_mod.run_slate, clock=lambda: BEFORE))
+    return cli
+
+
+def test_cli_run_verify_and_status(tmp_path, pinned_cli, capsys):
+    cli = pinned_cli
+    salary, entries = mini_pair("showdown")
+    runs = tmp_path / "runs"
+    assert cli.main(["run", "--salary", str(salary), "--entries", str(entries), "--offline"]) == 2
+    code = cli.main(["run", "--salary", str(salary), "--entries", str(entries), "--baseline", "--offline",
+                     "--runs-root", str(runs)])
+    out = capsys.readouterr().out
+    assert code == 0 and "FILE_VALID=TRUE" in out and "published: " in out
+    run_id = next(line.split()[0][4:] for line in out.splitlines() if line.startswith("run="))
+    assert cli.main(["verify", "--run", run_id, "--runs-root", str(runs)]) == 0
+    assert "FILE_VALID=TRUE" in capsys.readouterr().out
+    lines = cli.last_run_lines(runs)
+    assert run_id in lines[0] and "FILE_VALID=TRUE" in lines[1]
+    # tampering with the published version is caught
+    vfile = runs / run_id / "versions" / "v1" / "DKEntries.csv"
+    vfile.write_bytes(vfile.read_bytes() + b"\n")
+    assert cli.main(["verify", "--run", run_id, "--runs-root", str(runs)]) == 1
+    assert cli.main(["verify", "--run", "nope-classic", "--runs-root", str(runs)]) == 1
+
+
+def test_status_with_no_runs(tmp_path):
+    from nhl_dfs import cli
+
+    assert cli.last_run_lines(tmp_path / "none") == ["last run: none"]

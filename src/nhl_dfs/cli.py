@@ -1,6 +1,6 @@
 """Command-line entry point: `python -m nhl_dfs.cli <command>`.
 
-`status` and `verify` are real. `run` is a stub until C2b.
+`status`, `verify`, `probe`, and `run --baseline` are real (C2b).
 """
 
 from __future__ import annotations
@@ -12,21 +12,90 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 NEXT_CHUNK = REPO_ROOT / "tools" / "next_chunk.py"
+RUNS_ROOT = REPO_ROOT / "runs"
+OUTPUTS_ROOT = REPO_ROOT / "outputs"
 
 
-def cmd_status(_args: argparse.Namespace) -> int:
+def last_run_lines(runs_root: Path) -> list[str]:
+    """One short block describing the newest run that has a manifest."""
+    from nhl_dfs.build.manifest import read_manifest
+    from nhl_dfs.build.notes import chicago
+    from nhl_dfs.build.state import latest_run
+
+    run = latest_run(runs_root)
+    if run is None:
+        return ["last run: none"]
+    m = read_manifest(run)
+    final = m["versions"][-1] if m.get("versions") else None
+    lines = [
+        f"last run: {m['run_id']} ({m['mode']}, {m['entry_count']} entries, created {chicago(m['created_utc'])})",
+        "  " + " ".join(f"{k}={v}" for k, v in m["statuses"].items()),
+    ]
+    if final:
+        where = m.get("public_path") if final.get("public_replaced") else "not published (see RUN_NOTES.md)"
+        lines.append(f"  v{final['version']} sha256 {final['sha256'][:16]} -> {where}")
+    lines.append(f"  notes: {run.path / 'RUN_NOTES.md'}")
+    return lines
+
+
+def cmd_status(args: argparse.Namespace) -> int:
     result = subprocess.run([sys.executable, str(NEXT_CHUNK), "--status"], cwd=str(REPO_ROOT))
+    for line in last_run_lines(Path(args.runs_root)):
+        print(line)
     return result.returncode
 
 
 MAX_REASONS_PRINTED = 20
 
 
+def verify_run(runs_root: Path, run_id: str) -> tuple[bool, list[str]]:
+    """Re-check a run's current version against its input copies and its manifest hashes."""
+    from nhl_dfs.build.manifest import read_manifest
+    from nhl_dfs.build.state import open_run, sha256
+    from nhl_dfs.referee.check_file import check_file
+
+    run = open_run(runs_root, run_id)
+    n = run.current_version()
+    if n is None:
+        return False, [f"run {run_id} has no published version"]
+    out = run.version_file(n)
+    report = check_file(out, run.inputs / "DKSalaries.csv", run.inputs / "DKEntries.csv")
+    m = read_manifest(run)
+    why = list(report.reasons)
+    rec = next((v for v in m["versions"] if v["version"] == n), None)
+    if rec is None:
+        why.append(f"manifest has no record of v{n}")
+    elif rec["sha256"] != report.out_sha256:
+        why.append(f"v{n} bytes do not match the manifest hash")
+    if m["salary_sha256"] != report.salary_sha256 or m["entries_sha256"] != report.entries_sha256:
+        why.append("input copies do not match the manifest hashes")
+    lines = [
+        f"FILE_VALID={'TRUE' if not why else 'FALSE'}",
+        f"run={run_id} version=v{n} mode={report.mode} entries={report.entries_checked}",
+        f"out_sha256={report.out_sha256}",
+        f"salary_sha256={report.salary_sha256}",
+        f"entries_sha256={report.entries_sha256}",
+    ]
+    lines += [f"note: {x}" for x in report.notes]
+    lines += [f"reason: {x}" for x in why[:MAX_REASONS_PRINTED]]
+    return not why, lines
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
     from nhl_dfs.referee.check_file import check_file
 
+    if args.run:
+        try:
+            ok, lines = verify_run(Path(args.runs_root), args.run)
+        except FileNotFoundError as exc:
+            print("FILE_VALID=FALSE")
+            print(f"reason: {exc}")
+            return 1
+        for line in lines:
+            print(line)
+        return 0 if ok else 1
     if not (args.salary and args.entries and args.out):
-        print("verify needs --salary, --entries, and --out")
+        print("verify needs --run <id>, or --salary, --entries, and --out")
         return 2
     report = check_file(args.out, args.salary, args.entries, parent_path=args.parent)
     print(f"FILE_VALID={'TRUE' if report.ok else 'FALSE'}")
@@ -113,16 +182,38 @@ def cmd_probe(_args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_run(_args: argparse.Namespace) -> int:
-    print("run: available after C2b")
-    return 2
+def cmd_run(args: argparse.Namespace) -> int:
+    from nhl_dfs.build.run import run_slate
+
+    if not (args.salary and args.entries):
+        print("run needs --salary <DKSalaries.csv> and --entries <DKEntries.csv>")
+        return 2
+    if not args.baseline:
+        print("run: only the baseline run exists until C8; add --baseline")
+        return 2
+    runs_root = Path(args.runs_root)
+    outputs_root = Path(args.outputs_root) if args.outputs_root else runs_root.parent / "outputs"
+    result = run_slate(args.salary, args.entries, offline=args.offline, out_root=runs_root, outputs_root=outputs_root)
+    for k, v in result.statuses.items():
+        print(f"{k}={v}")
+    print(f"run={result.run.run_id} slate={result.slate_id}")
+    if result.public_path:
+        print(f"published: {result.public_path}")
+    else:
+        print("published: nothing (see RUN_NOTES.md)")
+    for msg in result.messages:
+        print(f"note: {msg}")
+    print(f"notes: {result.notes_path}")
+    return 0 if result.ok else 1
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="nhl_dfs")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sub.add_parser("status").set_defaults(func=cmd_status)
+    status_parser = sub.add_parser("status")
+    status_parser.add_argument("--runs-root", type=str, default=str(RUNS_ROOT))
+    status_parser.set_defaults(func=cmd_status)
     sub.add_parser("probe").set_defaults(func=cmd_probe)
 
     verify_parser = sub.add_parser("verify")
@@ -130,6 +221,8 @@ def build_parser() -> argparse.ArgumentParser:
     verify_parser.add_argument("--entries", type=str, default=None)
     verify_parser.add_argument("--out", type=str, default=None)
     verify_parser.add_argument("--parent", type=str, default=None)
+    verify_parser.add_argument("--run", type=str, default=None)
+    verify_parser.add_argument("--runs-root", type=str, default=str(RUNS_ROOT))
     verify_parser.set_defaults(func=cmd_verify)
 
     run_parser = sub.add_parser("run")
@@ -137,6 +230,8 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--entries", type=str, default=None)
     run_parser.add_argument("--baseline", action="store_true")
     run_parser.add_argument("--offline", action="store_true")
+    run_parser.add_argument("--runs-root", type=str, default=str(RUNS_ROOT))
+    run_parser.add_argument("--outputs-root", type=str, default=None)
     run_parser.set_defaults(func=cmd_run)
 
     return parser
