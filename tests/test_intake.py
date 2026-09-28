@@ -45,8 +45,12 @@ def test_triple_overflow_is_excluded_and_reported():
     assert pool.excluded_role_ids == frozenset(dup[0].role_ids)
 
 
-def test_pettersson_and_aho_are_reported_but_never_merged():
-    pool = read_salary(mini_pair("classic")[0])
+@pytest.mark.parametrize(
+    "mode, aho_d_team",
+    [("classic", "NYI"), ("showdown", "VAN")],
+)
+def test_pettersson_and_aho_are_reported_but_never_merged(mode, aho_d_team):
+    pool = read_salary(mini_pair(mode)[0])
     same = {c.detail.split(":")[0] for c in _kinds(pool, "SAME_NAME")}
     assert same == {"elias pettersson", "sebastian aho"}
     assert all(not c.excluded for c in _kinds(pool, "SAME_NAME"))
@@ -55,8 +59,35 @@ def test_pettersson_and_aho_are_reported_but_never_merged():
         "elias pettersson|VAN|F",
         "elias pettersson|VAN|D",
         "sebastian aho|CAR|F",
-        "sebastian aho|NYI|D",
+        f"sebastian aho|{aho_d_team}|D",
     }
+
+
+def test_person_key_collision_excludes_both_rows(tmp_path):
+    # Different raw triples (LW vs C) that normalize to one person key (F): ambiguous, so excluded.
+    raw = mini_pair("classic")[0].read_bytes().decode("utf-8-sig")
+    extra = (
+        "LW,Sebastian Aho (90000999),Sebastian Aho,90000999,W/UTIL,3000,"
+        "NYI@CAR 09/29/2026 07:00PM ET,CAR,2,,\r\n"
+    )
+    p = tmp_path / "DKSalaries.csv"
+    p.write_bytes(("﻿" + raw + extra).encode("utf-8"))
+    pool = read_salary(p)
+    collision = _kinds(pool, "PERSON_KEY_COLLISION")
+    assert len(collision) == 1 and collision[0].excluded
+    aho_c = next(c for c in read_salary(mini_pair("classic")[0]).rows if c.person_key == "sebastian aho|CAR|F")
+    assert set(collision[0].role_ids) == {"90000999", aho_c.role_id}
+    assert "90000999" not in pool.by_role_id and aho_c.role_id not in pool.by_role_id
+    assert not any("90000999" in c.role_ids for c in _kinds(pool, "DUPLICATE_ROLE"))
+
+
+def test_real_fixture_absence_skips_loudly(tmp_path, monkeypatch):
+    import conftest
+
+    monkeypatch.setattr(conftest, "REAL", tmp_path)
+    with pytest.warns(UserWarning, match="REAL FIXTURE MISSING"):
+        with pytest.raises(pytest.skip.Exception, match="REAL FIXTURE MISSING"):
+            conftest.real_pair("classic")
 
 
 def test_mini_showdown_pairing_and_warnings():
@@ -154,6 +185,22 @@ def test_real_files_parse(mode):
         unpaired = {rid for c in pool.conflicts if c.kind == "UNPAIRED" for rid in c.role_ids}
         for p in pool.persons.values():
             assert (p.cpt and p.flex) or {r.role_id for r in (p.cpt, p.flex) if r} <= unpaired
+
+
+@pytest.mark.parametrize("mode", ["classic", "showdown"])
+def test_real_name_plus_id_matches_the_written_cell_format(mode):
+    import csv
+    import io
+
+    from nhl_dfs.export.writer import format_cell
+
+    sal_path, _ = real_pair(mode)
+    pool = read_salary(sal_path)
+    records = list(csv.reader(io.StringIO(sal_path.read_bytes().decode("utf-8-sig"), newline="")))
+    col_name_id, col_id = records[0].index("Name + ID"), records[0].index("ID")
+    file_cells = {rec[col_id]: rec[col_name_id] for rec in records[1:] if rec}
+    mismatched = [rid for rid, row in pool.by_role_id.items() if format_cell(row) != file_cells[rid]]
+    assert not mismatched, f"{len(mismatched)} rows differ from the file's Name + ID, e.g. {mismatched[:3]}"
 
 
 def test_real_showdown_start_time_is_exact_utc():

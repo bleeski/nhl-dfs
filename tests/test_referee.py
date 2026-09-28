@@ -10,6 +10,7 @@ from nhl_dfs.export.writer import write_entries
 from nhl_dfs.intake.entries import physical_lines, read_entries
 from nhl_dfs.intake.salary import read_salary
 from nhl_dfs.referee.check_file import check_file
+from nhl_dfs.referee.reader import read_salary_min
 
 pytestmark = pytest.mark.c0b
 
@@ -112,6 +113,19 @@ def test_name_mismatch_unknown_id_and_ambiguous_id_are_caught(tmp_path):
     fast_id = sorted(pool.excluded_role_ids)[0]
     _edit(out, _cell(pool, "Kyle Palmieri"), f"Jesper Fast ({fast_id})".encode())
     assert any("ambiguous identity" in r for r in check_file(out, sal, ent).reasons)
+
+
+def test_showdown_overflow_identity_is_ambiguous_even_at_cpt(tmp_path):
+    # Staal has one CPT row and two FLEX rows: intake excludes all three, so must the referee.
+    sal, ent, out, pool = _written("showdown", tmp_path)
+    staal = next(c for c in pool.conflicts if c.kind == "DUPLICATE_ROLE" and "Jordan Staal" in c.detail)
+    ref = read_salary_min(sal)
+    assert set(staal.role_ids) == set(ref.ambiguous)
+    cpt_id = next(rid for rid in staal.role_ids if "CPT" in ref.rows[rid].roster_positions)
+    aho = next(r for r in pool.rows if r.name == "Sebastian Aho" and r.team == "CAR" and "CPT" in r.roster_positions)
+    _edit(out, f"{aho.name} ({aho.role_id})".encode(), f"Jordan Staal ({cpt_id})".encode())
+    report = check_file(out, sal, ent)
+    assert any("7000000101" in r and "ambiguous identity" in r for r in report.reasons)
 
 
 def test_non_roster_edit_is_caught(tmp_path):

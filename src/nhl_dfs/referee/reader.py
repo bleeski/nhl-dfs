@@ -82,11 +82,19 @@ def read_salary_min(path) -> RefSalary:
     showdown = any({"CPT", "FLEX"} & r.roster_positions for r in rows.values())
     mode = "showdown" if showdown else "classic"
 
-    counts: dict[tuple[str, bool], list[str]] = {}
+    groups: dict[str, list[RefRow]] = {}
     for r in rows.values():
-        role_key = "CPT" in r.roster_positions if showdown else False
-        counts.setdefault((r.person, role_key), []).append(r.role_id)
-    ambiguous = frozenset(rid for ids in counts.values() if len(ids) > 1 for rid in ids)
+        groups.setdefault(r.person, []).append(r)
+    ambiguous_ids: set[str] = set()
+    for group in groups.values():
+        if showdown:
+            cpt = sum(1 for r in group if "CPT" in r.roster_positions)
+            over = cpt > 1 or len(group) - cpt > 1
+        else:
+            over = len(group) > 1
+        if over:  # the whole identity is unusable, not just the surplus rows
+            ambiguous_ids.update(r.role_id for r in group)
+    ambiguous = frozenset(ambiguous_ids)
     return RefSalary(rows=rows, mode=mode, ambiguous=ambiguous, sha256=_sha(raw))
 
 
