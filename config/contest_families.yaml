@@ -1,4 +1,4 @@
-﻿# Contest families (C3). Used when the DK contest endpoint is unavailable (offline, 403, timeout)
+# Contest families (C3). Used when the DK contest endpoint is unavailable (offline, 403, timeout)
 # and to classify contests whose detail was fetched. Engineering placeholders until flag 3
 # (typical entry mix) is answered; every value taken from here is labeled PAYOUT_SOURCE=PRIOR
 # and field size source "family_prior" in the manifest and RUN_NOTES. Nothing here is a fact
