@@ -1,0 +1,60 @@
+# Contest families (C3). Used when the DK contest endpoint is unavailable (offline, 403, timeout)
+# and to classify contests whose detail was fetched. Engineering placeholders until flag 3
+# (typical entry mix) is answered; every value taken from here is labeled PAYOUT_SOURCE=PRIOR
+# and field size source "family_prior" in the manifest and RUN_NOTES. Nothing here is a fact
+# about a real contest.
+
+# Name patterns: case-insensitive regular expressions, checked in this order; first match wins.
+# A name that matches nothing falls to `default_family` and is reported as family source
+# "default". It never becomes cash by accident.
+name_patterns:
+  - {family: satellite, pattern: "satellite|qualifier|\\bsat\\b"}
+  - {family: cash, pattern: "double up|triple up|quintuple up|50/50|fifty-fifty|head-to-head|\\bh2h\\b"}
+  - {family: wta, pattern: "winner take all|\\bwta\\b"}
+  - {family: small_field, pattern: "small field"}
+default_family: large_gpp
+
+# Classification from an exact payout table (contest detail fetched): WTA when only 1st place is
+# paid; cash when at least cash_min_paid_fraction of the field is paid one flat amount; small
+# field when maximum entries <= small_field_max_entries; otherwise large GPP. A satellite name
+# pattern still wins (tickets are prizes, not cash).
+exact_rules:
+  cash_min_paid_fraction: 0.30
+  small_field_max_entries: 500
+
+families:
+  cash:
+    selection: mean  # highest projected mean; no leverage
+    field_size_prior: 200
+    paid_fraction_prior: 0.45
+  satellite:
+    selection: mean  # C8 gives satellites their own threshold objective; until then, mean
+    field_size_prior: 200
+    paid_fraction_prior: 0.10
+  wta:
+    selection: dup_first  # lowest duplicate proxy within the tie band
+    field_size_prior: 10
+    paid_fraction_prior: 0.10
+  small_field:
+    selection: dup_first
+    field_size_prior: 100
+    paid_fraction_prior: 0.20
+  large_gpp:
+    selection: own_then_dup  # lower lineup ownership, then lower duplicate proxy, within the band
+    field_size_prior: 5000
+    paid_fraction_prior: 0.20
+
+# Provisional selection (build/provisional.py, plan section 7 "Deterministic tie-break").
+selection:
+  # Tie band on the lineup's projected mean: max(tie_band_pct * leader mean, floor). The floor is
+  # the card's "prior sd / sqrt(n)" read as: lineup prior sd (independence sum, Captain at 1.5x)
+  # divided by sqrt(n) with n = roster slots (9 Classic, 6 Showdown), i.e. the root-mean-square
+  # per-slot prior sd. No Monte Carlo exists before C6, so n cannot be a simulation count.
+  tie_band_pct: 0.03
+  # DTD (day-to-day, Ben 2026-09-28) maps to QUESTIONABLE: still eligible, known injury. The
+  # provisional ranking prices the risk as an expected-value haircut: a QUESTIONABLE person's
+  # mean counts at this play probability. A labeled prior, not news; the baseline (v1) has no
+  # haircut. The leverage side is the field's fade in config/ownership.yaml (news.questionable).
+  questionable_play_prob: 0.85
+  # Order in which contest groups are filled so exposure caps bind last on cash entries.
+  family_order: [cash, satellite, wta, small_field, large_gpp]

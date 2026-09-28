@@ -1,0 +1,87 @@
+# Ownership prior and opponent field (C3, plan section 6 "Cold start"). Hand-set engineering
+# placeholders, FIELD_CALIBRATION=PRIOR. C3 prefit (models/prefit.py) may replace `weights` only
+# when learn/gates.allows("prefit") passes on historical standings; C12 fits by contest family.
+#
+# A role's perceived value to the field, in DK points (uncaptained; the Captain's 1.5x is
+# applied by the field sampler):
+#   u = projected mean + sum over features of weights[feature] * feature
+# Features (models/ownership.py feature_table):
+#   appg             APPG (raw, as DK shows it) minus projected mean, in points; 0 when missing
+#   value_z          points per $1,000 salary, z-scored within position group (F, D, G)
+#   salary_rank      salary rank within position group, 0 cheapest to 1 dearest, minus 0.5
+#   implied_total    team implied goals minus the slate average; 0 without odds
+#   pp1, line1       1 when roles (C7) put the player on PP1 / line 1; 0 until roles exist
+#   goalie_start_win goalies only: start prior times win probability, minus the top-goalie value
+#                    at an even game (so an expected starter in a coin-flip game is 0)
+#   questionable     1 when the DK status maps to QUESTIONABLE (DTD): the field fades DTD players
+#   unknown          1 when the DK status is unrecognized (UNKNOWN, never OUT)
+#   news_recent      1 when news on the player is within news_recent_hours (0 until news exists)
+weights:
+  appg: 0.5
+  value_z: 1.0
+  salary_rank: 2.0
+  implied_total: 1.5
+  pp1: 1.5
+  line1: 1.0
+  goalie_start_win: 10.0
+  questionable: -2.0
+  unknown: 0.0
+  news_recent: 1.0
+
+news_recent_hours: 3
+
+# Without roles or news, no goalie is confirmed. The field's belief is priced as a prior: the
+# highest-salary goalie on each team is the expected starter at this probability, any other
+# goalie of that team at `other`. Ownership only; projections do not use it.
+goalie_start_prior:
+  top_salary_on_team: 0.8
+  other: 0.2
+
+# Team implied goals = game total * (0.5 + implied_split_slope * (no-vig win prob - 0.5)).
+implied_split_slope: 0.5
+
+# Per-family weight overrides (keys as in `weights`). Empty: every family shares the weights.
+families: {}
+
+field:
+  # Draws per contest family. Divided across behaviors by largest remainder. The time budget
+  # must never bind; a short draw is reported and marks the field degraded.
+  n:
+    classic: 300
+    showdown: 300
+  time_limit_s: 120.0
+  # Captain rules (Showdown): extra points on the CPT row = bonus * (salary_rank feature).
+  captain_rules:
+    projection: 0.0
+    stars: 4.0
+    value: -4.0
+  # Behaviors. noise_sd: Gumbel noise sd in points per person. stack_rule: none | team3 (at
+  # least three skaters from one team, the team drawn in proportion to exp(implied_total)).
+  # salary_left_pref: points gained per $1,000 left unspent. popularity_weight: the behavior's
+  # objective is mean + popularity_weight * (u - mean); negative for contrarians.
+  behaviors:
+    optimizer:   {noise_sd: 0.75, stack_rule: none,  captain_rule: projection, salary_left_pref: 0.0, popularity_weight: 1.0}
+    stacker:     {noise_sd: 3.0, stack_rule: team3, captain_rule: projection, salary_left_pref: 0.0, popularity_weight: 1.0}
+    stars_value: {noise_sd: 4.0, stack_rule: none,  captain_rule: stars,      salary_left_pref: 0.0, popularity_weight: 1.5}
+    casual:      {noise_sd: 8.0, stack_rule: none,  captain_rule: stars,      salary_left_pref: 0.5, popularity_weight: 2.0}
+    contrarian:  {noise_sd: 6.0, stack_rule: none,  captain_rule: value,      salary_left_pref: 0.0, popularity_weight: -0.5}
+  # Mixture weights by contest family (broad priors; C12 fits them behind the higher gate).
+  mixtures:
+    cash:        {optimizer: 0.45, stacker: 0.10, stars_value: 0.25, casual: 0.15, contrarian: 0.05}
+    satellite:   {optimizer: 0.40, stacker: 0.15, stars_value: 0.25, casual: 0.15, contrarian: 0.05}
+    wta:         {optimizer: 0.35, stacker: 0.20, stars_value: 0.20, casual: 0.15, contrarian: 0.10}
+    small_field: {optimizer: 0.35, stacker: 0.20, stars_value: 0.20, casual: 0.15, contrarian: 0.10}
+    large_gpp:   {optimizer: 0.30, stacker: 0.25, stars_value: 0.15, casual: 0.20, contrarian: 0.10}
+
+# Duplicate-risk proxy before the field is fitted (plan section 7): sum of log ownership
+# (fraction, floored) + a salary-left bucket term + the Captain's log ownership (Showdown).
+dup_proxy:
+  own_floor_pct: 0.1  # ownership below this (including never drawn) counts as this
+  captain_weight: 1.0
+  # Salary left (dollars) -> added term. Lineups at the cap duplicate most. Ascending max_left;
+  # the last bucket is open-ended.
+  salary_left_buckets:
+    - {max_left: 0, term: 1.0}
+    - {max_left: 300, term: 0.5}
+    - {max_left: 1000, term: 0.0}
+    - {max_left: null, term: -0.5}

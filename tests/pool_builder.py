@@ -152,3 +152,28 @@ def clone_entries(src, dst, n: int, *, first_id: int = 9_100_000_000) -> None:
     last = ef.entries[-1].line_no
     out = lines[: last + 1] + clones + lines[last + 1:]
     Path(dst).write_bytes((b"\xef\xbb\xbf" if bom else b"") + b"".join(out))
+
+
+def varied_pool(mode: Mode, *, seed: int = 0, teams=("AAA", "BBB", "CCC", "DDD")) -> SalaryPool:
+    """A legal pool with spread salaries and APPG (C3 ownership and field tests).
+
+    Classic: per team 3 C, 2 LW, 2 RW, 3 D, 2 G. Showdown: two teams, 8 people each (one G).
+    """
+    rng = random.Random(seed)
+    rows: list[PoolRow] = []
+    n = 0
+    if mode is Mode.CLASSIC:
+        for t in teams:
+            for pos, k in (("C", 3), ("LW", 2), ("RW", 2), ("D", 3), ("G", 2)):
+                for _ in range(k):
+                    n += 1
+                    sal = rng.randrange(2500, 9001, 100) if pos != "G" else rng.randrange(7000, 8601, 100)
+                    rows.append(row(n, t, pos, sal, appg=round(sal / 1000 * rng.uniform(0.6, 1.3), 1)))
+        return make_pool(Mode.CLASSIC, rows)
+    for t in teams[:2]:
+        for i in range(8):
+            n += 1
+            pos = "G" if i == 0 else ("D" if i < 3 else "C")
+            sal = rng.randrange(2000, 12001, 200)
+            rows.extend(sd_person(n, t, pos, sal, appg=round(sal / 1000 * rng.uniform(0.6, 1.3), 1)))
+    return make_pool(Mode.SHOWDOWN, rows)
