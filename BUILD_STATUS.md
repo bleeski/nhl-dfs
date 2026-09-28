@@ -8,7 +8,7 @@ Tracker for `BUILD_CHUNKS.md` (final, 26 September 2026). Every development sess
 |---|---|---|---|---|---|---|---|
 | C0a | DONE |  | 2026-09-26 | 2026-09-26 | ed988d5 | PASS | Copies the two DK rule files from Downloads into docs/rules/. |
 | C0b | DONE | C0a | 2026-09-28 | 2026-09-28 | fc1bb5f | PASS | Real fixtures: tests/fixtures/real/2026-09-29/ (gitignored), 2 Classic + 5 Showdown reserved entries, all blank. Real salary files carry DK Status (OUT/IR/DTD) and Starting columns, kept only in raw bytes; C2b and C7 need them. |
-| C1 | TODO | C0b | | | | | Register the capture task after the session (tools/register_capture_task.ps1). |
+| C1 | IN_PROGRESS | C0b | 2026-09-28 |  |  |  | Register the capture task after the session (tools/register_capture_task.ps1). |
 | C2a | TODO | C0b | | | | | May be done before or after C1. |
 | C2b | TODO | C2a, C1 | | | | | Local-first; network second pass bounded. |
 | C2c | TODO | C2b | | | | | Milestone 1: uploadable file with lock-safe late swap. |
