@@ -82,10 +82,21 @@ def test_band_floor_can_exceed_the_percentage(fam_cfg):
     mean = provisional.adjusted_mean_tenths(pool, proj, c.role_ids, {}, 1.0)
     from nhl_dfs.models.projection import lineup_sd_tenths
 
-    floor = lineup_sd_tenths(pool, proj, c.role_ids) / 3.0  # sqrt(9 slots)
-    assert provisional.band_width(pool, proj, c.role_ids, mean, 0.0) == pytest.approx(floor)
-    assert provisional.band_width(pool, proj, c.role_ids, mean, 0.001) == pytest.approx(floor)
-    assert provisional.band_width(pool, proj, c.role_ids, mean, 0.5) == pytest.approx(0.5 * mean)
+    se = lineup_sd_tenths(pool, proj, c.role_ids) / 10.0  # Monte Carlo standard error at 100 sims
+    assert provisional.band_width(pool, proj, c.role_ids, mean, 0.0, 100) == pytest.approx(se)
+    assert provisional.band_width(pool, proj, c.role_ids, mean, 0.001, 100) == pytest.approx(se)
+    assert provisional.band_width(pool, proj, c.role_ids, mean, 0.5, 100) == pytest.approx(0.5 * mean)
+
+
+def test_no_simulation_means_the_percentage_governs(fam_cfg, own_cfg):
+    assert fam_cfg["selection"]["band_floor_sims"] is None  # priors: analytic mean, standard error 0
+    pool, proj, cands = bank(Mode.SHOWDOWN)
+    c = cands[0]
+    mean = provisional.adjusted_mean_tenths(pool, proj, c.role_ids, {}, 1.0)
+    assert provisional.band_width(pool, proj, c.role_ids, mean, 0.03) == pytest.approx(0.03 * mean)
+    ranked = provisional.rank(cands, pool, proj, fake_marginals(pool), "own_then_dup", fam_cfg, own_cfg=own_cfg)
+    assert ranked[0].band == pytest.approx(0.03 * ranked[0].anchor_tenths)
+    assert ranked[0].mean_tenths >= 0.97 * max(s.mean_tenths for s in ranked) - 1e-9
 
 
 def test_dtd_questionable_mean_is_haircut(fam_cfg):

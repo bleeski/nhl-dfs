@@ -1,4 +1,4 @@
-# Contest families (C3). Used when the DK contest endpoint is unavailable (offline, 403, timeout)
+﻿# Contest families (C3). Used when the DK contest endpoint is unavailable (offline, 403, timeout)
 # and to classify contests whose detail was fetched. Engineering placeholders until flag 3
 # (typical entry mix) is answered; every value taken from here is labeled PAYOUT_SOURCE=PRIOR
 # and field size source "family_prior" in the manifest and RUN_NOTES. Nothing here is a fact
@@ -46,15 +46,18 @@ families:
 
 # Provisional selection (build/provisional.py, plan section 7 "Deterministic tie-break").
 selection:
-  # Tie band on the lineup's projected mean: max(tie_band_pct * leader mean, floor). The floor is
-  # the card's "prior sd / sqrt(n)" read as: lineup prior sd (independence sum, Captain at 1.5x)
-  # divided by sqrt(n) with n = roster slots (9 Classic, 6 Showdown), i.e. the root-mean-square
-  # per-slot prior sd. No Monte Carlo exists before C6, so n cannot be a simulation count.
+  # Tie band on the lineup's projected mean: max(tie_band_pct * anchor mean, floor). The floor is
+  # the ranking metric's Monte Carlo standard error (plan section 7: the band "is never smaller
+  # than that metric's Monte Carlo standard error"): lineup prior sd (independence sum, Captain at
+  # 1.5x) / sqrt(band_floor_sims). band_floor_sims is the number of simulated draws behind the
+  # ranking metric. Before C6 the ranking mean is exact arithmetic on priors (no simulation), so
+  # it is null and the floor is 0: the percentage governs. C6/C8 set it to the simulation count.
   tie_band_pct: 0.03
+  band_floor_sims: null
   # DTD (day-to-day, Ben 2026-09-28) maps to QUESTIONABLE: still eligible, known injury. The
   # provisional ranking prices the risk as an expected-value haircut: a QUESTIONABLE person's
   # mean counts at this play probability. A labeled prior, not news; the baseline (v1) has no
-  # haircut. The leverage side is the field's fade in config/ownership.yaml (news.questionable).
+  # haircut. The leverage side is the field's fade in config/ownership.yaml (weights.questionable).
   questionable_play_prob: 0.85
   # Order in which contest groups are filled so exposure caps bind last on cash entries.
   family_order: [cash, satellite, wta, small_field, large_gpp]

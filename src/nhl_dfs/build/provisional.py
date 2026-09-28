@@ -2,7 +2,8 @@
 
 Candidates are ranked by projected lineup mean (DTD-adjusted, see below). Tie bands are
 anchored: the best remaining candidate opens a band of width
-    band = max(tie_band_pct * anchor mean, anchor lineup prior sd / sqrt(roster slots)),
+    band = max(tie_band_pct * anchor mean, anchor lineup prior sd / sqrt(band_floor_sims)),
+(the floor is the metric's Monte Carlo standard error; with no simulation, before C6, it is 0),
 every remaining candidate within it joins, and inside the band the contest family's policy
 orders them:
     mean          cash and satellite: highest mean, no leverage
@@ -62,8 +63,11 @@ def adjusted_mean_tenths(pool: SalaryPool, proj: Projection, role_ids: Sequence[
     return total
 
 
-def band_width(pool: SalaryPool, proj: Projection, role_ids: Sequence[str], anchor_mean: float, pct: float) -> float:
-    floor = lineup_sd_tenths(pool, proj, role_ids) / math.sqrt(len(role_ids))
+def band_width(pool: SalaryPool, proj: Projection, role_ids: Sequence[str], anchor_mean: float, pct: float,
+               sims: int | None = None) -> float:
+    """Band width in tenths. sims: simulated draws behind the ranking metric (None: analytic mean,
+    standard error 0, so the percentage governs)."""
+    floor = lineup_sd_tenths(pool, proj, role_ids) / math.sqrt(sims) if sims else 0.0
     return max(pct * anchor_mean, floor)
 
 
@@ -84,6 +88,7 @@ def rank(candidates: Sequence[Candidate], pool: SalaryPool, proj: Projection, ma
     statuses = statuses or {}
     sel = cfg["selection"]
     q, pct = float(sel["questionable_play_prob"]), float(sel["tie_band_pct"])
+    sims = sel.get("band_floor_sims")
     own = marg.own if marg is not None else {}
     rows = []
     for c in candidates:
@@ -94,7 +99,7 @@ def rank(candidates: Sequence[Candidate], pool: SalaryPool, proj: Projection, ma
     k = 0
     while remaining:
         anchor = remaining[0]
-        width = band_width(pool, proj, anchor[0].role_ids, anchor[1], pct) if policy != "mean" else 0.0
+        width = band_width(pool, proj, anchor[0].role_ids, anchor[1], pct, sims) if policy != "mean" else 0.0
         members = [r for r in remaining if r[1] >= anchor[1] - width] if policy != "mean" else remaining
         members.sort(key=lambda r: (_policy_key(policy, r[1], r[2], r[3]), r[0].key))
         out += [Scored(c, m, o, d, width, k, anchor[1]) for c, m, o, d in members]

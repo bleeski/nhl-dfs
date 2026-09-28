@@ -90,6 +90,9 @@ def validate_contest_families(cfg: dict) -> None:
     pct = sel.get("tie_band_pct")
     if not isinstance(pct, (int, float)) or not 0 <= pct < 1:
         raise ValueError("contest_families: selection.tie_band_pct must be in [0, 1)")
+    sims = sel.get("band_floor_sims")
+    if sims is not None and (not isinstance(sims, int) or sims < 1):
+        raise ValueError("contest_families: selection.band_floor_sims must be null or a positive integer")
     q = sel.get("questionable_play_prob")
     if not isinstance(q, (int, float)) or not 0 < q <= 1:
         raise ValueError("contest_families: selection.questionable_play_prob must be in (0, 1]")
