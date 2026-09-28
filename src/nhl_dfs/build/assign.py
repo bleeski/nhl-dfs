@@ -11,6 +11,11 @@ Legality is never relaxed: every candidate is already a checked legal lineup.
 UTIL late-swap rule (Classic): inside a lineup, UTIL holds the latest-starting skater that a
 legal slot swap allows (objective-neutral). Across candidates, one within util_tie_band_points
 of the best allowed candidate is preferred when its UTIL starts later.
+
+order_key (C3 provisional selection) replaces the objective order with the caller's
+preference order; the cross-candidate UTIL swap is then off, because it compares objectives
+and could undo a leverage choice or cross a tie band. cap_entries lets a caller that fills a
+portfolio in several calls (one per contest group) compute caps on the whole portfolio.
 """
 
 from __future__ import annotations
@@ -21,7 +26,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 import yaml
 
@@ -119,6 +124,8 @@ def assign(
     seed: int,
     later_start_utc: Mapping[str, datetime] | None = None,
     fixed: Mapping[str, Sequence[str]] | None = None,
+    order_key: Callable[[Candidate], Any] | None = None,
+    cap_entries: int | None = None,
 ) -> Assignment:
     """Fill every entry. `entries` is an EntriesFile, EntryRows, or entry IDs (file order).
 
@@ -130,12 +137,15 @@ def assign(
         raise ValueError("empty candidate bank; route to feasible.find_one")
     fixed = {k: tuple(v) for k, v in (fixed or {}).items()}
     todo = [e for e in _entry_ids(entries) if e not in fixed]
-    n_total = len(todo) + len(fixed)
+    n_total = cap_entries if cap_entries is not None else len(todo) + len(fixed)
     person_cap, captain_cap = caps.person_cap(n_total), caps.captain_cap(n_total)
 
     rng = random.Random(seed)
     tiebreak = {c.key: rng.random() for c in candidates}
-    ordered = sorted(candidates, key=lambda c: (-c.objective_value, tiebreak[c.key]))
+    if order_key is None:
+        ordered = sorted(candidates, key=lambda c: (-c.objective_value, tiebreak[c.key]))
+    else:
+        ordered = sorted(candidates, key=lambda c: (order_key(c), tiebreak[c.key]))
     arranged = {c.key: arrange_util(c.role_ids, pool, later_start_utc) for c in ordered}
 
     persons_of = {c.key: {pool.by_role_id[r].person_key for r in c.role_ids} for c in ordered}
@@ -187,6 +197,8 @@ def assign(
                 if not passes(c, level):
                     continue
                 choice = c
+                if order_key is not None:
+                    break
                 # UTIL tie band: a later UTIL start within the band beats a sliver of objective.
                 for d in ordered[i + 1:]:
                     if d.objective_value < c.objective_value - caps.util_tie_band_points:
