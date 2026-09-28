@@ -131,7 +131,7 @@ def test_every_real_csv_team_maps_to_a_verified_dk_row(mode):
     import csv
     import io
 
-    sal, _ = real_pair(mode)
+    sal, _ = real_pair(mode, "2026-09-29")  # the slate teams.yaml's DK codes were observed from
     teams = yaml.safe_load((REPO_ROOT / "config" / "teams.yaml").read_text(encoding="utf-8"))["teams"]
     dk = {t["dk"] for t in teams if t["dk_verified"]}
     rows = list(csv.DictReader(io.StringIO(sal.read_bytes().decode("utf-8-sig"))))

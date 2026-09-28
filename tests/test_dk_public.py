@@ -136,7 +136,7 @@ def test_draftables_schema_failure_returns_nothing():
 
 
 def test_reconcile_to_real_showdown_csv_by_draftable_id():
-    sal, _ = real_pair("showdown")
+    sal, _ = real_pair("showdown", "2026-09-29")  # the draftables fixture is draft group 153983, this slate
     pool = read_salary(sal)
     payload = _draftables_payload()
     rec = dk_public.reconcile(pool, dk_public.parse_draftables(payload, 153983))

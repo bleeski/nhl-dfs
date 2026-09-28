@@ -78,11 +78,13 @@ def make_cache(tmp_path):
     return build
 
 
-def real_pair(mode: str) -> tuple[Path, Path]:
-    """Latest real (DKSalaries.csv, DKEntries.csv) for a mode; skips loudly when absent."""
-    dirs = sorted(p.parent for p in REAL.glob(f"*/{mode}/DKSalaries.csv") if (p.parent / "DKEntries.csv").exists())
+def real_pair(mode: str, date: str | None = None) -> tuple[Path, Path]:
+    """Real (DKSalaries.csv, DKEntries.csv) for a mode: the latest date, or exactly `date`
+    for tests whose assertions depend on one slate's data. Skips loudly when absent."""
+    pattern = f"{date or '*'}/{mode}/DKSalaries.csv"
+    dirs = sorted(p.parent for p in REAL.glob(pattern) if (p.parent / "DKEntries.csv").exists())
     if not dirs:
-        msg = f"REAL FIXTURE MISSING: tests/fixtures/real/<date>/{mode}/DKSalaries.csv + DKEntries.csv"
+        msg = f"REAL FIXTURE MISSING: tests/fixtures/real/{date or '<date>'}/{mode}/DKSalaries.csv + DKEntries.csv"
         warnings.warn(msg)
         pytest.skip(msg)
     return dirs[-1] / "DKSalaries.csv", dirs[-1] / "DKEntries.csv"
