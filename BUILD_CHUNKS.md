@@ -227,7 +227,7 @@ def lobby() -> list[ContestSummary]                      # id, name, fee, field_
 def contest_detail(contest_id: int) -> ContestDetail    # payout_table: list[PayoutTier(min_pos, max_pos, cash: Decimal)], maximum_entries, max_per_user, entry_fee, entries, draft_group_id, start_utc, raw
 def draftables(draft_group_id: int) -> Draftables       # rows: Draftable(draftable_id, player_id, name, position, roster_slot_id, salary, status_raw, participation: Participation,
                                                         #   eligibility: Eligibility, is_swappable, news_status, team, competition_id, start_utc); competitions
-STATUS_MAP = {"OUT": OUT, "IR": OUT, "O": OUT, "Q": QUESTIONABLE, "GTD": QUESTIONABLE, "D": QUESTIONABLE, "None": PLAYING, "": PLAYING}   # else UNKNOWN, raw preserved
+STATUS_MAP = {"OUT": OUT, "IR": OUT, "O": OUT, "Q": QUESTIONABLE, "GTD": QUESTIONABLE, "D": QUESTIONABLE, "DTD": QUESTIONABLE, "None": PLAYING, "": PLAYING}   # else UNKNOWN, raw preserved. DTD (day-to-day) added by Ben 2026-09-28.
 def reconcile(pool: SalaryPool, d: Draftables) -> Reconciliation   # by draftable_id == role_id; salary/team mismatches -> CONFLICTED; participation/eligibility/start by role_id
 
 # data/sources/nhl.py

@@ -24,6 +24,7 @@ STATUS_MAP = {
     "Q": Participation.QUESTIONABLE,
     "GTD": Participation.QUESTIONABLE,
     "D": Participation.QUESTIONABLE,
+    "DTD": Participation.QUESTIONABLE,  # day-to-day: known injury, not on an injured list (Ben, 2026-09-28)
     "None": Participation.PLAYING,
     "": Participation.PLAYING,
 }

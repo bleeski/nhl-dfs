@@ -86,6 +86,7 @@ def test_draftables_403_becomes_source_unavailable(make_cache):
     "raw, expected",
     [("OUT", Participation.OUT), ("IR", Participation.OUT), ("O", Participation.OUT),
      ("Q", Participation.QUESTIONABLE), ("GTD", Participation.QUESTIONABLE), ("D", Participation.QUESTIONABLE),
+     ("DTD", Participation.QUESTIONABLE),
      (None, Participation.PLAYING), ("None", Participation.PLAYING), ("", Participation.PLAYING)],
 )
 def test_status_map(raw, expected):
@@ -93,9 +94,8 @@ def test_status_map(raw, expected):
 
 
 def test_unrecognized_status_is_unknown_with_raw_kept():
-    # DTD was observed in Ben's 2026-09-29 salary CSV Status column; the card's map does not list it.
-    participation, raw = dk_public.map_status("DTD")
-    assert participation is Participation.UNKNOWN and raw == "DTD"
+    participation, raw = dk_public.map_status("SUSP")
+    assert participation is Participation.UNKNOWN and raw == "SUSP"
 
 
 # --- draftables payload (recorded 200 response) -------------------------------------------------
