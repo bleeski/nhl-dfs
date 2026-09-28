@@ -211,6 +211,7 @@ dependencies = [
     { name = "requests" },
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "scipy", version = "1.18.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "tzdata" },
 ]
 
 [package.metadata]
@@ -223,6 +224,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "requests", specifier = ">=2.31" },
     { name = "scipy", specifier = ">=1.11" },
+    { name = "tzdata", specifier = ">=2024.1" },
 ]
 
 [[package]]

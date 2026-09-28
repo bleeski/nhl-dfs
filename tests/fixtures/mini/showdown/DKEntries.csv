@@ -1,0 +1,43 @@
+Entry ID,Contest Name,Contest ID,Entry Fee,CPT,FLEX,FLEX,FLEX,FLEX,FLEX,,Instructions
+7000000101,NHL Showdown $150 Quarter Jukebox (VAN @ CAR),196000101,$0.25,Sebastian Aho (90000319),Elias Pettersson (90000302),Elias Pettersson (90000304),Sebastian Aho (90000306),Teddy Blueger (90000318),Jordan Martinook (90000332),,1. Column A lists all of your contest entries for this draftgroup
+7000000102,NHL Showdown $100 Dime Time (VAN @ CAR),196000102,$0.10,90000301,90000304,90000322,90000326,90000328,90000318,,2. Your current lineup is listed next to each entry (blank for reservations)
+7000000103,NHL Showdown $100 Daily Dollar [Single Entry] (VAN @ CAR),196000103,$1,,,,,,,,3. You can change the lineup for an entry by entering the IDs of the players in the row next to that entry
+,,,,,,,,,,,4. Use data from the Name+ID column or the ID column; you cannot use just the player's name
+,,,,,,,,,,,5. For faster processing only include entries you are changing in the file you upload
+,,,,,,,,,,,
+,,,,,,,,,,,Position,Name + ID,Name,ID,Roster Position,Salary,Game Info,TeamAbbrev,AvgPointsPerGame
+,,,,,,,,,,,C,Sebastian Aho (90000319),Sebastian Aho,90000319,CPT,16200,VAN@CAR 09/29/2026 07:00PM ET,CAR,12.50
+,,,,,,,,,,,C,Elias Pettersson (90000301),Elias Pettersson,90000301,CPT,14400,VAN@CAR 09/29/2026 07:00PM ET,VAN,9.60
+,,,,,,,,,,,RW,Seth Jarvis (90000321),Seth Jarvis,90000321,CPT,14100,VAN@CAR 09/29/2026 07:00PM ET,CAR,10.00
+,,,,,,,,,,,D,Quinn Hughes (90000309),Quinn Hughes,90000309,CPT,13500,VAN@CAR 09/29/2026 07:00PM ET,VAN,13.00
+,,,,,,,,,,,LW,Andrei Svechnikov (90000323),Andrei Svechnikov,90000323,CPT,13500,VAN@CAR 09/29/2026 07:00PM ET,CAR,10.20
+,,,,,,,,,,,RW,Brock Boeser (90000307),Brock Boeser,90000307,CPT,12600,VAN@CAR 09/29/2026 07:00PM ET,VAN,8.50
+,,,,,,,,,,,G,Frederik Andersen (90000327),Frederik Andersen,90000327,CPT,12300,VAN@CAR 09/29/2026 07:00PM ET,CAR,9.20
+,,,,,,,,,,,G,Kevin Lankinen (90000311),Kevin Lankinen,90000311,CPT,12000,VAN@CAR 09/29/2026 07:00PM ET,VAN,6.90
+,,,,,,,,,,,C,Sebastian Aho (90000320),Sebastian Aho,90000320,FLEX,10800,VAN@CAR 09/29/2026 07:00PM ET,CAR,12.50
+,,,,,,,,,,,LW,Jake DeBrusk (90000313),Jake DeBrusk,90000313,CPT,10500,VAN@CAR 09/29/2026 07:00PM ET,VAN,8.90
+,,,,,,,,,,,D,Jaccob Slavin (90000325),Jaccob Slavin,90000325,CPT,9600,VAN@CAR 09/29/2026 07:00PM ET,CAR,7.10
+,,,,,,,,,,,C,Elias Pettersson (90000302),Elias Pettersson,90000302,FLEX,9600,VAN@CAR 09/29/2026 07:00PM ET,VAN,9.60
+,,,,,,,,,,,RW,Seth Jarvis (90000322),Seth Jarvis,90000322,FLEX,9400,VAN@CAR 09/29/2026 07:00PM ET,CAR,10.00
+,,,,,,,,,,,RW,Conor Garland (90000315),Conor Garland,90000315,CPT,9100,VAN@CAR 09/29/2026 07:00PM ET,VAN,7.70
+,,,,,,,,,,,D,Brent Burns (90000333),Brent Burns,90000333,CPT,9000,VAN@CAR 09/29/2026 07:00PM ET,CAR,7.30
+,,,,,,,,,,,D,Quinn Hughes (90000310),Quinn Hughes,90000310,FLEX,9000,VAN@CAR 09/29/2026 07:00PM ET,VAN,13.00
+,,,,,,,,,,,LW,Andrei Svechnikov (90000324),Andrei Svechnikov,90000324,FLEX,9000,VAN@CAR 09/29/2026 07:00PM ET,CAR,10.20
+,,,,,,,,,,,RW,Brock Boeser (90000308),Brock Boeser,90000308,FLEX,8400,VAN@CAR 09/29/2026 07:00PM ET,VAN,8.50
+,,,,,,,,,,,G,Frederik Andersen (90000328),Frederik Andersen,90000328,FLEX,8200,VAN@CAR 09/29/2026 07:00PM ET,CAR,9.20
+,,,,,,,,,,,C,Jordan Staal (90000329),Jordan Staal,90000329,CPT,8100,VAN@CAR 09/29/2026 07:00PM ET,CAR,6.00
+,,,,,,,,,,,G,Kevin Lankinen (90000312),Kevin Lankinen,90000312,FLEX,8000,VAN@CAR 09/29/2026 07:00PM ET,VAN,6.90
+,,,,,,,,,,,D,Elias Pettersson (90000303),Elias Pettersson,90000303,CPT,7500,VAN@CAR 09/29/2026 07:00PM ET,VAN,3.90
+,,,,,,,,,,,LW,Jake DeBrusk (90000314),Jake DeBrusk,90000314,FLEX,7000,VAN@CAR 09/29/2026 07:00PM ET,VAN,8.90
+,,,,,,,,,,,D,Jaccob Slavin (90000326),Jaccob Slavin,90000326,FLEX,6400,VAN@CAR 09/29/2026 07:00PM ET,CAR,7.10
+,,,,,,,,,,,D,Sebastian Aho (90000305),Sebastian Aho,90000305,CPT,6000,VAN@CAR 09/29/2026 07:00PM ET,VAN,6.00
+,,,,,,,,,,,LW,Jordan Martinook (90000331),Jordan Martinook,90000331,CPT,6000,VAN@CAR 09/29/2026 07:00PM ET,CAR,4.50
+,,,,,,,,,,,RW,Conor Garland (90000316),Conor Garland,90000316,FLEX,6000,VAN@CAR 09/29/2026 07:00PM ET,VAN,7.70
+,,,,,,,,,,,D,Brent Burns (90000334),Brent Burns,90000334,FLEX,6000,VAN@CAR 09/29/2026 07:00PM ET,CAR,7.30
+,,,,,,,,,,,C,Jordan Staal (90000330),Jordan Staal,90000330,FLEX,5400,VAN@CAR 09/29/2026 07:00PM ET,CAR,6.00
+,,,,,,,,,,,C,Jordan Staal (90000335),Jordan Staal,90000335,FLEX,5400,VAN@CAR 09/29/2026 07:00PM ET,CAR,6.00
+,,,,,,,,,,,D,Elias Pettersson (90000304),Elias Pettersson,90000304,FLEX,5000,VAN@CAR 09/29/2026 07:00PM ET,VAN,3.90
+,,,,,,,,,,,C,Teddy Blueger (90000317),Teddy Blueger,90000317,CPT,4500,VAN@CAR 09/29/2026 07:00PM ET,VAN,4.40
+,,,,,,,,,,,D,Sebastian Aho (90000306),Sebastian Aho,90000306,FLEX,4000,VAN@CAR 09/29/2026 07:00PM ET,VAN,6.00
+,,,,,,,,,,,LW,Jordan Martinook (90000332),Jordan Martinook,90000332,FLEX,4000,VAN@CAR 09/29/2026 07:00PM ET,CAR,4.60
+,,,,,,,,,,,C,Teddy Blueger (90000318),Teddy Blueger,90000318,FLEX,3000,VAN@CAR 09/29/2026 07:00PM ET,VAN,4.40
