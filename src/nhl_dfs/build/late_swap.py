@@ -274,13 +274,15 @@ def swap_core(
     salary_file = Path(salary_path) if salary_path else parent.inputs / "DKSalaries.csv"
     pool = read_salary(salary_file)
     current = read_entries(current_path)
-    run = new_run(runs_root, mode=pool.mode, clock=clock)
+    # A rehearsal clock drives locks only; the run id and created time are always real.
+    real_clock = (lambda: datetime.now(timezone.utc)) if rehearsal is not None else clock
+    run = new_run(runs_root, mode=pool.mode, clock=real_clock)
     (run.inputs / "DKSalaries.csv").write_bytes(pool.raw)
     (run.inputs / "DKEntries.csv").write_bytes(current.raw)
     messages: list[str] = []
     timings: dict[str, float] = {}
     m: dict[str, Any] = {
-        "run_id": run.run_id, "created_utc": _utc(clock()), "mode": pool.mode.value, "slate_id": slate_id,
+        "run_id": run.run_id, "created_utc": _utc(real_clock()), "mode": pool.mode.value, "slate_id": slate_id,
         "kind": kind, "parent_run_id": parent.run_id, "fast": fast, "assumed_parent": assumed_parent,
         "parent_file": {"path": str(current_path), "sha256": current.sha256},
         "salary_sha256": pool.sha256, "entries_sha256": current.sha256, "export_sha256": None,

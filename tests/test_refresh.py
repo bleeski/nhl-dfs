@@ -105,6 +105,8 @@ def test_cli_late_swap_and_refresh(tmp_path, base, capsys):
     assert "FILE_VALID=TRUE" in out and "REHEARSAL CLOCK" in out and "fast repair" in out
     assert cli.main(["refresh", "--run", base.run.run_id, "--offline", "--as-of", as_of, "--runs-root", runs]) == 0
     assert "assumed parent" in capsys.readouterr().out
+    # rehearsal runs are named by the real clock, never the rehearsal time
+    assert all(not d.name.startswith("20261015-2310") for d in (tmp_path / "runs").iterdir())
     assert cli.main(["late-swap", "--run", base.run.run_id]) == 2
     with pytest.raises(SystemExit):
         cli.main(["refresh", "--run", base.run.run_id, "--as-of", "2026-10-15T23:10:00", "--runs-root", runs])
