@@ -9,11 +9,11 @@ edit_stop_buffer_s: 300
 
 candidates:
   # Bank size = min(bank_per_entry * entries + bank_extra, bank_max).
-  bank_per_entry: 2
-  bank_extra: 20
-  bank_max: 400
+  bank_per_entry: 3
+  bank_extra: 30
+  bank_max: 450
   perturb_sd_points: 2.0
-  time_limit_total_s: 14.0
+  time_limit_total_s: 20.0
   min_pairwise_diff: 2
 
 fallback:

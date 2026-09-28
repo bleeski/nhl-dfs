@@ -125,3 +125,30 @@ def random_locks(rng: random.Random, pool: SalaryPool) -> dict[int, str]:
         if ok:
             locks[i] = rng.choice(ok).role_id
     return locks
+
+
+def clone_entries(src, dst, n: int, *, first_id: int = 9_100_000_000) -> None:
+    """Write a DKEntries.csv with n entry rows, cloned from src's first entry.
+
+    Each clone keeps the first entry's lead fields (contest, fee) and field count with a new
+    Entry ID and blank roster and instruction cells; it is inserted after the real entries, so
+    the header, instruction lines, and embedded player list stay byte-identical.
+    """
+    from pathlib import Path
+
+    from nhl_dfs.intake.entries import physical_lines, read_entries
+
+    ef = read_entries(src)
+    bom, lines = physical_lines(ef.raw)
+    first = ef.entries[0]
+    body = first.line_bytes.rstrip(b"\r\n")
+    ending = first.line_bytes[len(body):]
+    lead = body.split(b",")[:4]  # Entry ID, Contest Name, Contest ID, Entry Fee (no quoted commas in DK lead fields)
+    n_fields = len(ef.header)
+    clones = []
+    for k in range(n - len(ef.entries)):
+        fields = [str(first_id + k).encode()] + lead[1:] + [b""] * (n_fields - 4)
+        clones.append(b",".join(fields) + ending)
+    last = ef.entries[-1].line_no
+    out = lines[: last + 1] + clones + lines[last + 1:]
+    Path(dst).write_bytes((b"\xef\xbb\xbf" if bom else b"") + b"".join(out))
