@@ -7,10 +7,10 @@ import pytest
 from conftest import REPO_ROOT, mini_pair, real_pair
 from nhl_dfs.build.feasible import find_one
 from nhl_dfs.build.milp import solve_lineup
-from nhl_dfs.contracts.geometry import CLASSIC_SLOTS, SHOWDOWN_SLOTS, Mode, check_lineup, slot_accepts
+from nhl_dfs.contracts.geometry import Mode, check_lineup
 from nhl_dfs.contracts.statuses import FeasibleStatus, SearchStatus
 from nhl_dfs.intake.salary import read_salary
-from pool_builder import classic_pool, make_pool, random_pool, row, showdown_pool
+from pool_builder import classic_pool, make_pool, random_locks, random_pool, row, showdown_pool
 
 pytestmark = pytest.mark.c2a
 
@@ -152,24 +152,13 @@ def test_feasible_module_never_imports_scipy():
     assert out.stdout.strip() == "ok"
 
 
-def _random_locks(rng, pool):
-    slots = CLASSIC_SLOTS if pool.mode is Mode.CLASSIC else SHOWDOWN_SLOTS
-    locks = {}
-    for _ in range(rng.choice([0, 0, 1, 2])):
-        i = rng.randrange(len(slots))
-        ok = [r for r in pool.rows if slot_accepts(slots[i], r, pool.mode)]
-        if ok:
-            locks[i] = rng.choice(ok).role_id
-    return locks
-
-
 def test_property_milp_and_feasible_agree_on_200_random_pools():
     rng = random.Random(20260928)
     outcomes = {"found": 0, "proven": 0}
     for k in range(200):
         mode = Mode.CLASSIC if k % 2 == 0 else Mode.SHOWDOWN
         pool = random_pool(rng, mode)
-        locks = _random_locks(rng, pool)
+        locks = random_locks(rng, pool)
         obj = {r.role_id: rng.random() for r in pool.rows}
         m = solve_lineup(pool, mode, obj, locked=locks, time_limit_s=10.0)
         f = find_one(pool, mode, locked=locks, budget_s=10.0)

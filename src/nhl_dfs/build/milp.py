@@ -89,6 +89,13 @@ class LineupModel:
 
     Built once and solved many times with different objectives and overlap rows
     (candidates.generate reuses it). Use solve_lineup for a single solve.
+
+    Two exact formulations. General: x[row, slot type] with exact slot counts, for any
+    eligibility. Compact (Classic only, chosen automatically when every row has exactly one
+    of C/W/D/G and every skater row also takes UTIL, as in real DK files): one x[row], with
+    G == 1, C >= 2, W >= 3, D >= 2 and skaters == 8, so the single surplus skater is the
+    UTIL. The compact form removes the C-versus-UTIL symmetry and solves about twice as
+    fast; it describes exactly the same set of lineups.
     """
 
     def __init__(
@@ -99,6 +106,7 @@ class LineupModel:
         exclude: frozenset[str] = frozenset(),
         locked: Mapping[int, str] | None = None,
         groups: Sequence[GroupConstraint] = (),
+        compact: bool | None = None,
     ) -> None:
         from scipy.sparse import coo_array
 
@@ -110,11 +118,21 @@ class LineupModel:
         self._check_locks()
         locked_rids = {rid: self.slots[i] for i, rid in self.locked.items()}
 
-        # Variables: (row, slot type). A locked row gets only its locked slot type, lb = 1.
+        live = {r.role_id for r in pool.rows if r.role_id in locked_rids or r.role_id not in exclude}
+        simple = mode is Mode.CLASSIC and all(self._primary(r) is not None for r in pool.rows if r.role_id in live)
+        self.compact = simple if compact is None else (compact and simple)
+
+        # Variables: (row, slot type), or one per row when compact. A locked row gets only
+        # its locked slot type (general) and lb = 1.
         self.var_row: list[PoolRow] = []
         self.var_slot: list[str] = []
         lb: list[float] = []
         for r in pool.rows:
+            if self.compact and r.role_id in live:
+                self.var_row.append(r)
+                self.var_slot.append(self._primary(r))
+                lb.append(1.0 if r.role_id in locked_rids else 0.0)
+                continue
             if r.role_id in locked_rids:
                 self.var_row.append(r)
                 self.var_slot.append(locked_rids[r.role_id])
@@ -139,6 +157,7 @@ class LineupModel:
         self.n_x = n_x
         self.lb = lb + [0.0] * len(self.teams)
 
+        inf = float("inf")
         rows_i: list[int] = []
         cols_i: list[int] = []
         vals: list[float] = []
@@ -154,9 +173,17 @@ class LineupModel:
             cl.append(lo)
             cu.append(hi)
 
-        inf = float("inf")
-        for s in self.slot_types:
-            add(((i, 1.0) for i in range(n_x) if self.var_slot[i] == s), counts[s], counts[s])
+        if self.compact:
+            util_locked = {rid for rid, s in locked_rids.items() if s == "UTIL"}
+            for s in ("C", "W", "D"):
+                add(((i, 1.0) for i in range(n_x)
+                     if self.var_slot[i] == s and self.var_row[i].role_id not in util_locked), counts[s], inf)
+            add(((i, 1.0) for i in range(n_x) if self.var_slot[i] == "G"), counts["G"], counts["G"])
+            add(((i, 1.0) for i in range(n_x) if self.var_slot[i] != "G"), len(self.slots) - counts["G"],
+                len(self.slots) - counts["G"])
+        else:
+            for s in self.slot_types:
+                add(((i, 1.0) for i in range(n_x) if self.var_slot[i] == s), counts[s], counts[s])
         by_person: dict[str, list[int]] = {}
         for i, r in enumerate(self.var_row):
             by_person.setdefault(r.person_key, []).append(i)
@@ -174,6 +201,15 @@ class LineupModel:
 
         self.A = coo_array((vals, (rows_i, cols_i)), shape=(len(cl), self.n_vars)).tocsr()
         self.cl, self.cu = cl, cu
+
+    def _primary(self, r: PoolRow) -> str | None:
+        """The row's one non-UTIL slot type when the compact form applies to it, else None."""
+        types = [s for s in ("C", "W", "D", "G") if slot_accepts(s, r, self.mode)]
+        if len(types) != 1:
+            return None
+        if types[0] != "G" and not slot_accepts("UTIL", r, self.mode):
+            return None
+        return types[0]
 
     def _check_locks(self) -> None:
         seen: dict[str, int] = {}
@@ -272,6 +308,8 @@ class LineupModel:
             if rid in locked_rids:
                 continue
             spots = free[self.var_slot[i]]
+            if not spots and self.compact:
+                spots = free["UTIL"]  # the compact form's surplus skater
             if not spots:
                 return None
             out[spots.pop(0)] = rid

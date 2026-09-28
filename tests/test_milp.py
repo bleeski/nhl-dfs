@@ -1,3 +1,4 @@
+import random
 import sys
 from types import SimpleNamespace
 
@@ -7,6 +8,7 @@ import pytest
 from conftest import mini_pair, real_pair
 from nhl_dfs.build.milp import (
     GroupConstraint,
+    InfeasibleInput,
     LineupModel,
     overlap_units,
     solve_lineup,
@@ -16,7 +18,7 @@ from nhl_dfs.contracts.geometry import Mode, check_lineup
 from nhl_dfs.contracts.statuses import SearchStatus
 from nhl_dfs.intake.salary import read_salary
 from nhl_dfs.models.priors import prior_objective, prior_table
-from pool_builder import classic_pool, make_pool, row, sd_person, showdown_pool
+from pool_builder import classic_pool, make_pool, random_locks, random_pool, row, sd_person, showdown_pool
 
 pytestmark = pytest.mark.c2a
 
@@ -181,26 +183,26 @@ def _stub(monkeypatch, status, x):
     monkeypatch.setattr(scipy.optimize, "milp", fake)
 
 
-def _legal_x(pool):
-    """A real solution vector for the stub to hand back."""
-    model = LineupModel(pool, pool.mode)
-    res = model.solve({r.role_id: 1.0 for r in pool.rows})
-    ids = set(res.lineup)
-    x = np.zeros(model.n_vars)
-    placed = set()
-    for i, r in enumerate(model.var_row):
-        if r.role_id in ids and r.role_id not in placed:
-            # pick the slot type the real solve used for this row
-            k = res.lineup.index(r.role_id)
-            if model.slots[k] == model.var_slot[i]:
-                x[i] = 1.0
-                placed.add(r.role_id)
-    return x
+def _legal_x(pool, monkeypatch):
+    """A real solution vector for the stub to hand back, captured from one real solve."""
+    import scipy.optimize
+
+    real, captured = scipy.optimize.milp, {}
+
+    def spy(c, **kwargs):
+        res = real(c, **kwargs)
+        captured["x"] = res.x
+        return res
+
+    with monkeypatch.context() as m:
+        m.setattr(scipy.optimize, "milp", spy)
+        solve_lineup(pool, pool.mode, {r.role_id: 1.0 for r in pool.rows})
+    return captured["x"]
 
 
 def test_status_one_with_incumbent_is_time_limit_with_incumbent(monkeypatch):
     pool = classic_pool()
-    x = _legal_x(pool)
+    x = _legal_x(pool, monkeypatch)
     _stub(monkeypatch, 1, x)
     res = solve_lineup(pool, pool.mode, {})
     assert res.status is SearchStatus.TIME_LIMIT_WITH_INCUMBENT and res.solver_status_code == 1
@@ -261,3 +263,47 @@ def test_a_person_with_two_rows_is_used_once():
     res = solve_lineup(pool, pool.mode, {"t1": 100.0, "t2": 100.0})
     assert res.status is SearchStatus.FEASIBLE
     assert len({"t1", "t2"} & set(res.lineup)) == 1
+
+
+@pytest.mark.parametrize("pair", [mini_pair, real_pair], ids=["mini", "real"])
+def test_real_dk_classic_files_use_the_compact_form(pair):
+    pool = read_salary(pair("classic")[0])
+    assert LineupModel(pool, pool.mode).compact is True
+
+
+def test_odd_eligibility_falls_back_to_the_general_form():
+    pool = make_pool(Mode.CLASSIC, classic_pool().rows + [row("u1", "AAA", "LW", 2500, roster={"UTIL"})])
+    assert LineupModel(pool, pool.mode).compact is False
+
+
+def test_compact_form_places_a_center_locked_in_util():
+    pool = classic_pool()
+    c = next(r for r in pool.rows if r.position == "C")
+    res = solve_lineup(pool, pool.mode, {r.role_id: 1.0 for r in pool.rows}, locked={7: c.role_id})
+    assert res.status is SearchStatus.FEASIBLE and res.lineup[7] == c.role_id
+    assert sum(pool.by_role_id[x].position == "C" for x in res.lineup[:2]) == 2
+
+
+def test_compact_and_general_forms_agree_on_random_pools():
+    rng = random.Random(4242)
+    compared = {"feasible": 0, "infeasible": 0}
+    for _ in range(300):
+        pool = random_pool(rng, Mode.CLASSIC)
+        locks = random_locks(rng, pool)
+        obj = {r.role_id: rng.random() for r in pool.rows}
+        try:
+            fast = LineupModel(pool, pool.mode, locked=locks)
+            slow = LineupModel(pool, pool.mode, locked=locks, compact=False)
+        except InfeasibleInput:
+            continue
+        if not fast.compact:
+            continue
+        a, b = fast.solve(obj), slow.solve(obj)
+        assert a.status is b.status
+        if a.status is SearchStatus.FEASIBLE:
+            assert a.objective_value == pytest.approx(b.objective_value, rel=1e-3)
+            assert _legal(pool, a.lineup) and all(a.lineup[i] == rid for i, rid in locks.items())
+            compared["feasible"] += 1
+        else:
+            compared["infeasible"] += 1
+    assert compared["feasible"] >= 20 and compared["infeasible"] >= 20, compared

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import random
 
-from nhl_dfs.contracts.geometry import Mode, PoolRow
+from nhl_dfs.contracts.geometry import CLASSIC_SLOTS, SHOWDOWN_SLOTS, Mode, PoolRow, slot_accepts
 from nhl_dfs.intake.salary import PersonRows, SalaryPool
 
 _CLASSIC_ELIG = {"C": {"C", "UTIL"}, "LW": {"W", "UTIL"}, "RW": {"W", "UTIL"}, "D": {"D", "UTIL"}, "G": {"G"}}
@@ -113,3 +113,15 @@ def random_pool(rng: random.Random, mode: Mode) -> SalaryPool:
             else:
                 rows.extend([cpt, flex])
     return make_pool(mode, rows)
+
+
+def random_locks(rng: random.Random, pool: SalaryPool) -> dict[int, str]:
+    """Zero to two locks, each a row the slot accepts (a lock may still make the pool infeasible)."""
+    slots = CLASSIC_SLOTS if pool.mode is Mode.CLASSIC else SHOWDOWN_SLOTS
+    locks: dict[int, str] = {}
+    for _ in range(rng.choice([0, 0, 1, 2])):
+        i = rng.randrange(len(slots))
+        ok = [r for r in pool.rows if slot_accepts(slots[i], r, pool.mode)]
+        if ok:
+            locks[i] = rng.choice(ok).role_id
+    return locks
