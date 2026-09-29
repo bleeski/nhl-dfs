@@ -501,9 +501,8 @@ def joint_payouts(own, field, weights, contest: Contest, *, cfg: dict | None = N
     def block(a: int, b: int):
         o = np.asarray(own[a:b])
         G, E = ranks(o, np.asarray(field[a:b]), weights)
-        G += (o[:, None, :] > o[:, :, None]).sum(axis=2)
-        E += (o[:, None, :] == o[:, :, None]).sum(axis=2) - 1  # every other own entry tied with it
-        return G, E
+        pg, pe = own_pairwise(o)  # every other own entry above it / tied with it
+        return G + pg, E + pe
     return _evaluate(S, J, field.shape[1] * 64 + J * (J + 96), block, contest, cfg)
 
 
@@ -513,10 +512,17 @@ def metrics_from_ranks(G: np.ndarray, E: np.ndarray, contest: Contest, cfg: dict
     return _evaluate(S, K, K * 96, lambda a, b: (G[a:b].astype(np.int64), E[a:b].astype(np.int64)), contest, cfg)
 
 
-def own_pairwise(own: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """(S, J) own scores -> (G, E) from the user's other entries in the same contest."""
-    G = (own[:, None, :] > own[:, :, None]).sum(axis=2)
-    E = (own[:, None, :] == own[:, :, None]).sum(axis=2) - 1
+def own_pairwise(own: np.ndarray, cap_mb: float = 64.0) -> tuple[np.ndarray, np.ndarray]:
+    """(S, J) own scores -> (G, E) from the user's other entries in the same contest, chunked by scenario
+    (the J x J comparison of 150 entries over 20,000 scenarios would otherwise be about 450 MB)."""
+    S, J = own.shape
+    G = np.zeros((S, J), np.int64)
+    E = np.zeros((S, J), np.int64)
+    step = _chunk_rows(S, J * J * 2 + J * 32, cap_mb)
+    for a in range(0, S, step):
+        o = own[a:a + step]
+        G[a:a + step] = (o[:, None, :] > o[:, :, None]).sum(axis=2)
+        E[a:a + step] = (o[:, None, :] == o[:, :, None]).sum(axis=2) - 1
     return G, E
 
 

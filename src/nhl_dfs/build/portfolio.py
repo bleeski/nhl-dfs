@@ -265,7 +265,7 @@ def _greedy(kappa: float, order: list, entry_contest: Mapping[str, str], fees: M
     tp = float(risk_cfg["objectives"]["top_pct"])
     curves = {cid: _Curve(st.contest, tp) for cid, st in states.items()}
     inc = {cid: (np.zeros((S, K), st.G.dtype), np.zeros((S, K), st.G.dtype)) for cid, st in states.items()}
-    step = ob._chunk_rows(S, K * 80, float(risk_cfg["objectives"]["memory_cap_mb"]) * mem_share)
+    step = ob._chunk_rows(S, K * 160, float(risk_cfg["objectives"]["memory_cap_mb"]) * mem_share)  # ~20 temporaries x 8 bytes
     total_fees = sum(int(fees[e]) for e in order)
     thr = 0.2 * total_fees  # losing >= 80% of fees <=> total payout <= 20% of fees
     pay_total = np.zeros(S, np.int64)
