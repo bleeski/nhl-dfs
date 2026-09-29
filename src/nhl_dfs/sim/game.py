@@ -126,6 +126,35 @@ def _membership(units: list[list[int]], ni: int) -> np.ndarray:
     return m
 
 
+def prior_scaled_rates(p, iterations: int = 4, lo: float = 0.2, hi: float = 5.0):
+    """Backlog B8: a PRIOR skater (no usable history) carries position-prior rates, while his ParamTable
+    mean is the salary/APPG prior (models.params.build). Scale every event rate by one factor so the
+    analytic per-dressed-game mean of the rates equals that prior (a few fixed-point steps, because the
+    threshold bonuses are not linear in the rates). Other persons are returned unchanged."""
+    from dataclasses import replace
+
+    from nhl_dfs.contracts.statuses import ModelStatus
+    from nhl_dfs.models.params import skater_moments
+
+    r, o = p.rates, p.opportunity
+    target = float(getattr(p, "prior_mean_tenths", 0.0) or 0.0)
+    if p.source is not ModelStatus.PRIOR or r is None or o is None or target <= 0 or o.p_dress <= 0:
+        return r
+    one = replace(o, p_dress=1.0)
+
+    def scaled(k: float):
+        return replace(r, **{f: {s: v * k for s, v in getattr(r, f).items()}
+                             for f in ("g60", "a1_60", "a2_60", "sog60", "blk60", "pts60")})
+
+    k = 1.0
+    for _ in range(iterations):
+        base = skater_moments(one, scaled(k))[0]
+        if base <= 0:
+            return r
+        k = min(hi, max(lo, k * target / base))
+    return scaled(k)
+
+
 def _prep_team(code: str, params, col_of: dict, sim_cfg: dict, model_cfg: dict, var: float) -> _Team:
     persons = [p for p in params.persons.values() if p.team == code and p.group != "G"]
     persons.sort(key=lambda p: p.person_key)
@@ -157,7 +186,7 @@ def _prep_team(code: str, params, col_of: dict, sim_cfg: dict, model_cfg: dict, 
     for i, p in enumerate(persons):
         p_dress[i] = p.opportunity.p_dress
         is_f[i] = p.group == "F"
-        fill(i, p.opportunity, p.rates)
+        fill(i, p.opportunity, prior_scaled_rates(p) if sim_cfg["skater"].get("prior_scale_to_param_mean") else p.rates)
     n_f = float(sum(p.opportunity.p_dress for p in persons if p.group == "F"))
     n_d = float(sum(p.opportunity.p_dress for p in persons if p.group == "D"))
     for k, (grp, need, have) in enumerate((("F", budget["forwards"], n_f), ("D", budget["defense"], n_d))):

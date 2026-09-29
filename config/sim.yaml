@@ -62,6 +62,10 @@ skater:
   pp_share_cap: 0.7            # a team's PP share of its goals never exceeds this
   so_goal_p: 0.33              # PLACEHOLDER: shootout success rate per shooter
   min_saved_mean: 0.02         # floor on a skater's non-goal SOG mean
+  # Backlog B8 (C8, 2026-09-29): a PRIOR skater's event rates are scaled by one factor so their
+  # per-dressed-game mean equals his ParamTable salary/APPG prior (game.prior_scaled_rates). Before
+  # this, PRIOR F simulated at 1.59x and D at 1.45x their ParamTable mean on the real 2026-09-29 pool.
+  prior_scale_to_param_mean: true
 
 # Assist allocation: a pilot allocation pins each person's expected assists to the ParamTable (a scorer
 # cannot assist his own goal, which alone shifts assists from frequent scorers to their linemates).

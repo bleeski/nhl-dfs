@@ -21,7 +21,7 @@ import yaml
 from nhl_dfs.sim import game as game_mod
 from nhl_dfs.sim import score as score_mod
 
-VERSION = 1
+VERSION = 2  # 2: PRIOR skaters' rates scaled to their ParamTable mean (backlog B8, C8)
 
 
 def spec_hash(slate: game_mod.SlateSpec, params, seed: int, purpose: str, n: int) -> str:
