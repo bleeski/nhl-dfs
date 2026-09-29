@@ -1,0 +1,74 @@
+# Per-person model settings (C5, plan section 5 "Opportunity and rate estimation").
+# League means below were measured on 2026-09-28 from the history store, regular season
+# 2024-25 and 2025-26 (62,709 forward games, 31,745 defense games, 5,248 goalie starts). That is
+# population estimation, not tuning to a slate. Prior weights are the plan's candidate settings;
+# the strength multipliers and role priors are engineering placeholders (marked below).
+
+decay_half_life_games: 40      # a game this many player-games back counts half
+regimes: [regular]             # playoffs and preseason are separate regimes (flag 7)
+history_status_ratio: 1.0      # HISTORY when history exposure >= this x prior exposure
+
+# Event-rate shrinkage (Gamma-Poisson): prior exposure in minutes.
+ev_prior_min: 300
+st_prior_min: 100
+
+skaters:
+  F:
+    toi_s: {ev: 772, pp: 90, sh: 46}    # mean per dressed game
+    toi_sd_s: 180
+    p_dress: 0.85
+    pts60: {ev: 1.808, pp: 4.608, sh: 0.785}
+    goal_share: 0.423                   # goals / (goals + assists), all situations
+    a1_share: 0.592                     # Tier A only
+    sog60: 6.711                        # all situations, per 60 of total TOI
+    blk60: 2.068
+    ixg_per_sog: 0.1328
+    nb_phi: {sog: 0.06, blk: 0.10}      # NB dispersion prior: var = mu + phi * mu^2
+  D:
+    toi_s: {ev: 1015, pp: 51, sh: 92}
+    toi_sd_s: 200
+    p_dress: 0.85
+    pts60: {ev: 0.967, pp: 4.247, sh: 0.251}
+    goal_share: 0.220
+    a1_share: 0.472
+    sog60: 4.023
+    blk60: 4.364
+    ixg_per_sog: 0.0546
+    nb_phi: {sog: 0.08, blk: 0.05}
+
+prior_games: {toi: 5, dress: 5, share: 30, dispersion: 20}   # pseudo-games behind TOI, dress, shares, phi
+shot_quality_prior_sog: 60                                   # pseudo-shots behind ixg_per_sog
+
+# PLACEHOLDER: per-strength multipliers for SOG and blocks (EV = 1). The store has per-game SOG
+# and blocks totals only, not by strength (backlog B3); points use observed PP and SH points.
+strength_mult:
+  sog: {ev: 1.0, pp: 1.8, sh: 0.4}
+  blk: {ev: 1.0, pp: 0.2, sh: 2.0}
+
+# Team manpower (penalty-rate coupling). Measured: team PP clock 277 s and PK clock 275 s per game,
+# team SOG 28.05 per game (sd 6.47). EV skater budget = skaters_on_ice * (3600 - PP - PK).
+team:
+  pp_clock_s: 277
+  pk_clock_s: 275
+  skaters_on_ice: 5
+  sog_for: 28.05
+  min_scale: 0.6               # reconcile never scales a depth skater's EV TOI below 60%
+
+# PLACEHOLDER role priors (RoleState, C7): used for a person with no history who holds a role.
+roles:
+  F: {ev_line_toi_s: [960, 820, 700, 560], pp_unit_toi_s: [200, 90]}
+  D: {ev_line_toi_s: [1320, 1080, 900], pp_unit_toi_s: [210, 80]}
+
+goalies:
+  prior_shots: 1500            # save skill prior weight, in shots faced
+  sv_pct: 0.8979
+  shots_against: 27.19
+  p_win: 0.493                 # per start, league; no market input before C6
+  p_otl: 0.112
+  p_start_prior_share: 0.5     # a goalie with no history, before renormalizing within the team
+  start_prior_games: 10
+  start_half_life_games: 20
+  b2b_start_mult: 0.35         # started yesterday: start weight times this, then renormalize
+  pull_per_ga: 0.019           # measured: 5.4% partial starts / 2.78 GA per start
+  pull_prior_ga: 100
+  workload_prior_games: 20

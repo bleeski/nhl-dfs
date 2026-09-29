@@ -87,6 +87,8 @@ or confirmed participation.
 
 ## Status vocabularies (`contracts/statuses.py`)
 
+`ModelStatus` gained `HISTORY` and `MIXED` in C5 (per-person and run-level history coverage; `PARTIAL`/`FULL` stay for compatibility).
+
 `FileStatus` (`TRUE`/`FALSE`, mirrors the plan's `FILE_VALID=TRUE` report
 line as an enum rather than a bare bool), `NewsState`, `ModelStatus`,
 `SearchStatus`, `DeliveryStatus`, `ObsStatus`, `GoalieState`,

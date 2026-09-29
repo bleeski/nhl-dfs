@@ -15,6 +15,8 @@ class FileStatus(Enum):
 
 class NewsState(Enum):
     FULL = "FULL"
+    HISTORY = "HISTORY"  # C5: every person's history exposure at least its prior exposure
+    MIXED = "MIXED"  # C5: some persons on history, some on priors
     PARTIAL = "PARTIAL"
     NONE = "NONE"
 
@@ -23,6 +25,8 @@ class ModelStatus(Enum):
     PRIOR = "PRIOR"
     PARTIAL = "PARTIAL"
     FULL = "FULL"
+    HISTORY = "HISTORY"  # C5: every person's history exposure at least its prior exposure
+    MIXED = "MIXED"  # C5: some persons on history, some on priors
 
 
 class SearchStatus(Enum):
