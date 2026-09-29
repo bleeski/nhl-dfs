@@ -72,3 +72,13 @@ def test_non_compact_pools_return_none():
             assert ff.sample_fast(pool, {}, [], 10, 1, "x", proj=PriorProjection(pool)) is None
             return
     pytest.skip("no non-compact random pool in 20 seeds")
+
+
+def test_sample_parallel_does_not_depend_on_the_worker_count(setup):
+    pool, proj, cfg, feats, util = setup
+    beh = fm.behaviors_for("large_gpp", cfg)
+    a = fm.sample_parallel(pool, Mode.CLASSIC, util, beh, 120, 5, "large_gpp", proj=proj, feats=feats, cfg=cfg,
+                           workers=1, sub_size=20)
+    b = fm.sample_parallel(pool, Mode.CLASSIC, util, beh, 120, 5, "large_gpp", proj=proj, feats=feats, cfg=cfg,
+                           workers=4, sub_size=20)
+    assert a.n == 120 and a.keys == b.keys and a.behavior_id == b.behavior_id

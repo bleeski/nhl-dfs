@@ -65,6 +65,23 @@ class Caps:
             {"notes": list(self.notes)}
 
 
+def usable_goalies(proj, pool, rel: float = 0.5) -> int:
+    """Goalies in the pool whose start probability is at least `rel` x their team's highest. Relative to the
+    team, because p_start is split across three to five camp goalies per team (an absolute 0.5 cut left 3
+    usable goalies on the real 8-team 2026-09-29 slate and raised the goalie cap on a false floor)."""
+    persons = getattr(proj, "persons", {})
+    in_pool = {r.person_key: r.team for r in pool.rows if r.is_goalie}
+    by: dict[str, list[float]] = defaultdict(list)
+    for k, team in in_pool.items():
+        p = persons.get(k)
+        by[team].append(float(p.goalie.p_start) if p is not None and p.goalie is not None else 0.0)
+    n = 0
+    for vals in by.values():
+        top = max(vals)
+        n += sum(1 for v in vals if top > 0 and v >= rel * top) if top > 0 else len(vals)
+    return max(1, n)
+
+
 def fee_floor(fees: Sequence[int], bins: int) -> float:
     """Smallest achievable max share of total fees on one of `bins` choices (LPT packing)."""
     fees = sorted((int(f) for f in fees), reverse=True)

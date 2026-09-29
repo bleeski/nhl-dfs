@@ -145,3 +145,28 @@ def test_select_respects_caps_and_counts_own_entries_as_opponents():
     assert pe[top]["exp_payout"] == pytest.approx(50.0)  # always first
     other = next(e for e in pe if e != top)
     assert pe[other]["exp_payout"] == pytest.approx(20.0)  # always second, behind its own sibling
+
+
+def test_select_does_not_depend_on_the_thread_count():
+    import copy
+
+    pool = classic_pool()
+    lus = disjoint_lineups(pool, 3)
+    a, b, f = lus
+    S = 1500
+    rng = np.random.default_rng(12)
+    fld = rng.integers(300, 700, S)
+    scen = scenarios_for(pool, [a, b, f], [fld + rng.integers(-60, 80, S), fld + rng.integers(-40, 60, S), fld])
+    ct = {"G": contest("G", "large_gpp", 200, [5000, 2000, 1000] + [200] * 37), "C": contest("C", "cash", 10, [180] * 4)}
+    fields = {"G": ob.FieldSpec([f.role_ids], [f.key], np.asarray([1]), 197, "weighted", np.asarray([197], np.int64)),
+              "C": one_field(f)}
+    entries = [E("e1", "G"), E("e2", "G"), E("e3", "C")]
+    caps = exposure.caps(EXPO, 3, pool, Mode.CLASSIC, 1, budget=RISK["budget"]["classic"])
+    out = []
+    for threads in (1, 5):
+        cfg = copy.deepcopy(RISK)
+        cfg["selection"]["threads"] = threads
+        sel = pf.select([a, b], scen, fields, ct, entries, caps, pf.RiskBudget(0.9, None, None, None), seed=1, pool=pool,
+                        fam_cfg=FAM, risk_cfg=cfg)
+        out.append((sel.by_entry, sel.chosen_kappa, [p.record() for p in sel.frontier]))
+    assert out[0] == out[1]

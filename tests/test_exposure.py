@@ -78,3 +78,23 @@ def test_fee_shares_primary_game_and_shared_failure():
 
 
 from lineup_helpers import pick_legal  # noqa: E402
+
+
+def test_usable_goalies_are_counted_relative_to_each_team():
+    from types import SimpleNamespace
+
+    from pool_builder import make_pool, row
+
+    rows, persons, n = [], {}, 0
+    for i in range(8):
+        team = f"T{i}"
+        for p_start in (0.6, 0.2, 0.2):
+            n += 1
+            r = row(n, team, "G", 8000)
+            rows.append(r)
+            persons[r.person_key] = SimpleNamespace(goalie=SimpleNamespace(p_start=p_start))
+    pool = make_pool(Mode.CLASSIC, rows)
+    assert exposure.usable_goalies(SimpleNamespace(persons=persons), pool) == 8  # every team's starter, no camp backups
+    for k, p in persons.items():  # a camp split (0.45, 0.30, 0.25): all three are within half of the leader
+        p.goalie.p_start = {0: 0.45, 1: 0.30, 2: 0.25}[(int(k.split("|")[0][1:]) - 1) % 3]
+    assert exposure.usable_goalies(SimpleNamespace(persons=persons), pool) == 24

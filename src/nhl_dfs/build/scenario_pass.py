@@ -168,13 +168,12 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
     # caps and the risk budget
     fees = {e.entry_id: ob.to_cents(contests_mod.fee_value(e.fee) or 0) for e in entries.entries}
     tournament = [e for e in entries.entries if contests[str(e.contest_id)].family != "cash"]
-    goalies = sum(1 for k, p in proj.persons.items() if p.group == "G" and p.goalie is not None and p.goalie.p_start >= 0.5
-                  and any(r.person_key == k for r in work.rows))
+    goalies = exposure.usable_goalies(proj, work)
     captains = len({work.by_role_id[x.role_ids[0]].person_key for x in cands}) if work.mode is Mode.SHOWDOWN else None
     persons = len({work.by_role_id[r].person_key for x in cands for r in x.role_ids})
     caps = exposure.caps(expo_cfg, len(entries.entries), work, work.mode, len(work.games),
                          fees_cents=[fees[e.entry_id] for e in entries.entries], tournament_entries=len(tournament),
-                         usable_goalies=max(1, goalies), usable_captains=captains, usable_persons=persons,
+                         usable_goalies=goalies, usable_captains=captains, usable_persons=persons,
                          budget=risk_cfg["budget"][work.mode.value])
     budget = pf.RiskBudget.from_config(risk_cfg, work.mode, caps)
     sec["caps"] = caps.record()
