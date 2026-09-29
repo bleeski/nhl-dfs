@@ -370,7 +370,8 @@ def field_spec(lineups: Sequence[Sequence[str]], keys: Sequence[str], n_opponent
     idx = sorted(range(len(distinct)), key=lambda i: (-counts[i], i))[:cap]
     idx.sort()
     distinct = [distinct[i] for i in idx]
-    kk = [list(order)[i] for i in idx]
+    all_keys = list(order)
+    kk = [all_keys[i] for i in idx]
     cnt = np.asarray([counts[i] for i in idx], np.int64)
     n_opp = max(0, int(n_opponents))
     if n_opp <= int(o["sampled_max_opponents"]):
@@ -434,16 +435,18 @@ def _chunk_rows(n: int, per_row_bytes: int, cap_mb: float) -> int:
 def ranks(cand: np.ndarray, field: np.ndarray, weights: np.ndarray, own: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray]:
     """One scenario block. cand (c, K), field (c, F), own (c, J) or None. Returns (G, E): weight strictly
     above and weight tied with each candidate, own copies counted with weight 1."""
+    return ranks_multi(cand, field, [weights], own)[0]
+
+
+def ranks_multi(cand: np.ndarray, field: np.ndarray, weights_list: Sequence[np.ndarray],
+                own: np.ndarray | None = None) -> list[tuple[np.ndarray, np.ndarray]]:
+    """`ranks` for several weight vectors over the same field lineups: the field is sorted once."""
     c, K = cand.shape
     F = field.shape[1]
-    G = np.zeros((c, K), np.int64)
-    E = np.zeros((c, K), np.int64)
+    out = []
     if F:
-        w = np.asarray(weights, np.int64)
         order = np.argsort(field, axis=1, kind="stable")
         fs = np.take_along_axis(field, order, axis=1).astype(np.int64)
-        cw = np.zeros((c, F + 1), np.int64)
-        np.cumsum(w[order], axis=1, out=cw[:, 1:])
         lo = min(int(fs.min()), int(cand.min()))
         span = max(int(fs.max()), int(cand.max())) - lo + 1
         rows = np.arange(c, dtype=np.int64)[:, None]
@@ -452,13 +455,23 @@ def ranks(cand: np.ndarray, field: np.ndarray, weights: np.ndarray, own: np.ndar
         base = rows * F
         right = np.searchsorted(flat, q, side="right").reshape(c, K) - base
         left = np.searchsorted(flat, q, side="left").reshape(c, K) - base
-        le = np.take_along_axis(cw, right, axis=1)
-        G = cw[:, F][:, None] - le
-        E = le - np.take_along_axis(cw, left, axis=1)
-    if own is not None and own.shape[1]:
-        G += (own[:, None, :] > cand[:, :, None]).sum(axis=2)
-        E += (own[:, None, :] == cand[:, :, None]).sum(axis=2)
-    return G, E
+        del flat, q
+    for weights in weights_list:
+        if F:
+            w = np.asarray(weights, np.int64)
+            cw = np.zeros((c, F + 1), np.int64)
+            np.cumsum(w[order], axis=1, out=cw[:, 1:])
+            le = np.take_along_axis(cw, right, axis=1)
+            G = cw[:, F][:, None] - le
+            E = le - np.take_along_axis(cw, left, axis=1)
+        else:
+            G = np.zeros((c, K), np.int64)
+            E = np.zeros((c, K), np.int64)
+        if own is not None and own.shape[1]:
+            G = G + (own[:, None, :] > cand[:, :, None]).sum(axis=2)
+            E = E + (own[:, None, :] == cand[:, :, None]).sum(axis=2)
+        out.append((G, E))
+    return out
 
 
 def _se(x: np.ndarray, n: int) -> np.ndarray:
@@ -492,6 +505,19 @@ def joint_payouts(own, field, weights, contest: Contest, *, cfg: dict | None = N
         E += (o[:, None, :] == o[:, :, None]).sum(axis=2) - 1  # every other own entry tied with it
         return G, E
     return _evaluate(S, J, field.shape[1] * 28 + J * (J + 96), block, contest, cfg)
+
+
+def metrics_from_ranks(G: np.ndarray, E: np.ndarray, contest: Contest, cfg: dict) -> Metrics:
+    """Metrics from precomputed ranks (S, K): G weight strictly above, E tied (own copies included)."""
+    S, K = G.shape
+    return _evaluate(S, K, K * 96, lambda a, b: (G[a:b].astype(np.int64), E[a:b].astype(np.int64)), contest, cfg)
+
+
+def own_pairwise(own: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """(S, J) own scores -> (G, E) from the user's other entries in the same contest."""
+    G = (own[:, None, :] > own[:, :, None]).sum(axis=2)
+    E = (own[:, None, :] == own[:, :, None]).sum(axis=2) - 1
+    return G, E
 
 
 def _evaluate(S: int, K: int, per_row_bytes: int, block, contest: Contest, cfg: dict) -> Metrics:
@@ -619,11 +645,48 @@ def return_stats(payout_cents: np.ndarray, fees_cents: int, util_cents: np.ndarr
     return out
 
 
+def joint_by_contest(assignment: Mapping[str, Sequence[str]], contests: Mapping[str, ContestEval], scenarios: ScenarioSet,
+                     *, pool, cfg: dict) -> dict[str, tuple[list[str], Metrics]]:
+    """Joint metrics per contest; contests sharing one weighted field (same lineups) sort it once."""
+    from collections import defaultdict
+
+    groups: dict = defaultdict(list)
+    for cid, ce in contests.items():
+        if any(e in assignment for e in ce.entry_ids):
+            key = ("w", tuple(ce.field.keys)) if ce.field.mode == "weighted" else ("s", cid)
+            groups[key].append(cid)
+    out = {}
+    S = scenarios.n
+    for key, cids in groups.items():
+        eids = {cid: [e for e in contests[cid].entry_ids if e in assignment] for cid in cids}
+        cols = [e for cid in cids for e in eids[cid]]
+        own = scenarios.scores([assignment[e] for e in cols], pool.mode).full()
+        fs, _ = contests[cids[0]].field.scores(scenarios, pool.mode)
+        wl = [contests[cid].field.weights if contests[cid].field.mode == "weighted"
+              else np.ones(contests[cid].field.n_opponents, np.int64) for cid in cids]
+        G = {cid: np.zeros((S, len(eids[cid])), np.int64) for cid in cids}
+        E = {cid: np.zeros((S, len(eids[cid])), np.int64) for cid in cids}
+        pos = {e: j for j, e in enumerate(cols)}
+        idx = {cid: [pos[e] for e in eids[cid]] for cid in cids}
+        step = _chunk_rows(S, fs.shape[1] * 28 + len(cols) * (96 + 16 * len(cids)), float(cfg["objectives"]["memory_cap_mb"]))
+        for a in range(0, S, step):
+            b = min(S, a + step)
+            for cid, (g, e) in zip(cids, ranks_multi(own[a:b], np.asarray(fs[a:b]), wl)):
+                G[cid][a:b] = g[:, idx[cid]]
+                E[cid][a:b] = e[:, idx[cid]]
+        for cid in cids:
+            pg, pe = own_pairwise(own[:, idx[cid]])
+            out[cid] = (eids[cid], metrics_from_ranks(G[cid] + pg, E[cid] + pe, contests[cid].contest, cfg))
+    return out
+
+
 def portfolio_metrics(assignment: Mapping[str, Sequence[str]], contests: Mapping[str, ContestEval], scenarios: ScenarioSet,
-                      *, pool, fees_cents: Mapping[str, int], cfg: dict | None = None) -> PortfolioMetrics:
+                      *, pool, fees_cents: Mapping[str, int], cfg: dict | None = None,
+                      joint: Mapping[str, tuple[list[str], Metrics]] | None = None) -> PortfolioMetrics:
     """Every entry scored jointly with the user's other entries in its contest, against that contest's
     field, in one scenario set. Concentration by goalie, game (when the slate has more than one) and
-    Captain, in fees; plus the shared failure scenario (build.exposure.concentration)."""
+    Captain, in fees; plus the shared failure scenario (build.exposure.concentration). joint: per
+    contest (entry ids, Metrics) already computed from ranks (the selection frontier reuses its own)."""
     from nhl_dfs.build import exposure
 
     cfg = cfg if cfg is not None else load_risk_config()
@@ -633,13 +696,11 @@ def portfolio_metrics(assignment: Mapping[str, Sequence[str]], contests: Mapping
     per_entry: dict[str, dict] = {}
     pay_by_entry: dict[str, np.ndarray] = {}
     tickets = 0.0
+    joint = joint if joint is not None else joint_by_contest(assignment, contests, scenarios, pool=pool, cfg=cfg)
     for cid, ce in contests.items():
-        eids = [e for e in ce.entry_ids if e in assignment]
-        if not eids:
+        if cid not in joint:
             continue
-        own = scenarios.scores([assignment[e] for e in eids], pool.mode).full()
-        fs, w = ce.field.scores(scenarios, pool.mode)
-        m = joint_payouts(own, fs, w, ce.contest, cfg=cfg)
+        eids, m = joint[cid]
         for j, e in enumerate(eids):
             per_entry[e] = {"contest_id": cid, "family": ce.contest.family, **m.row(j)}
             pay_by_entry[e] = m.payout_cents[:, j]

@@ -194,18 +194,26 @@ class _ContestState:
 
 def _prepare(cand_scores: np.ndarray, fields: Mapping[str, tuple], contests: Mapping[str, ob.Contest],
              candidates: Sequence[Candidate], pool, fam_cfg: dict, risk_cfg: dict, own_by_contest, dup_by_contest,
-             field_cal) -> dict[str, _ContestState]:
+             field_cal, specs: Mapping[str, ob.FieldSpec]) -> dict[str, _ContestState]:
     S, K = cand_scores.shape
     out = {}
-    for cid, ct in contests.items():
-        fs, w = fields[cid]
-        G = np.zeros((S, K), np.int32)
-        E = np.zeros((S, K), np.int32)
-        step = ob._chunk_rows(S, fs.shape[1] * 28 + K * 96, float(risk_cfg["objectives"]["memory_cap_mb"]))
+    GE: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+    groups: dict = defaultdict(list)
+    for cid in contests:
+        spec = specs[cid]
+        groups[("w", tuple(spec.keys)) if spec.mode == "weighted" else ("s", cid)].append(cid)
+    for key, cids in groups.items():
+        fs = fields[cids[0]][0]
+        wl = [fields[cid][1] for cid in cids]
+        for cid in cids:
+            GE[cid] = (np.zeros((S, K), np.int32), np.zeros((S, K), np.int32))
+        step = ob._chunk_rows(S, fs.shape[1] * 28 + K * (96 + 16 * len(cids)), float(risk_cfg["objectives"]["memory_cap_mb"]))
         for a in range(0, S, step):
             b = min(S, a + step)
-            g, e = ob.ranks(cand_scores[a:b], np.asarray(fs[a:b]), w)
-            G[a:b], E[a:b] = g, e
+            for cid, (g, e) in zip(cids, ob.ranks_multi(cand_scores[a:b], np.asarray(fs[a:b]), wl)):
+                GE[cid][0][a:b], GE[cid][1][a:b] = g, e
+    for cid, ct in contests.items():
+        G, E = GE[cid]
         own = own_by_contest.get(cid, {})
         counts = dup_by_contest.get(cid, {})
         own_pct = np.asarray([sum(float(own.get(r, 0.0)) for r in c.role_ids) for c in candidates])
@@ -333,9 +341,25 @@ def _greedy(kappa: float, order: list, entry_contest: Mapping[str, str], fees: M
     return choices, relax
 
 
+def _joint_from_states(choices: Mapping[str, Choice], states: Mapping[str, _ContestState], cand_scores: np.ndarray,
+                       contests_eval: Mapping[str, ob.ContestEval], risk_cfg: dict) -> dict:
+    """Each contest's own entries ranked jointly, from the field ranks prepared for every candidate."""
+    out = {}
+    for cid, ce in contests_eval.items():
+        eids = [e for e in ce.entry_ids if e in choices]
+        if not eids:
+            continue
+        idx = [choices[e].cand for e in eids]
+        st = states[cid]
+        pg, pe = ob.own_pairwise(cand_scores[:, idx])
+        out[cid] = (eids, ob.metrics_from_ranks(st.G[:, idx].astype(np.int64) + pg, st.E[:, idx].astype(np.int64) + pe,
+                                                st.contest, risk_cfg))
+    return out
+
+
 def _frontier_point(kappa: float, by_entry: dict, contests_eval: dict, scen: ob.ScenarioSet, pool, fees: Mapping[str, int],
-                    budget: RiskBudget, risk_cfg: dict) -> tuple[FrontierPoint, ob.PortfolioMetrics]:
-    pm = ob.portfolio_metrics(by_entry, contests_eval, scen, pool=pool, fees_cents=fees, cfg=risk_cfg)
+                    budget: RiskBudget, risk_cfg: dict, joint: dict | None = None) -> tuple[FrontierPoint, ob.PortfolioMetrics]:
+    pm = ob.portfolio_metrics(by_entry, contests_eval, scen, pool=pool, fees_cents=fees, cfg=risk_cfg, joint=joint)
     c = pm.concentration
     gmax = max(c["goalie"].values(), default=0.0)
     game_max = max(c["game"].values(), default=0.0) if c["n_games"] > 1 else None
@@ -408,7 +432,7 @@ def select(candidates: Sequence[Candidate], role_base: ob.ScenarioSet, fields: M
     cand_scores = role_base.scores([c.role_ids for c in candidates], pool.mode).full()
     fscores = {cid: fields[cid].scores(role_base, pool.mode) for cid in contests}
     states = _prepare(cand_scores, fscores, contests, candidates, pool, fam_cfg, risk_cfg, own_by_contest or {},
-                      dup_by_contest or {}, field_cal)
+                      dup_by_contest or {}, field_cal, fields)
     role_mean = role_base.means_tenths()
     sleeve = max(1, int(round(float(risk_cfg["discovery"]["stress_sleeve_max"]) * len(order))))
     contests_eval = {cid: ob.ContestEval(ct, fields[cid], [e for e in order if entry_contest[e] == cid])
@@ -418,7 +442,8 @@ def select(candidates: Sequence[Candidate], role_base: ob.ScenarioSet, fields: M
         ch, rl = _greedy(kappa, order, entry_contest, fees, cand_scores, candidates, states, caps, pool, risk_cfg,
                          role_mean, tournament, sleeve)
         by_entry = {e: candidates[ch[e].cand].role_ids for e in order}
-        pt, pm = _frontier_point(kappa, by_entry, contests_eval, role_base, pool, fees, risk, risk_cfg)
+        joint = _joint_from_states(ch, states, cand_scores, contests_eval, risk_cfg)
+        pt, pm = _frontier_point(kappa, by_entry, contests_eval, role_base, pool, fees, risk, risk_cfg, joint)
         pt.portfolio_key = "|".join(sorted(lineup_keys(by_entry, pool).values()))
         points.append(pt)
         results.append((ch, rl, by_entry, pm))

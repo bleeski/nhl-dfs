@@ -172,3 +172,33 @@ def test_play_mask_is_seeded_and_near_its_rate():
     assert np.array_equal(m1, m2) and m1[:, 0].all() and m1[:, 2].all()
     assert abs(m1[:, 1].mean() - 0.85) < 0.01
     assert not np.array_equal(m1, ob.play_mask(20000, keys, {"b": 0.85}, seed=4, purpose_code=2))
+
+
+def test_contests_sharing_one_field_match_separate_evaluation():
+    from pool_builder import classic_pool
+
+    from lineup_helpers import pick_legal
+
+    pool = classic_pool()
+    ids = [r.role_id for r in pool.rows]
+    rng = np.random.default_rng(8)
+    scen = ob.ScenarioSet(ids, rng.integers(0, 40, size=(300, len(ids))).astype(np.int32), "referee", 1)
+    lu = pick_legal(pool)
+    alt = tuple(reversed(lu))  # same people: a copy of the same lineup, which ties with it
+    flds = [tuple(ids[i:i + 9]) for i in range(0, 27, 3)]
+    keys = [f"k{i}" for i in range(len(flds))]
+    a = ob.field_spec(flds, keys, 1500, CFG, n_scenarios=300, seed=1, salt="a")
+    b = ob.field_spec(flds, keys, 1498, CFG, n_scenarios=300, seed=1, salt="b")
+    ca = ob.Contest("A", "A", "large_gpp", 1501, 100, np.arange(300, 0, -1, dtype=np.int64) * 10, np.zeros(300, bool), None,
+                    PayoutSource.PRIOR)
+    cb = ob.Contest("B", "B", "large_gpp", 1500, 100, np.arange(300, 0, -1, dtype=np.int64) * 7, np.zeros(300, bool), None,
+                    PayoutSource.PRIOR)
+    assignment = {"e1": lu, "e2": lu, "e3": alt}
+    ev = {"A": ob.ContestEval(ca, a, ["e1"]), "B": ob.ContestEval(cb, b, ["e2", "e3"])}
+    grouped = ob.joint_by_contest(assignment, ev, scen, pool=pool, cfg=CFG)
+    for cid, spec, ct, eids in (("A", a, ca, ["e1"]), ("B", b, cb, ["e2", "e3"])):
+        own = scen.scores([assignment[e] for e in eids], pool.mode).full()
+        fs, w = spec.scores(scen, pool.mode)
+        sep = ob.joint_payouts(own, fs, w, ct, cfg=CFG)
+        assert grouped[cid][0] == eids
+        assert np.array_equal(grouped[cid][1].payout_cents, sep.payout_cents)
