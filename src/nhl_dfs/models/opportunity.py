@@ -16,6 +16,7 @@ budget skaters_on_ice x (3600 - PP clock - PK clock) from the penalty-rate coupl
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -169,4 +170,50 @@ def reconcile(opps: dict, team_of: dict, cfg: dict) -> dict:
         for k in depth:
             opps[k].toi_ev_s *= f
             opps[k].ev_scale = f
+    return opps
+
+
+def _shrink_to(ps: list[float], target: float) -> list[float]:
+    """Shift every probability by one common amount c <= 0 in log-odds so they sum to target:
+    near-certain regulars barely move, uncertain depth players absorb most of the cut."""
+    if sum(ps) <= target:
+        return ps
+    eps = 1e-9
+    logits = [math.log(max(p, eps) / max(1 - p, eps)) for p in ps]
+    lo, hi = -40.0, 0.0
+    for _ in range(80):
+        c = (lo + hi) / 2
+        total = sum(1 / (1 + math.exp(-(x + c))) for x in logits)
+        if total > target:  # the sum falls as c falls: move the upper bound down
+            hi = c
+        else:
+            lo = c
+    c = (lo + hi) / 2
+    return [1 / (1 + math.exp(-(x + c))) for x in logits]
+
+
+def dress_budget(opps: dict, team_of: dict, group_of_key: dict, cfg: dict) -> dict:
+    """Normalize p_dress per team so expected dressed forwards and defensemen match the budget
+    (backlog B4). History players (source "history") keep their evidence first: if they alone
+    exceed the budget they are cut by one common log-odds shift (regulars barely move). Players
+    without history (prior or role) share the residual the same way, floored at dress_floor.
+    Nothing is scaled up."""
+    b = cfg["team"]["dress_budget"]
+    budget = {"F": float(b["forwards"]), "D": float(b["defense"])}
+    floor = float(b["dress_floor"])
+    blocks: dict[tuple[str, str], list] = {}
+    for k in opps:
+        g = group_of_key[k]
+        if g in budget:
+            blocks.setdefault((team_of[k], g), []).append(k)
+    for (team, g), keys in blocks.items():
+        hist = [k for k in keys if opps[k].source == "history"]
+        rest = [k for k in keys if opps[k].source != "history"]
+        new = _shrink_to([opps[k].p_dress for k in hist], budget[g])
+        for k, v in zip(hist, new):
+            opps[k].p_dress = v
+        residual = max(0.0, budget[g] - sum(new))
+        new = _shrink_to([opps[k].p_dress for k in rest], residual) if residual > 0 else [0.0] * len(rest)
+        for k, v in zip(rest, new):
+            opps[k].p_dress = max(floor, v)
     return opps

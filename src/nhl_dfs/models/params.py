@@ -208,6 +208,7 @@ def build(pool: SalaryPool, crosswalk: dict[str, int], as_of: date, cfg: dict | 
         if groups[pk] == "G":
             continue
         s_opp[pk] = opps[ids[pk]] if pk in ids else opp_mod.prior_opportunity(groups[pk], cfg, pk, roles)
+    opp_mod.dress_budget(s_opp, {pk: people[pk].team for pk in s_opp}, groups, cfg)  # backlog B4
     opp_mod.reconcile(s_opp, {pk: people[pk].team for pk in s_opp}, cfg)
 
     # Goalies: keyed by nhl_id when matched, else person_key; teams in NHL codes.

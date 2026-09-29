@@ -90,3 +90,40 @@ def test_reconcile_scales_depth_to_the_manpower_budget(cfg):
     total = sum(o.p_dress * o.toi_ev_s for o in opps.values())
     assert total <= budget + 1e-6 and opps[0].toi_ev_s == 1100.0 and opps[17].ev_scale < 1.0
     assert min(o.ev_scale for o in opps.values()) >= t["min_scale"]
+
+
+def _o(p, source):
+    o = opp.Opportunity(p, 800.0, 60.0, 30.0, 150.0, 0.2)
+    o.source = source
+    return o
+
+
+def test_dress_budget_history_first_then_residual(cfg):
+    opps = {f"h{i}": _o(0.9, "history") for i in range(8)} | {f"u{i}": _o(0.85, "prior") for i in range(10)}
+    opps |= {f"d{i}": _o(0.9, "history") for i in range(9)}
+    groups = {k: ("D" if k.startswith("d") else "F") for k in opps}
+    opp.dress_budget(opps, {k: "VAN" for k in opps}, groups, cfg)
+    fwd = sum(o.p_dress for k, o in opps.items() if groups[k] == "F")
+    dmen = sum(o.p_dress for k, o in opps.items() if groups[k] == "D")
+    assert fwd == pytest.approx(12.0) and dmen == pytest.approx(6.0)
+    assert opps["h0"].p_dress == pytest.approx(0.9)  # history evidence kept: 7.2 < 12
+    assert opps["u0"].p_dress == pytest.approx((12 - 7.2) / 10, rel=1e-6)  # equal unknowns share the residual
+    assert opps["d0"].p_dress == pytest.approx(6 / 9, rel=1e-6)  # history alone over budget: cut (equal priors)
+
+
+def test_dress_budget_cut_spares_regulars(cfg):
+    ps = [0.97] * 6 + [0.9] * 6 + [0.5] * 6  # 15.3 expected forwards with history
+    opps = {f"h{i}": _o(p, "history") for i, p in enumerate(ps)}
+    opp.dress_budget(opps, {k: "BOS" for k in opps}, {k: "F" for k in opps}, cfg)
+    new = [opps[f"h{i}"].p_dress for i in range(18)]
+    assert sum(new) == pytest.approx(12.0, rel=1e-6)
+    assert new[0] > 0.9 and new[0] / 0.97 > new[12] / 0.5  # the regular keeps far more of his probability
+
+
+def test_dress_budget_floor_and_never_scales_up(cfg):
+    over = {f"h{i}": _o(0.95, "history") for i in range(14)} | {"call_up": _o(0.85, "role")}
+    opp.dress_budget(over, {k: "EDM" for k in over}, {k: "F" for k in over}, cfg)
+    assert over["call_up"].p_dress == cfg["team"]["dress_budget"]["dress_floor"]
+    small = {"a": _o(0.9, "history"), "b": _o(0.85, "prior")}
+    opp.dress_budget(small, {k: "EDM" for k in small}, {k: "F" for k in small}, cfg)
+    assert (small["a"].p_dress, small["b"].p_dress) == (0.9, 0.85)  # a short list is not inflated

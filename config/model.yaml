@@ -53,6 +53,11 @@ team:
   skaters_on_ice: 5
   sog_for: 28.05
   min_scale: 0.6               # reconcile never scales a depth skater's EV TOI below 60%
+  # Team dressing budget (backlog B4): DK lists about 38 players per team, 18 skaters dress. Expected
+  # dressed forwards sum to `forwards`, defensemen to `defense`; players with history keep their
+  # evidence first (scaled down only if they alone exceed the budget), no-history players share the
+  # residual up to their prior, never below dress_floor (a call-up can still dress).
+  dress_budget: {forwards: 12, defense: 6, dress_floor: 0.02}
 
 # PLACEHOLDER role priors (RoleState, C7): used for a person with no history who holds a role.
 roles:
