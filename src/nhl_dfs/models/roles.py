@@ -408,7 +408,8 @@ def rotation_from(params) -> dict[str, dict[str, float]]:
 def set_play_prob(pp, p1: float, model_cfg: dict) -> None:
     """Set a person's dress (skater) or start (goalie) probability and bring mean_tenths and sd_tenths
     with it. History persons recompute their analytic moments; PRIOR persons' mean is the per-game prior
-    times the probability, so it rescales."""
+    times the probability (PersonParams.prior_mean_tenths, recorded at build), so it is rebuilt from that, not
+    from the rounded stored mean. After this a PRIOR person's mean is p x his per-game prior."""
     from nhl_dfs.contracts.statuses import ModelStatus
     from nhl_dfs.models import params as params_mod
 
@@ -422,10 +423,13 @@ def set_play_prob(pp, p1: float, model_cfg: dict) -> None:
     if pp.source is not ModelStatus.PRIOR:
         mean, sd = params_mod.goalie_moments(pp.goalie, model_cfg) if goalie else params_mod.skater_moments(pp.opportunity, pp.rates)[:2]
     else:
-        if p0 <= 1e-9:
-            return  # no per-game base to rescale from
-        m = pp.mean_tenths / p0
-        v = max(0.0, (pp.sd_tenths ** 2 + pp.mean_tenths ** 2) / p0 - m * m)
+        if pp.prior_mean_tenths > 0:  # the per-game prior recorded at build: exact, no rounding
+            m, v = pp.prior_mean_tenths, pp.prior_sd_tenths ** 2
+        elif p0 > 1e-9:  # a table built without it: rescale the stored mean
+            m = pp.mean_tenths / p0
+            v = max(0.0, (pp.sd_tenths ** 2 + pp.mean_tenths ** 2) / p0 - m * m)
+        else:
+            return  # no per-game base to work from
         mean = p1 * m
         sd = math.sqrt(max(p1 * (v + m * m) - mean * mean, 0.0))
     pp.mean_tenths, pp.sd_tenths = int(round(mean)), max(1, int(round(sd)))

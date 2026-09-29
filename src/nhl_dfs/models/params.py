@@ -54,6 +54,10 @@ class PersonParams:
     sd_tenths: int
     history_exposure: float = 0.0
     prior_exposure: float = 0.0
+    # per-game salary/APPG prior mean and sd (tenths, unrounded by dress probability): what a PRIOR person's mean
+    # is built from, kept so a later change of his dress or start probability (C7) rebuilds it exactly
+    prior_mean_tenths: float = 0.0
+    prior_sd_tenths: float = 0.0
 
 
 # -- analytic moments ------------------------------------------------------------------------------
@@ -255,6 +259,7 @@ def build(pool: SalaryPool, crosswalk: dict[str, int], as_of: date, cfg: dict | 
             mean = p_play * m
             sd = math.sqrt(max(p_play * (v + m * m) - mean * mean, 0.0))
         pp.mean_tenths, pp.sd_tenths = int(round(mean)), max(1, int(round(sd)))
+        pp.prior_mean_tenths, pp.prior_sd_tenths = float(prior_row.mean_tenths), float(prior_row.sd_tenths)
         persons[pk] = pp
     if all(p.source is ModelStatus.PRIOR for p in persons.values()):
         # Nothing to share a scale with: keep the plain priors, so an all-prior run is exactly the

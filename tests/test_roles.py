@@ -125,17 +125,19 @@ def test_absence_from_a_daily_faceoff_lineup_is_never_out():
 
 
 def test_isswappable_never_affects_participation():
-    d = dk_public.parse_draftables(json.loads((HTTP / "dk_draftables_153983.json").read_text(encoding="utf-8")), 153983)
-    rows = [PoolRow(r.draftable_id, person_key(r.name, r.team, "C"), r.name, r.team, "C", frozenset({"C", "UTIL"}), r.salary, "",
-                    5.0, "VALUE") for r in d.rows if r.roster_slot_id != 612]
-    pool = SalaryPool(Mode.CLASSIC, rows, {r.role_id: r for r in rows}, {r.person_key: PersonRows(classic=r) for r in rows},
-                      frozenset(r.team for r in rows), {}, [], "t", b"")
-    rec = dk_public.reconcile(pool, d)
-    rs = roles.merge(rec, {}, [], {}, NOW, CFG, pool=pool)
-    by_id = d.by_id
-    for row in rows:
-        want = by_id[row.role_id].participation
-        assert rs.persons[row.person_key].participation is want
+    raw = json.loads((HTTP / "dk_draftables_153983.json").read_text(encoding="utf-8"))
+    playing = next(x for x in raw["draftables"] if x["status"] in (None, "None") and x["rosterSlotId"] != 612)
+    out = next(x for x in raw["draftables"] if x["status"] == "OUT" and x["rosterSlotId"] != 612)
+    for swappable_playing, swappable_out in ((False, True), (True, False), (None, None)):
+        playing["isSwappable"], out["isSwappable"] = swappable_playing, swappable_out
+        d = dk_public.parse_draftables(raw, 153983)
+        rows = [PoolRow(r.draftable_id, person_key(r.name, r.team, "C"), r.name, r.team, "C", frozenset({"C", "UTIL"}), r.salary, "",
+                        5.0, "VALUE") for r in d.rows if r.roster_slot_id != 612]
+        pool = SalaryPool(Mode.CLASSIC, rows, {r.role_id: r for r in rows}, {r.person_key: PersonRows(classic=r) for r in rows},
+                          frozenset(r.team for r in rows), {}, [], "t", b"")
+        rs = roles.merge(dk_public.reconcile(pool, d), {}, [], {}, NOW, CFG, pool=pool)
+        assert rs.persons[person_key(playing["displayName"], playing["teamAbbreviation"], "C")].participation is Participation.PLAYING
+        assert rs.persons[person_key(out["displayName"], out["teamAbbreviation"], "C")].participation is Participation.OUT
     assert "is_swappable" not in open(roles.__file__, encoding="utf-8").read()  # editability is never read here
 
 
@@ -235,6 +237,8 @@ def params_for(pool, *, history=("Elias Pettersson", "Brock Boeser", "Jake DeBru
         rt = rates_mod.prior_rates(0, g, MODEL_CFG)
         status = ModelStatus.HISTORY if hist else ModelStatus.PRIOR
         pp = PersonParams(k, r.name, r.team, g, None, o, rt, None, status, 40, 60)
+        if not hist:
+            pp.prior_mean_tenths, pp.prior_sd_tenths = 35.0, 60.0  # per-game salary/APPG prior, as params.build records it
         persons[k] = pp
     opp_mod.dress_budget({k: p.opportunity for k, p in persons.items() if p.group != "G"},
                          {k: p.team for k, p in persons.items() if p.group != "G"},
@@ -278,6 +282,23 @@ def test_a_listed_call_up_is_not_sunk_to_the_floor_by_the_budget():
     listed_prior = [p for k, p in new.persons.items() if p.team == "VAN" and p.group == "F" and merged().persons[k].df_listed
                     and table.persons[k].opportunity.source == "prior"]
     assert listed_prior and all(p.opportunity.p_dress > 0.5 for p in listed_prior)
+    # and his mean is his per-game prior times the new dress probability, not rebuilt from a rounded stored mean
+    for p in listed_prior:
+        assert abs(p.mean_tenths - p.opportunity.p_dress * 35.0) <= 1.0
+        assert p.mean_tenths > table.persons[p.person_key].mean_tenths
+
+
+def test_an_all_prior_table_scales_with_the_dress_change_not_by_one_over_p0():
+    table = params_for(POOL, history=())
+    for p in table.persons.values():
+        if p.group != "G":
+            p.mean_tenths, p.sd_tenths = 35, 60  # the plain per-game prior, as an all-PRIOR params.build keeps it (no dress weighting)
+    new = roles.apply_state(table, merged(), CFG, MODEL_CFG)
+    moved = [p for p in new.persons.values() if p.group != "G" and p.source is ModelStatus.PRIOR and abs(p.opportunity.p_dress - table.persons[p.person_key].opportunity.p_dress) > 1e-6]
+    assert moved
+    for p in moved:
+        assert p.mean_tenths == pytest.approx(p.opportunity.p_dress * 35.0, abs=1.0)
+        assert p.mean_tenths <= 35 + 1  # never inflated past the per-game prior
 
 
 def test_call_up_role_ice_time_is_applied_once():

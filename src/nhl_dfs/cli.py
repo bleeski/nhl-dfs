@@ -373,9 +373,14 @@ def cmd_roles(args: argparse.Namespace) -> int:
           f"QUESTIONABLE {sum(p.participation is Participation.QUESTIONABLE for p in people)}, "
           f"conflicts {sum(p.conflict for p in people)}, UNKNOWN {sum(p.participation is Participation.UNKNOWN for p in people)}")
     dtd = [p for p in people if p.participation is Participation.QUESTIONABLE]
+
+    def shown(key: str) -> str:  # the DK row's own spelling, not the normalized key
+        r = pool.persons[key]
+        return (r.classic or r.flex or r.cpt).name
+
     if dtd:
         print("monitor (QUESTIONABLE until news confirms playing or out): "
-              + ", ".join(f"{p.person_key.split('|')[0].title()} ({p.team}, DK {p.dk_status or 'None'}"
+              + ", ".join(f"{shown(p.person_key)} ({p.team}, DK {p.dk_status or 'None'}"
                           + (f", DF {p.df_status}" if p.df_status else "") + f", play {p.p_play:.2f})" for p in dtd))
     for w in rs.warnings:
         print(f"warning: {w}")
