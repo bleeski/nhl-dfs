@@ -36,6 +36,16 @@ discovery:
   failure_quantile: 0.2          # priors wrong: scenarios where the chalk team's skater points are in its bottom 20%
   stress_sleeve_max: 0.10        # at most this share of entries from the priors-wrong family
 
+# Selection (build/portfolio.select): candidates are screened per contest to the best
+# max(screen_min, screen_per_entry x its entries) by field-only family utility plus each discovery
+# family's best screen_per_family (coverage); the five knobs run on `threads` threads (the result
+# does not depend on the thread count; each knob gets memory_cap_mb / threads).
+selection:
+  screen_min: 40
+  screen_per_entry: 2
+  screen_per_family: 3
+  threads: 5
+
 # Scenario objectives (build/objectives.py)
 objectives:
   top_pct: 0.01                  # large GPP tail region: the top 1% of the field size

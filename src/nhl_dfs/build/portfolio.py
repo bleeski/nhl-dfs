@@ -103,6 +103,7 @@ class Selection:
     family_mix: dict[str, int]
     families_target: tuple[float, ...]
     portfolio: ob.PortfolioMetrics | None = None
+    screened: dict = field(default_factory=dict)
 
 
 # -- discovery ------------------------------------------------------------------------------------
@@ -207,7 +208,7 @@ def _prepare(cand_scores: np.ndarray, fields: Mapping[str, tuple], contests: Map
         wl = [fields[cid][1] for cid in cids]
         for cid in cids:
             GE[cid] = (np.zeros((S, K), np.int32), np.zeros((S, K), np.int32))
-        step = ob._chunk_rows(S, fs.shape[1] * 28 + K * (96 + 16 * len(cids)), float(risk_cfg["objectives"]["memory_cap_mb"]))
+        step = ob._chunk_rows(S, fs.shape[1] * 64 + K * (96 + 16 * len(cids)), float(risk_cfg["objectives"]["memory_cap_mb"]))
         for a in range(0, S, step):
             b = min(S, a + step)
             for cid, (g, e) in zip(cids, ob.ranks_multi(cand_scores[a:b], np.asarray(fs[a:b]), wl)):
@@ -223,34 +224,47 @@ def _prepare(cand_scores: np.ndarray, fields: Mapping[str, tuple], contests: Map
     return out
 
 
-def _utility(st: _ContestState, top_k_pct: float) -> tuple[np.ndarray, np.ndarray]:
-    """(payout cents, family utility cents) per scenario and candidate from the current ranks."""
-    ct = st.contest
-    L = ct.field_size
-    cash = ct.prefix(ct.prizes_cents)
-    T = st.E.astype(np.int64) + 1
-    G = st.G.astype(np.int64)
-    hi, lo = np.minimum(G + T, L), np.minimum(G, L)
-    pay = (cash[hi] - cash[lo]) // T
-    if ct.family == "large_gpp":
-        k = max(1, int(math.floor(top_k_pct * L)))
-        util = (cash[np.minimum(G + T, k)] - cash[np.minimum(G, k)]) // T
-    elif ct.family == "wta":
-        util = np.floor((G == 0) / T * (int(ct.prizes_cents[0]) if ct.paid else 0)).astype(np.int64)
-    elif ct.family == "satellite":
-        seatp = ct.prefix(ct.seats.astype(np.int64))
-        util = np.floor((seatp[hi] - seatp[lo]) / T * (ct.ticket_face_cents or 0)).astype(np.int64) + pay
-    else:
-        util = pay
-    return pay, util
+class _Curve:
+    """A contest's prefix arrays, built once."""
+
+    def __init__(self, ct: ob.Contest, top_pct: float):
+        self.ct = ct
+        self.L = ct.field_size
+        self.cash = ct.prefix(ct.prizes_cents)
+        self.seatp = ct.prefix(ct.seats.astype(np.int64))
+        self.top_k = max(1, int(math.floor(top_pct * self.L)))
+        self.first = int(ct.prizes_cents[0]) if ct.paid else 0
+        self.face = ct.ticket_face_cents or 0
+
+    def pay_util(self, G: np.ndarray, E: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """(payout cents, family utility cents) for rank blocks G, E (own copies included)."""
+        G = G.astype(np.int64)
+        T = E.astype(np.int64) + 1
+        hi, lo = np.minimum(G + T, self.L), np.minimum(G, self.L)
+        pay = (self.cash[hi] - self.cash[lo]) // T
+        fam = self.ct.family
+        if fam == "large_gpp":
+            util = (self.cash[np.minimum(G + T, self.top_k)] - self.cash[np.minimum(G, self.top_k)]) // T
+        elif fam == "wta":
+            util = np.floor((G == 0) / T * self.first).astype(np.int64)
+        elif fam == "satellite":
+            util = np.floor((self.seatp[hi] - self.seatp[lo]) / T * self.face).astype(np.int64) + pay
+        else:
+            util = pay
+        return pay, util
 
 
 def _greedy(kappa: float, order: list, entry_contest: Mapping[str, str], fees: Mapping[str, int], cand_scores: np.ndarray,
             candidates: Sequence[Candidate], states: dict, caps: exposure.Caps, pool, risk_cfg: dict,
-            role_mean: Mapping[str, float], tournament: set[str], sleeve_max: int):
+            role_mean: Mapping[str, float], tournament: set[str], sleeve_max: int, mem_share: float = 1.0):
+    """One knob's fill. The prepared field ranks (states) are shared across knobs and never copied; the
+    user's own entries placed so far are kept as int16 increments. Each step aggregates per candidate
+    over scenario chunks (bounded memory), then computes the chosen candidate's payout column."""
     S, K = cand_scores.shape
-    states = {cid: _ContestState(st.contest, st.G.copy(), st.E.copy(), st.own_pct, st.dup, st.dup_name, st.policy)
-              for cid, st in states.items()}
+    tp = float(risk_cfg["objectives"]["top_pct"])
+    curves = {cid: _Curve(st.contest, tp) for cid, st in states.items()}
+    inc = {cid: (np.zeros((S, K), np.int16), np.zeros((S, K), np.int16)) for cid in states}
+    step = ob._chunk_rows(S, K * 80, float(risk_cfg["objectives"]["memory_cap_mb"]) * mem_share)
     total_fees = sum(int(fees[e]) for e in order)
     thr = 0.2 * total_fees  # losing >= 80% of fees <=> total payout <= 20% of fees
     pay_total = np.zeros(S, np.int64)
@@ -265,7 +279,6 @@ def _greedy(kappa: float, order: list, entry_contest: Mapping[str, str], fees: M
     stress = 0
     choices: dict[str, Choice] = {}
     relax: list[Relaxation] = []
-    tk = float(risk_cfg["objectives"]["top_pct"])
 
     def passes(k: int, eid: str, level: int) -> bool:
         if used[candidates[k].key] and level < 3:
@@ -294,11 +307,19 @@ def _greedy(kappa: float, order: list, entry_contest: Mapping[str, str], fees: M
 
     for eid in order:
         cid = entry_contest[eid]
-        st = states[cid]
-        pay, util = _utility(st, tk)
-        mean_u = util.mean(axis=0) / 100.0
-        se_u = util.std(axis=0) / 100.0 / math.sqrt(S)
-        p80 = ((pay_total[:, None] + pay) <= thr).mean(axis=0)
+        st, cv = states[cid], curves[cid]
+        gi, ei = inc[cid]
+        su, sq, n80 = np.zeros(K), np.zeros(K), np.zeros(K)
+        for a in range(0, S, step):
+            b = min(S, a + step)
+            pay, util = cv.pay_util(st.G[a:b] + gi[a:b], st.E[a:b] + ei[a:b])
+            u = util / 100.0
+            su += u.sum(axis=0)
+            sq += (u * u).sum(axis=0)
+            n80 += ((pay_total[a:b, None] + pay) <= thr).sum(axis=0)
+        mean_u = su / S
+        se_u = np.sqrt(np.maximum(sq / S - mean_u ** 2, 0.0) / S)
+        p80 = n80 / S
         score = mean_u - kappa * total_fees / 100.0 * p80
         se = np.sqrt(se_u ** 2 + (kappa * total_fees / 100.0) ** 2 * p80 * (1 - p80) / S)
         pick, level = None, 0
@@ -308,8 +329,7 @@ def _greedy(kappa: float, order: list, entry_contest: Mapping[str, str], fees: M
                 continue
             items = [tiebreak.Item(candidates[k].key, float(score[k]), float(se[k]), float(st.own_pct[k]), float(st.dup[k]), k)
                      for k in ok]
-            best = tiebreak.rank(items, risk_cfg, st.policy)[0]
-            pick = best
+            pick = tiebreak.rank(items, risk_cfg, st.policy)[0]
             break
         k = pick.item.ref
         if level:
@@ -334,15 +354,19 @@ def _greedy(kappa: float, order: list, entry_contest: Mapping[str, str], fees: M
             placed.append(persons[k])
         used[candidates[k].key] += 1
         stress += candidates[k].family.startswith("priors_wrong")
-        pay_total += pay[:, k]
-        own = cand_scores[:, [k]]
-        st.G += (own > cand_scores).astype(np.int32)
-        st.E += (own == cand_scores).astype(np.int32)
-    return choices, relax
+        pay_k, _ = cv.pay_util(st.G[:, [k]] + gi[:, [k]], st.E[:, [k]] + ei[:, [k]])
+        pay_total += pay_k[:, 0]
+        for a in range(0, S, step):
+            b = min(S, a + step)
+            own = cand_scores[a:b, [k]]
+            gi[a:b] += own > cand_scores[a:b]
+            ei[a:b] += own == cand_scores[a:b]
+    return choices, relax, inc
 
 
 def _joint_from_states(choices: Mapping[str, Choice], states: Mapping[str, _ContestState], cand_scores: np.ndarray,
                        contests_eval: Mapping[str, ob.ContestEval], risk_cfg: dict) -> dict:
+    """(Uses only the field ranks; the own-entry terms are recomputed exactly, pairwise.)"""
     """Each contest's own entries ranked jointly, from the field ranks prepared for every candidate."""
     out = {}
     for cid, ce in contests_eval.items():
@@ -434,25 +458,74 @@ def select(candidates: Sequence[Candidate], role_base: ob.ScenarioSet, fields: M
     states = _prepare(cand_scores, fscores, contests, candidates, pool, fam_cfg, risk_cfg, own_by_contest or {},
                       dup_by_contest or {}, field_cal, fields)
     role_mean = role_base.means_tenths()
+    n_in = Counter(entry_contest.values())
+    keep = screen(states, candidates, n_in, risk_cfg, S=cand_scores.shape[0])
+    screened = {"candidates_in": len(candidates), "kept": len(keep)}
+    if len(keep) < len(candidates):
+        candidates = [candidates[i] for i in keep]
+        cand_scores = np.ascontiguousarray(cand_scores[:, keep])
+        states = {cid: _ContestState(st.contest, np.ascontiguousarray(st.G[:, keep]), np.ascontiguousarray(st.E[:, keep]),
+                                     st.own_pct[keep], st.dup[keep], st.dup_name, st.policy) for cid, st in states.items()}
     sleeve = max(1, int(round(float(risk_cfg["discovery"]["stress_sleeve_max"]) * len(order))))
     contests_eval = {cid: ob.ContestEval(ct, fields[cid], [e for e in order if entry_contest[e] == cid])
                      for cid, ct in contests.items()}
-    points, results = [], []
-    for kappa in [float(k) for k in risk_cfg["frontier"]["kappas"]]:
-        ch, rl = _greedy(kappa, order, entry_contest, fees, cand_scores, candidates, states, caps, pool, risk_cfg,
-                         role_mean, tournament, sleeve)
+    kappas = [float(k) for k in risk_cfg["frontier"]["kappas"]]
+    threads = max(1, min(len(kappas), int(risk_cfg.get("selection", {}).get("threads", 1))))
+
+    def one(kappa: float):
+        ch, rl, inc = _greedy(kappa, order, entry_contest, fees, cand_scores, candidates, states, caps, pool, risk_cfg,
+                              role_mean, tournament, sleeve, mem_share=1.0 / len(kappas))  # not threads: chunking fixed
+        del inc
         by_entry = {e: candidates[ch[e].cand].role_ids for e in order}
         joint = _joint_from_states(ch, states, cand_scores, contests_eval, risk_cfg)
         pt, pm = _frontier_point(kappa, by_entry, contests_eval, role_base, pool, fees, risk, risk_cfg, joint)
         pt.portfolio_key = "|".join(sorted(lineup_keys(by_entry, pool).values()))
-        points.append(pt)
-        results.append((ch, rl, by_entry, pm))
+        return pt, (ch, rl, by_entry, pm)
+
+    if threads > 1:
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=threads) as ex:
+            outs = list(ex.map(one, kappas))  # map keeps knob order: the result does not depend on threads
+    else:
+        outs = [one(k) for k in kappas]
+    points = [o[0] for o in outs]
+    results = [o[1] for o in outs]
     mark_dominated(points)
     best, why = choose(points)
     ch, rl, by_entry, pm = results[points.index(best)]
     mix = Counter(c.cand_family.split(":")[0] for c in ch.values())
     ordered = {e.entry_id: by_entry[e.entry_id] for e in rows}
-    return Selection(ordered, ch, points, best.kappa, why, rl, dict(mix), tuple(families), pm)
+    sel = Selection(ordered, ch, points, best.kappa, why, rl, dict(mix), tuple(families), pm)
+    sel.screened = screened
+    return sel
+
+
+def screen(states: Mapping[str, _ContestState], candidates: Sequence[Candidate], n_in: Mapping[str, int], risk_cfg: dict,
+           *, S: int) -> list[int]:
+    """Candidates kept for the fill: per contest the best max(screen_min, screen_per_entry x its entries) by the
+    field-only family utility, plus each discovery family's best screen_per_family there (coverage), unioned."""
+    sc = risk_cfg.get("selection", {})
+    lo, per, fam_n = int(sc.get("screen_min", 40)), float(sc.get("screen_per_entry", 2)), int(sc.get("screen_per_family", 3))
+    tp = float(risk_cfg["objectives"]["top_pct"])
+    K = len(candidates)
+    keep: set[int] = set()
+    fam_of = [c.family.split(":")[0] for c in candidates]
+    for cid, st in states.items():
+        if not n_in.get(cid):
+            continue
+        cv = _Curve(st.contest, tp)
+        su = np.zeros(K)
+        step = ob._chunk_rows(S, K * 80, float(risk_cfg["objectives"]["memory_cap_mb"]))
+        for a in range(0, S, step):
+            b = min(S, a + step)
+            _, util = cv.pay_util(st.G[a:b], st.E[a:b])
+            su += util.sum(axis=0)
+        order = sorted(range(K), key=lambda k: (-su[k], candidates[k].key))
+        keep.update(order[:max(lo, int(math.ceil(per * n_in[cid])))])
+        for f in set(fam_of):
+            keep.update([k for k in order if fam_of[k] == f][:fam_n])
+    return sorted(keep)
 
 
 def lineup_keys(by_entry: Mapping[str, Sequence[str]], pool) -> dict[str, str]:

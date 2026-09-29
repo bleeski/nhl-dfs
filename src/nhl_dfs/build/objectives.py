@@ -489,7 +489,7 @@ def contest_metrics(cand, field, weights, contest: Contest, own_copies=None, *, 
     def block(a: int, b: int):
         return ranks(np.asarray(cand[a:b]), np.asarray(field[a:b]), weights,
                      None if own_copies is None else np.asarray(own_copies[a:b]))
-    return _evaluate(S, K, field.shape[1] * 28 + K * (J + 96), block, contest, cfg)
+    return _evaluate(S, K, field.shape[1] * 64 + K * (J + 96), block, contest, cfg)
 
 
 def joint_payouts(own, field, weights, contest: Contest, *, cfg: dict | None = None) -> Metrics:
@@ -504,7 +504,7 @@ def joint_payouts(own, field, weights, contest: Contest, *, cfg: dict | None = N
         G += (o[:, None, :] > o[:, :, None]).sum(axis=2)
         E += (o[:, None, :] == o[:, :, None]).sum(axis=2) - 1  # every other own entry tied with it
         return G, E
-    return _evaluate(S, J, field.shape[1] * 28 + J * (J + 96), block, contest, cfg)
+    return _evaluate(S, J, field.shape[1] * 64 + J * (J + 96), block, contest, cfg)
 
 
 def metrics_from_ranks(G: np.ndarray, E: np.ndarray, contest: Contest, cfg: dict) -> Metrics:
@@ -668,7 +668,7 @@ def joint_by_contest(assignment: Mapping[str, Sequence[str]], contests: Mapping[
         E = {cid: np.zeros((S, len(eids[cid])), np.int64) for cid in cids}
         pos = {e: j for j, e in enumerate(cols)}
         idx = {cid: [pos[e] for e in eids[cid]] for cid in cids}
-        step = _chunk_rows(S, fs.shape[1] * 28 + len(cols) * (96 + 16 * len(cids)), float(cfg["objectives"]["memory_cap_mb"]))
+        step = _chunk_rows(S, fs.shape[1] * 64 + len(cols) * (96 + 16 * len(cids)), float(cfg["objectives"]["memory_cap_mb"]))
         for a in range(0, S, step):
             b = min(S, a + step)
             for cid, (g, e) in zip(cids, ranks_multi(own[a:b], np.asarray(fs[a:b]), wl)):
