@@ -13,6 +13,10 @@ Only files listed on that page are downloaded (`config/sources.yaml` `moneypuck.
 Season key: NHL eight-digit id (20252026). MoneyPuck names it by start year (2025).
 Regime: from the game id type digits (YYYY TT NNNN): 01 preseason, 02 regular, 03 playoffs.
 Availability: a game's row exists the day after the game (backfill fetches completed days only).
+Coverage: the NHL per-game reports return no preseason games (checked 2026-09-28: the 2025 and
+2026 preseason windows report total 0 while the schedule lists those games FINAL), and the
+MoneyPuck game zips are regular season only. So the store holds regular-season games (Tier A)
+and playoff games (Tier B); preseason is absent, consistent with flag 7 (preseason not a target).
 
 ## skater_games (one row per player-game)
 

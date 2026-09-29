@@ -139,7 +139,9 @@ def seed(pool: SalaryPool, *, directory: Iterable[NhlPerson], accepted_path: Pat
     proposals_path = Path(proposals_path) if proposals_path is not None else PROPOSALS_JSON
     team_map = team_map if team_map is not None else verified_team_map()
     now = (clock or (lambda: datetime.now(timezone.utc)))()
-    people = list({p.nhl_id: p for p in directory}.values())
+    # One entry per NHL id; a current roster beats history's last team (offseason moves, trades).
+    rank = {"roster": 0, "history": 1}
+    people = list({p.nhl_id: p for p in sorted(directory, key=lambda p: rank.get(p.source, 2), reverse=True)}.values())
     by_name: dict[str, list[NhlPerson]] = {}
     for p in people:
         by_name.setdefault(normalize_name(p.name), []).append(p)

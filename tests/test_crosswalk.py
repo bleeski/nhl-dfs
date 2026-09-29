@@ -168,3 +168,13 @@ def test_cli_history_prints_counts_and_credit(monkeypatch, capsys):
     assert "credit: " in out and "MoneyPuck.com" in out and "rows skater_games/20252026: 8" in out
     assert len(seen["seasons"]) >= 2 and seen["moneypuck"] is True
     assert cli.main(["history"]) == 2
+
+
+def test_current_roster_beats_history_team(tmp_path):
+    p = make_pool(read_salary(mini_pair("classic")[0]).mode, [row("1", "EDM", "G", 7000)])
+    r = p.rows[0]
+    moved = [NhlPerson(8475883, r.name, "EDM", "G", "roster"), NhlPerson(8475883, r.name, "CAR", "G", "history")]
+    for order in (moved, moved[::-1]):
+        res = cw.seed(p, directory=order, accepted_path=tmp_path / f"a{len(order)}{order[0].source}.csv",
+                      proposals_path=tmp_path / "p.json", clock=lambda: T0)
+        assert res.accepted == {r.person_key: 8475883} and not res.proposals
