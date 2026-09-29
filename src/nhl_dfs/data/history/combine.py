@@ -142,7 +142,11 @@ def combine_skaters(nhl_df: pd.DataFrame, mp_df: pd.DataFrame, lines: pd.DataFra
     for c in SKATER_ENRICH:
         base[f"{c}_missing"] = missing[c].astype(int)
     base["tier"] = np.where(has_mp, "A", "B")
-    return base.sort_values(["game_date", "game_id", "nhl_id"]).reset_index(drop=True)
+    lead = ["nhl_id", "game_id", "name", "game_date", "season", "game_type", "regime", "team", "opponent", "home",
+            "position", *BACKBONE, "toi_strength_source", "pp_points_missing", "sh_points_missing",
+            *SKATER_ENRICH, *(f"{c}_missing" for c in SKATER_ENRICH), "tier"]
+    order = [c for c in lead if c in base] + sorted(c for c in base if c not in lead)
+    return base[order].sort_values(["game_date", "game_id", "nhl_id"]).reset_index(drop=True)
 
 
 def combine_goalies(nhl_df: pd.DataFrame, mp_df: pd.DataFrame, priors: dict) -> pd.DataFrame:

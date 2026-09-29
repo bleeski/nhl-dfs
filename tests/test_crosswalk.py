@@ -106,6 +106,7 @@ def test_accepted_csv_rows_carry_sha_and_accept_flow(tmp_path, pool):
         cw.accept(kap.proposal_id, accepted_path=tmp_path / "accepted.csv", proposals_path=tmp_path / "proposals.json")
     third = seed(tmp_path, p, directory(base))
     assert third.accepted["kasperi kapanen|EDM|F"] == kap.nhl_id
+    assert [u["name"] for u in third.unmatched] == [CALL_UP]  # the call-up stays unmatched across reseeds
     with pytest.raises(KeyError):
         cw.accept("nope", accepted_path=tmp_path / "accepted.csv", proposals_path=tmp_path / "proposals.json")
 

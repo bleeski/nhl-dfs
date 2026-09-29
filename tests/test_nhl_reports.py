@@ -101,6 +101,7 @@ def test_tier_a_fills_the_same_columns_from_moneypuck(both):
 
 def test_both_tiers_agree_on_toi_by_strength_sog_and_blocks(both):
     (_, b, _, _), (_, a, _, _) = both
+    assert list(a.columns) == list(b.columns)  # Tier B builds the same columns
     cols = ["toi_s", "toi_ev_s", "toi_pp_s", "toi_sh_s", "sog", "blocks", "goals", "assists"]
     left = b.set_index("nhl_id")[cols].sort_index()
     right = a.set_index("nhl_id")[cols].sort_index()
