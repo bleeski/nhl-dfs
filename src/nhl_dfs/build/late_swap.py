@@ -330,6 +330,7 @@ def swap_core(
     standings=None,
     eager_objective: bool = False,
     apply_state: Callable | None = None,
+    fetch_odds: bool = False,
 ) -> RunResult:
     """objective: "auto" | "scenario" | "provisional" | "baseline" (C9; stepped down in that order and
     reported). standings: an optional live.StandingsSnapshot. eager_objective: resolve (and, for a
@@ -464,6 +465,16 @@ def swap_core(
                                                     max_age_min=float(runtime.get("live", {}).get("max_age_min", 15)))
     m["live"] = {"LIVE_STATUS": live_status, "reason": live_reason}
     resolved = None
+    odds_snapshot = None
+    if fetch_odds and not offline and (targets or eager_objective):
+        from nhl_dfs.sim.slate import fetch_odds as fetch_odds_fn
+
+        try:
+            odds_snapshot, odds_msgs = swap_objective._bounded(lambda: fetch_odds_fn(cache=cache, now=clock()),
+                                                               float(runtime["network_pass_budget_s"]), "nhl-odds-fetch")
+        except Exception as exc:
+            odds_msgs = [f"odds: unavailable ({type(exc).__name__}); games take the model intensities"]
+        m["news"]["odds"] = odds_msgs
     if targets or eager_objective:
         open_games = set(pool.games) - set(ls.started_games) - set(ls.edit_stop_games)
         ok = swap_objective.optional_work_ok(ls, pool, open_games, clock(), runtime)
@@ -471,7 +482,7 @@ def swap_core(
             objective, pool=pool, work=pool_without(pool, excluded_rows), st=st, started_games=ls.started_games,
             dk_rec=rec, runs_root=runs_root, run_id=parent.run_id, offline=offline, cache=cache, clock=clock, now=clock(),
             runtime=runtime, fast=fast, optional_ok=ok, live=standings, entry_ids=entry_ids, apply_state=apply_state,
-            persist_to=run.path if eager_objective else None)
+            persist_to=run.path if eager_objective else None, odds_snapshot=odds_snapshot)
         linear = resolved.linear
         m["objective"] = resolved.record()
         for f in resolved.fallbacks:

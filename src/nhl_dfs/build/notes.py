@@ -65,6 +65,8 @@ def render(m: dict[str, Any]) -> str:
         lines += _provisional_lines(m["provisional"])
     if m.get("scenario"):
         lines += _scenario_lines(m["scenario"])
+    if m.get("objective"):
+        lines += _objective_lines(m)
     if m.get("messages"):
         lines += ["", "## Messages", ""] + [f"- {x}" for x in m["messages"]]
     return "\n".join(lines) + "\n"
@@ -193,6 +195,50 @@ def _scenario_lines(s: dict[str, Any]) -> list[str]:
     out += ["", "OUTCOME_CALIBRATION=UNVALIDATED: the C6 calibration flags the simulated 3+ point tail as thin (backlog B6), so "
             "top-1% and first-place figures are labeled scenario estimates with their Monte Carlo error; 20,000 scenarios "
             "cannot give precise massive-field win rates. None of these figures is a measured ROI, EV or ruin probability."]
+    return out
+
+
+def _objective_lines(m: dict[str, Any]) -> list[str]:
+    """C9 section: which objective valued the open cells, every step down with its reason, the live
+    standings status, the role state, and per repaired entry its family figure with the Monte Carlo SE."""
+    o = m["objective"]
+    live = m.get("live", {})
+    news = m.get("news", {})
+    out = ["", "## Objective (C9)", "",
+           f"- OBJECTIVE={o['kind']} (requested {o.get('requested', 'auto')}; order scenario, provisional, baseline)"]
+    for f in o.get("fallbacks", []):
+        out.append(f"- {f['from']} not used: {f['reason']}")
+    out.append(f"- LIVE_STATUS={live.get('LIVE_STATUS', 'NO_SNAPSHOT')}: {live.get('reason', 'no standings snapshot')}")
+    if news.get("roles_news_state"):
+        out.append(f"- ROLES_NEWS_STATE={news['roles_news_state']} (Daily Faceoff lines and goalies; NEWS_STATE above is DK status coverage)")
+    for w in news.get("roles_warnings", [])[:10]:
+        out.append(f"- roles warning: {w}")
+    for n in o.get("notes", [])[:12]:
+        out.append(f"- {n}")
+    sc = o.get("scenario")
+    if sc:
+        out.append(f"- Scenarios: cache from run {sc['cache_run']}, selection {sc['n']['selection']} / referee {sc['n']['referee']}; "
+                   f"re-simulated games: {', '.join(sc['games_resimulated']) or 'none'}"
+                   + (f"; changed but started (cached draws kept): {', '.join(sc['games_changed_but_started'])}"
+                      if sc.get("games_changed_but_started") else ""))
+    if o.get("game_sources"):
+        out.append("- Game sources: " + ", ".join(f"{k} {v}" for k, v in sorted(o["game_sources"].items()))
+                   + ("; MODEL means team-strength intensities, not a market price (backlog B5)"
+                      if any(v.startswith("MODEL") for v in o["game_sources"].values()) else ""))
+    ev = o.get("evidence")
+    if ev:
+        out.append("- Evidence: " + " ".join(f"{k}={v}" for k, v in ev.items())
+                   + "; every figure below is an uncalibrated scenario proxy with its Monte Carlo SE")
+    for eid, e in sorted((o.get("entries") or {}).items()):
+        sel, ref = e.get("selection") or {}, e.get("referee") or {}
+        if "value" not in sel:
+            out.append(f"- entry {eid}: {sel.get('note', 'surrogate best')}")
+            continue
+        line = (f"- entry {eid} ({sel['objective']}, policy {sel['policy']}, {sel['candidates']} candidates): "
+                f"choosing draws {_pm(sel['value'], sel['se'], 4)} (optimistic: measured where it was chosen)")
+        if ref:
+            line += f"; referee draws {_pm(ref['value'], ref['se'], 4)}, E[payout] {_pm(ref['exp_payout'], ref['exp_payout_se'], 2)}"
+        out.append(line)
     return out
 
 

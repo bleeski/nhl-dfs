@@ -20,3 +20,23 @@ fallback:
   # feasible.find_one budgets: first try, then one retry on TIMEOUT.
   budget_s: 2.0
   retry_budget_s: 10.0
+
+# Late swap and refresh (C2c, C9). Times in seconds unless named _min.
+late_swap:
+  per_entry_time_limit_s: 2.0
+  # Plan section 13: optional work stops at T-8 minutes before the next lock for anything routed
+  # through the LLM and T-5 for engine-only work. Here "the next lock" is the earliest start among
+  # games that still have open cells; inside it the objective steps down to baseline (reported).
+  # This is separate from edit_stop_buffer_s above and changes no lock: it only picks a cheaper objective.
+  optional_work_stop_min: {llm: 8, engine: 5}
+  optional_estimate_s: 25       # what the scenario or provisional objective needs, measured on the fixture
+  cache_scenarios: 8000         # draws per stream the C8 pass keeps under runs/<id>/scenario/ (whole 2,000 chunks)
+  fast_scenarios: 4000          # --fast scores repairs on the first 4,000 (a chunk multiple)
+  full_scenarios: 8000          # without --fast
+  candidates_per_entry: 8       # repair candidates the scenario objective chooses among
+  scenario_budget_s: 12.0       # scoring time across all repaired entries; past it the surrogate's best is kept
+
+# Live standings (build/live.py). A snapshot is reliable only with a declared source, no older than
+# this, covering every entry being re-solved; none exists yet (C11), so LIVE_STATUS=NO_SNAPSHOT.
+live:
+  max_age_min: 15

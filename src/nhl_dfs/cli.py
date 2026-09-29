@@ -399,8 +399,19 @@ def cmd_late_swap(args: argparse.Namespace) -> int:
     runs_root, outputs_root = _roots(args)
     print(f"mode: {'fast repair (only entries that need it)' if args.fast else 'full re-optimize of open cells'}")
     result = late_swap.run(args.run, args.entries, offline=args.offline, fast=args.fast, runs_root=runs_root,
-                           outputs_root=outputs_root, salary_path=args.salary, as_of=_as_of(args.as_of))
+                           outputs_root=outputs_root, salary_path=args.salary, as_of=_as_of(args.as_of),
+                           objective=args.objective)
+    _print_objective(result)
     return _print_result(result)
+
+
+def _print_objective(result) -> None:
+    """C9: which objective valued the open cells (each step down with its reason) and the live status."""
+    o = result.manifest.get("objective") or {}
+    print(f"OBJECTIVE={o.get('kind', 'unknown')} (requested {o.get('requested', 'auto')})")
+    for f in o.get("fallbacks", []):
+        print(f"  {f['from']} not used: {f['reason'][:200]}")
+    print(f"LIVE_STATUS={(result.manifest.get('live') or {}).get('LIVE_STATUS', 'NO_SNAPSHOT')}")
 
 
 def cmd_refresh(args: argparse.Namespace) -> int:
@@ -412,11 +423,12 @@ def cmd_refresh(args: argparse.Namespace) -> int:
     runs_root, outputs_root = _roots(args)
     try:
         result = refresh.run(args.run, offline=args.offline, runs_root=runs_root, outputs_root=outputs_root,
-                             salary_path=args.salary, as_of=_as_of(args.as_of))
+                             salary_path=args.salary, as_of=_as_of(args.as_of), objective=args.objective)
     except refresh.NoDeliveredVersion as exc:
         print("FILE_VALID=FALSE")
         print(f"reason: {exc}")
         return 1
+    _print_objective(result)
     return _print_result(result)
 
 
@@ -512,6 +524,8 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--as-of", type=str, default=None, help="REHEARSAL clock in UTC, e.g. 2026-10-15T23:10:00Z")
         sp.add_argument("--runs-root", type=str, default=str(RUNS_ROOT))
         sp.add_argument("--outputs-root", type=str, default=None)
+        sp.add_argument("--objective", choices=("auto", "scenario", "provisional", "baseline"), default="auto",
+                        help="auto: scenario, then provisional, then baseline (each fallback reported)")
         sp.set_defaults(func=func)
 
     return parser

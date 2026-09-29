@@ -4,7 +4,11 @@ Uses the same lock rules and the same re-solve as late swap (late_swap.swap_core
 With no current export, the parent is the LAST DELIVERED version, stated as an assumed parent:
 it may not match what is actually entered on DK, so the run is DEGRADED_REVIEW and the notes say
 so. Re-fetches draftables (participation, eligibility, start times, swappability) when online.
-Odds are not re-fetched: nothing consumes them before the model chunks (C5/C6).
+
+C9: refresh resolves its objective even when nothing needs a repair: it rebuilds the ParamTable, applies
+the role state once (Daily Faceoff pages, cache first; stored pages offline), re-fetches odds when
+online, re-simulates only the games whose inputs changed and have not started, and writes the updated
+draws to its own run's scenario/ folder, so a later late swap from this run starts from them.
 """
 
 from __future__ import annotations
@@ -36,6 +40,9 @@ def run(
     runtime: dict | None = None,
     caps: Caps | None = None,
     as_of: datetime | None = None,
+    objective: str = "auto",
+    standings=None,
+    apply_state=None,
 ) -> RunResult:
     runs_root = Path(runs_root)
     outputs_root = Path(outputs_root) if outputs_root is not None else runs_root.parent / "outputs"
@@ -48,4 +55,5 @@ def run(
         raise NoDeliveredVersion(f"run {run_id} has no delivered version to refresh")
     return swap_core(parent, delivered, kind="refresh", offline=offline, fast=True, assumed_parent=True,
                      runs_root=runs_root, outputs_root=outputs_root, clock=clock, cache=cache,
-                     salary_path=salary_path, runtime=runtime, caps=caps, rehearsal=as_of)
+                     salary_path=salary_path, runtime=runtime, caps=caps, rehearsal=as_of, objective=objective,
+                     standings=standings, eager_objective=True, apply_state=apply_state, fetch_odds=True)
