@@ -16,7 +16,8 @@ DTD (QUESTIONABLE) prices both sides: the ranking mean counts a QUESTIONABLE per
 questionable_play_prob (risk), and the field's fade of DTD players lowers their sampled
 ownership (leverage).
 
-Every figure here is provisional: MODEL_STATUS=PRIOR, OUTCOME_CALIBRATION=UNVALIDATED,
+Every figure here is provisional: MODEL_STATUS as the Projection reports it (PRIOR, MIXED or
+HISTORY since C5), OUTCOME_CALIBRATION=UNVALIDATED,
 FIELD_CALIBRATION=PRIOR, PAYOUT_SOURCE per contest. No probability or ceiling is computed.
 """
 
@@ -188,9 +189,10 @@ def build_fields(pool: SalaryPool, proj: Projection, contexts: Mapping[str, Cont
     return FieldBuild(fields, margs, time.perf_counter() - t0)
 
 
-def field_summary(pool: SalaryPool, fb: FieldBuild, contexts: Mapping[str, ContestContext], top: int = 15) -> dict:
+def field_summary(pool: SalaryPool, fb: FieldBuild, contexts: Mapping[str, ContestContext], top: int = 15,
+                  model_status: str = "PRIOR") -> dict:
     """JSON-ready provisional field summary per family (saved as <run>/field.json)."""
-    out: dict = {"label": "PROVISIONAL (priors only; FIELD_CALIBRATION=PRIOR)", "families": {}}
+    out: dict = {"label": f"PROVISIONAL (MODEL_STATUS={model_status}; FIELD_CALIBRATION=PRIOR)", "families": {}}
     for fam, fld in fb.fields.items():
         cid = next(c for c, ctx in contexts.items() if ctx.family == fam)
         m = fb.marginals[cid]

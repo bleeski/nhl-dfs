@@ -398,7 +398,7 @@ def cmd_field(args: argparse.Namespace) -> int:
         except Exception:  # history unavailable: the priors still give a field
             proj = PriorProjection(work)
         fb = provisional.build_fields(work, proj, ctx, seed=seed, statuses=statuses)
-        summary = provisional.field_summary(work, fb, ctx)
+        summary = provisional.field_summary(work, fb, ctx, model_status=proj.source().value)
         source = "sampled now from the run's inputs (offline, family priors)"
     print(f"field for run {args.run} ({source})")
     for line in field_lines(summary):

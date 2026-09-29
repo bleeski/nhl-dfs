@@ -651,7 +651,7 @@ def _provisional_pass(run, entries, pool, after_b, st, starts, offline, runtime,
     proj = after_b.get("proj") or PriorProjection(work)
     fb = prov.build_fields(work, proj, contexts, seed=seed, statuses=statuses, own_cfg=own_cfg)
     atomic_write(run.path / "field.json",
-                 json.dumps(prov.field_summary(work, fb, contexts), indent=2).encode("utf-8"))
+                 json.dumps(prov.field_summary(work, fb, contexts, model_status=proj.source().value), indent=2).encode("utf-8"))
     bank = after_b.get("bank")
     if not bank:
         bank = build_bank(work, objective_from(work, proj), len(entries.entries), runtime,
@@ -687,7 +687,7 @@ def _provisional_pass(run, entries, pool, after_b, st, starts, offline, runtime,
     fields = {fam: {"n_requested": f.requested, "n_draws": f.n, "degraded": f.degraded, "detail": f.detail,
                     "repeats": f.n - len(set(f.keys))} for fam, f in fb.fields.items()}
     m["provisional"] = {
-        "label": "PROVISIONAL: priors only; ownership and duplicate figures are uncalibrated",
+        "label": f"PROVISIONAL: MODEL_STATUS={proj.source().value}; ownership and duplicate figures are uncalibrated",
         "evidence": evidence,
         "contests": [c.record() for c in contexts.values()],
         "fields": fields,
@@ -711,5 +711,5 @@ def _provisional_pass(run, entries, pool, after_b, st, starts, offline, runtime,
     if (not vp["public_replaced"] or any(r.kind == "REPEAT" for r in a_p.relaxations)
             or any(f["degraded"] for f in fields.values())):
         m["statuses"]["DELIVERY_STATUS"] = DeliveryStatus.DEGRADED_REVIEW.value
-    m["worked"].append(f"provisional pass published v{vp['version']} (PROVISIONAL, priors only, "
+    m["worked"].append(f"provisional pass published v{vp['version']} (PROVISIONAL, MODEL_STATUS={proj.source().value}, "
                        f"PAYOUT_SOURCE={payout.value})")

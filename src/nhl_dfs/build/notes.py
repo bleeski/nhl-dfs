@@ -89,7 +89,7 @@ def _provisional_lines(p: dict[str, Any]) -> list[str]:
     for c in p["contests"]:
         out.append(f"| {c['contest_id']} {c['name']} | {c['family']} ({c['family_source']}) | {c['PAYOUT_SOURCE']} "
                    f"| {c['field_size']} ({c['field_size_source']}) |")
-    out += ["", "| Entry | Contest | Family | Prior mean pts, DTD-adjusted (provisional) | Lineup own % sum "
+    out += ["", "| Entry | Contest | Family | Projected mean pts, DTD-adjusted (provisional) | Lineup own % sum "
             "(provisional) | Dup proxy (provisional) | Field dup est. (provisional) | Band pts | DTD |",
             "|---|---|---|---:|---:|---:|---:|---:|---:|"]
     for e in p["entries"]:
