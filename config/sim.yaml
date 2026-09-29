@@ -43,6 +43,7 @@ market:
   stale_weight: 0.5            # a stale market (goalie confirmed after the snapshot) blends this
                                # much toward the model intensities
   max_discrepancy: 0.35        # a fitted intensity is clipped to model x (1 +/- this); logged
+  max_age_h: 36                # an older snapshot is reported and not used
   min_lambda: 0.4
   max_lambda: 6.0
   book_priority: [nhl_partner_odds, covers]

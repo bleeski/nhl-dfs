@@ -6,7 +6,7 @@ team-code pair, MODEL otherwise, with the reason recorded per game. Nothing here
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from nhl_dfs.sim import market
 from nhl_dfs.sim.game import GameSpec, SlateSpec
@@ -30,14 +30,24 @@ def fetch_odds(cache=None) -> tuple[object | None, list[str]]:
 
 
 def build_slate(pool, params, snapshot=None, *, cfg: dict | None = None, model_cfg: dict | None = None,
-                confirmed_at: dict[str, datetime] | None = None) -> tuple[SlateSpec, list[str]]:
+                confirmed_at: dict[str, datetime] | None = None, now: datetime | None = None) -> tuple[SlateSpec, list[str]]:
     """pool.games is keyed "AWAY@HOME" in DK codes. confirmed_at: game key -> latest goalie
-    confirmation time (None until C7 supplies it)."""
+    confirmation time (None until C7 supplies it). A snapshot older than market.max_age_h at `now`
+    is not used: the NHL partner feed keeps an old lastUpdatedUTC when it is not refreshed (seen
+    2026-08-28 on a 2026-09-29 slate), and a month-old line is not a price."""
     from nhl_dfs.models.rates import load_model_config
 
     cfg = cfg or market.load_sim_config()
     model_cfg = model_cfg or load_model_config()
     pairs = {k: (g.home, g.away) for k, g in pool.games.items()}
+    now = now or datetime.now(timezone.utc)
+    notes: list[str] = []
+    if snapshot is not None:
+        age_h = (now - snapshot.as_of_utc).total_seconds() / 3600.0
+        limit = float(cfg["market"]["max_age_h"])
+        if age_h > limit:
+            notes.append(f"odds snapshot is {age_h / 24:.1f} days old (limit {limit:g} h): not used, every game takes the model")
+            snapshot = None
     matched, why = market.match_odds(snapshot, pairs)
     specs, lines = [], []
     confirmed_at = confirmed_at or {}
@@ -51,5 +61,5 @@ def build_slate(pool, params, snapshot=None, *, cfg: dict | None = None, model_c
         reason = why.get(key)
         lines.append(f"{key}: {gr.source}{' STALE' if gr.stale else ''} lambda {gr.lambda_home:.2f}/{gr.lambda_away:.2f}, "
                      f"P(home win) {gr.p_home_win:.3f}, total {gr.e_total:.2f}, P(regulation tie) {gr.p_ot:.3f}"
-                     + (f" [{reason}]" if reason and gr.source == "MODEL" else "") + (f" [{detail}]" if detail else ""))
-    return SlateSpec(specs, pool.mode.value, cfg, model_cfg), lines
+                     + (f" [{reason}]" if reason and gr.source == "MODEL" and reason != "no odds snapshot" else "") + (f" [{detail}]" if detail else ""))
+    return SlateSpec(specs, pool.mode.value, cfg, model_cfg), notes + lines

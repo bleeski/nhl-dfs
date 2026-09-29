@@ -131,3 +131,28 @@ def test_match_odds_uses_only_verified_codes():
         assert "unverified" in why["DAL@WPG"]
     assert "unverified" in why["X@Y"]
     assert market.match_odds(None, games)[1]["X@Y"] == "no odds snapshot"
+
+
+def test_slate_uses_a_fresh_snapshot_for_verified_games_and_refuses_an_old_one():
+    from conftest import MINI
+    from nhl_dfs.intake.salary import read_salary
+    from nhl_dfs.sim.slate import build_slate
+    from sim_helpers import synthetic_params
+
+    pool = read_salary(MINI / "classic" / "DKSalaries.csv")
+    teams = sorted({g.home for g in pool.games.values()} | {g.away for g in pool.games.values()})
+    params = synthetic_params(tuple(teams))
+    game_odds = GameOdds("1", "EDM", "VAN", None, -130, 110, None, None, None, 6.0, -105, -115, None, None)
+    now = datetime(2026, 9, 29, 12, 0, tzinfo=timezone.utc)
+    fresh = OddsSnapshot(now - timedelta(hours=2), "source", "book", "nhl_partner_odds", [game_odds])
+    slate, lines = build_slate(pool, params, fresh, now=now)
+    by_key = {g.key: g for g in slate.games}
+    assert by_key["VAN@EDM"].rates.source == "MARKET"
+    assert by_key["VAN@EDM"].rates.p_home_win == pytest.approx(market.implied(-130, 110)[0], abs=0.01)
+    others = [g for k, g in by_key.items() if k != "VAN@EDM"]
+    assert others and all(g.rates.source == "MODEL" for g in others)
+    assert len(lines) == len(pool.games)
+    old = OddsSnapshot(now - timedelta(days=32), "source", "book", "nhl_partner_odds", [game_odds])
+    slate, lines = build_slate(pool, params, old, now=now)
+    assert all(g.rates.source == "MODEL" for g in slate.games)
+    assert "days old" in lines[0]
