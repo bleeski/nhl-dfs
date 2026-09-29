@@ -19,6 +19,7 @@ ttl_s:
   nhl_boxscore: 3600
   nhl_gamelog: 21600
   nhl_report: 21600
+  nhl_goalie_report: 21600
   nhl_partner_odds: 600
   covers: 600
   dailyfaceoff: 600
@@ -33,6 +34,7 @@ urls:
   nhl_boxscore: "https://api-web.nhle.com/v1/gamecenter/{game_id}/boxscore"
   nhl_gamelog: "https://api-web.nhle.com/v1/player/{nhl_id}/game-log/{season}/{game_type}"
   nhl_report: "https://api.nhle.com/stats/rest/en/skater/{report}?isAggregate=false&isGame=true&start={start}&limit={limit}&cayenneExp={exp}"
+  nhl_goalie_report: "https://api.nhle.com/stats/rest/en/goalie/{report}?isAggregate=false&isGame=true&start={start}&limit={limit}&cayenneExp={exp}"
   nhl_partner_odds: "https://api-web.nhle.com/v1/partner-game/US/now"
   covers: "https://www.covers.com/sport/hockey/nhl/odds"
   df_goalies: "https://www.dailyfaceoff.com/starting-goalies"
@@ -40,3 +42,39 @@ urls:
 
 report_page_limit: 100
 covers_preferred_books: ["DraftKings", "FanDuel", "BetMGM"]
+
+# MoneyPuck (C4, flag 6: personal DFS use accepted with attribution). Terms on
+# https://moneypuck.com/data.htm, read 2026-09-28: "free to use for non-commercial purposes",
+# credit MoneyPuck.com wherever its data is an input, and "Non-approved scraping ... will be
+# blocked". Only the files listed on that page are downloaded; data/history/moneypuck.py refuses
+# any (kind, level) not listed here. {season} is MoneyPuck's start year (2025 = 2025-26).
+moneypuck:
+  enabled: true
+  attribution: "Includes data from MoneyPuck.com (moneypuck.com/data.htm), used for non-commercial personal analysis."
+  raw_root: data/raw/moneypuck
+  max_age_s: 86400
+  listed:
+    skaters:
+      game: "https://peter-tanner.com/moneypuck/downloads/seasonPlayersSummary/skaters/{season}.zip"
+      season: "https://moneypuck.com/moneypuck/playerData/seasonSummary/{season}/regular/skaters.csv"
+    goalies:
+      game: "https://peter-tanner.com/moneypuck/downloads/seasonPlayersSummary/goalies/{season}.zip"
+      season: "https://moneypuck.com/moneypuck/playerData/seasonSummary/{season}/regular/goalies.csv"
+    lines:
+      game: "https://peter-tanner.com/moneypuck/downloads/seasonPlayersSummary/lines/{season}.zip"
+      season: "https://moneypuck.com/moneypuck/playerData/seasonSummary/{season}/regular/lines.csv"
+    teams:
+      game: "https://moneypuck.com/moneypuck/playerData/careers/gameByGame/all_teams.csv"  # every season in one file
+      season: "https://moneypuck.com/moneypuck/playerData/seasonSummary/{season}/regular/teams.csv"
+    shots:
+      game: "https://peter-tanner.com/moneypuck/downloads/shots_{season}.zip"
+  # Kinds the history backfill downloads (teams and shots load on demand; not needed before C5).
+  backfill_kinds: [skaters, goalies, lines]
+
+# History backfill (C4). Runs outside any slate clock with its own call budget.
+history:
+  store_root: data/features/history
+  max_calls_per_backfill: 400
+  window_days: 21        # report date window; split when a window reaches total_cap
+  total_cap: 10000       # the NHL stats REST reports total at most this; treat as possibly truncated
+  crosscheck_boxscores_per_season: 2

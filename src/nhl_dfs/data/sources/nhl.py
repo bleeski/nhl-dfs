@@ -252,12 +252,17 @@ REPORT_FIELDS = {
     "realtime": ("playerId", "gameId", "gameDate", "blockedShots", "emptyNetGoals"),
     "summary": ("playerId", "gameId", "gameDate", "goals", "assists", "shots", "ppPoints", "shPoints"),
 }
+GOALIE_REPORT_FIELDS = {
+    "summary": ("playerId", "gameId", "gameDate", "teamAbbrev", "gamesStarted", "wins", "losses", "otLosses",
+                "saves", "shotsAgainst", "goalsAgainst", "shutouts", "timeOnIce"),
+}
 
 
-def parse_report_page(data: Any, report: str) -> tuple[list[dict], int]:
+def parse_report_page(data: Any, report: str, fields: dict | None = None) -> tuple[list[dict], int]:
+    fields = fields if fields is not None else REPORT_FIELDS
     _require(data, ("data", "total"), f"{report} report")
     for row in data["data"]:
-        _require(row, REPORT_FIELDS[report], f"{report} row")
+        _require(row, fields[report], f"{report} row")
     return list(data["data"]), int(data["total"])
 
 
@@ -267,26 +272,61 @@ def skater_report(
     date_to: date | str,
     *,
     cache: HttpCache | None = None,
+    limit: int | None = None,
 ) -> list[dict]:
-    """Per-game rows for every skater, paginated by start/limit until total is reached."""
-    if report not in REPORT_FIELDS:
-        raise ValueError(f"unknown report {report!r}")
+    """Per-game rows for every skater, paginated by start/limit until total is reached.
+    limit=-1 asks for every row in one call (the history backfill); the caller must then check
+    the reported total against the stats API's cap."""
+    return _report("skater", report, date_from, date_to, cache=cache, limit=limit)
+
+
+def goalie_report(report: Literal["summary"], date_from: date | str, date_to: date | str, *,
+                  cache: HttpCache | None = None, limit: int | None = None) -> list[dict]:
+    """Per-game goalie rows (decisions, saves, shots against): the goalie side of the backfill."""
+    return _report("goalie", report, date_from, date_to, cache=cache, limit=limit)
+
+
+def report_window(entity: str, report: str, date_from: date | str, date_to: date | str, *,
+                  cache: HttpCache | None = None) -> tuple[list[dict], int]:
+    """One limit=-1 call for a date window: (rows, reported total)."""
+    fields = REPORT_FIELDS if entity == "skater" else GOALIE_REPORT_FIELDS
+    if report not in fields:
+        raise ValueError(f"unknown {entity} report {report!r}")
     cache = cache or default_cache()
     cfg = cache.config
+    url = _report_url(cfg, entity, report, date_from, date_to, 0, -1)
+    source = "nhl_report" if entity == "skater" else "nhl_goalie_report"
+    f = cache.get_json(url, source=source, ttl_s=cfg["ttl_s"][source],
+                       schema=lambda d: parse_report_page(d, report, fields))
+    return parse_report_page(f.data, report, fields)
+
+
+def _report_url(cfg: dict, entity: str, report: str, date_from, date_to, start: int, limit: int) -> str:
     d0 = date_from if isinstance(date_from, str) else date_from.isoformat()
     d1 = date_to if isinstance(date_to, str) else date_to.isoformat()
     exp = quote(f'gameDate>="{d0}" and gameDate<="{d1}"')
-    limit = int(cfg.get("report_page_limit", 100))
+    key = "nhl_report" if entity == "skater" else "nhl_goalie_report"
+    return cfg["urls"][key].format(report=report, start=start, limit=limit, exp=exp)
+
+
+def _report(entity: str, report: str, date_from, date_to, *, cache: HttpCache | None, limit: int | None) -> list[dict]:
+    fields = REPORT_FIELDS if entity == "skater" else GOALIE_REPORT_FIELDS
+    if report not in fields:
+        raise ValueError(f"unknown report {report!r}")
+    cache = cache or default_cache()
+    cfg = cache.config
+    page_limit = int(limit if limit is not None else cfg.get("report_page_limit", 100))
+    source = "nhl_report" if entity == "skater" else "nhl_goalie_report"
     rows: list[dict] = []
     start = 0
     while True:
-        url = cfg["urls"]["nhl_report"].format(report=report, start=start, limit=limit, exp=exp)
-        f = cache.get_json(url, source="nhl_report", ttl_s=cfg["ttl_s"]["nhl_report"],
-                           schema=lambda d: parse_report_page(d, report))
-        page, total = parse_report_page(f.data, report)
+        url = _report_url(cfg, entity, report, date_from, date_to, start, page_limit)
+        f = cache.get_json(url, source=source, ttl_s=cfg["ttl_s"][source],
+                           schema=lambda d: parse_report_page(d, report, fields))
+        page, total = parse_report_page(f.data, report, fields)
         rows.extend(page)
         start += len(page)
-        if not page or start >= total:
+        if not page or start >= total or page_limit < 0:
             return rows
 
 
