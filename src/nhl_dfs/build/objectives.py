@@ -6,7 +6,8 @@ plus the user's own other entries in that contest (own copies count as copies):
 
     G = weight strictly above the score, E = weight tied with it, T = E + 1 (the entry itself)
     the entry occupies positions G+1 .. G+T; those positions' prizes are pooled and divided by T,
-    rounded down to the cent (DK Terms of Use, docs/payouts.md).
+    rounded down to the cent. DK's Terms of Use (docs/payouts.md, checked 2026-09-29) verify only
+    the even split; the pooling and the round-down are the plan's assumption ([BEN] flag 9).
 
 The division is integer cents with floor division, which equals Decimal ROUND_DOWN for the
 non-negative prizes here (`split_tie` is the Decimal reference; tests compare the two).

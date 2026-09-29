@@ -10,6 +10,14 @@ captain_max_share: 0.4
 # Classic: at most this many people shared by any two entries (card C2b).
 classic_max_overlap: 7
 
+# Scenario portfolio caps (C8, build/exposure.py; plan section 7 "Portfolio policies"). Starting
+# defaults for tournament entries only (cash entries are exempt); adjustable search preferences,
+# not DK rules or proven optimal caps. Below min_entries the portfolio is chosen deliberately.
+tournament:
+  min_entries: 20
+  classic: {person: 0.45, goalie: 0.35}  # the plan's 30% primary line core cap is not enforced in C8 (recorded)
+  showdown: {person: 0.60, captain: 0.25}
+
 # UTIL late-swap preference (Classic). Inside a lineup the UTIL always holds the latest-starting
 # skater a legal slot swap allows (objective-neutral). Across candidates, one within this many
 # points of the best allowed candidate is preferred when its UTIL starts later.
