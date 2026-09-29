@@ -199,7 +199,11 @@ def pinned_cli(monkeypatch):
 
     from nhl_dfs import cli
 
-    monkeypatch.setattr(run_mod, "run_slate", functools.partial(run_mod.run_slate, clock=lambda: BEFORE))
+    # C8: `run` without --baseline now adds the scenario pass; small scenario counts keep this CLI test
+    # fast (the pass itself is tested in tests/test_run_full.py).
+    monkeypatch.setattr(run_mod, "run_slate", functools.partial(
+        run_mod.run_slate, clock=lambda: BEFORE,
+        scenario_n={"design": 300, "selection": 600, "referee": 600, "field_target": 300}))
     return cli
 
 
