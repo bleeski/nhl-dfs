@@ -303,11 +303,12 @@ def test_refresh_resimulates_changed_games_and_persists_them_for_the_next_late_s
     got, _ = sc.find(tmp / "runs", f.run.run_id)
     assert got is not None and got.run_id == f.run.run_id  # the child carries the updated draws
     assert got.n("selection") == o["scenario"]["n"]["selection"]
-    # from the refresh child, the same news changes no game any more
-    s = _swap(tmp, f.run.run_id, f.run.version_file(1), as_of=BEFORE, salary=fresh, objective="scenario")
-    assert s.ok
-    if s.manifest["objective"]["kind"] == "scenario":
-        assert s.manifest["objective"]["scenario"]["games_resimulated"] == []
+    # a second refresh from the child with the same news finds its persisted hashes current: nothing re-simulated
+    f2 = refresh.run(f.run.run_id, offline=True, runs_root=tmp / "runs", outputs_root=tmp / "outputs", salary_path=fresh,
+                     as_of=BEFORE)
+    o2 = f2.manifest["objective"]
+    assert f2.ok and o2["kind"] == "scenario" and o2["scenario"]["cache_run"] == f.run.run_id
+    assert o2["scenario"]["games_resimulated"] == []
 
 
 def test_play_probability_is_priced_once():
@@ -318,9 +319,20 @@ def test_play_probability_is_priced_once():
     def person(p_dress):
         return NS(goalie=None, opportunity=NS(p_dress=p_dress))
 
-    t0 = NS(persons={"a": person(0.9), "b": person(0.9), "c": person(0.9)})
-    t1 = NS(persons={"a": person(0.9), "b": person(0.3), "c": person(0.95)})  # roles lowered b (not on the lineup)
-    roles = NS(persons={"a": NS(p_play=0.85), "b": NS(p_play=0.85), "c": NS(p_play=1.0)})
+    def role(p, team="AAA", listed=False, group="F"):
+        return NS(p_play=p, team=team, df_listed=listed, group=group)
+
+    t0 = NS(persons={k: person(0.98) for k in "abcdeg"})
+    t1 = NS(persons={"a": person(0.973), "b": person(0.3), "c": person(0.95), "d": person(0.98), "e": person(0.98),
+                     "g": person(0.98)})
+    roles = NS(persons={"a": role(0.85, listed=True),  # on the lineup, dressing drifted down: still masked
+                        "b": role(0.85),  # absent from a usable lineup: roles priced it, no mask on top
+                        "c": role(1.0, listed=True),  # plays
+                        "d": role(0.85, team="BBB"),  # no usable page for BBB: masked
+                        "e": role(0.85, team="CCC", group="G"),  # goalie, another starter named: priced by p_start
+                        "g": role(0.85, team="DDD", group="G")},  # goalie, no report naming anyone else: masked
+               team_pages={"AAA": {"usable": True}, "BBB": {"usable": False}},
+               goalies={"CCC": NS(confirmed=None, named="other|CCC|G"), "DDD": NS(confirmed=None, named=None)})
     got, notes = play_probs(t0, t1, roles)
-    assert got == {"a": 0.85}  # b's absence is already in his dressing; c plays
+    assert got == {"a": 0.85, "d": 0.85, "g": 0.85}
     assert any("not stacked" in n for n in notes)

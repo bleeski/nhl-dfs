@@ -107,22 +107,33 @@ def _bounded(fn: Callable, budget_s: float, name: str):
 
 
 def play_probs(table0, table, roles) -> tuple[dict[str, float], list[str]]:
-    """person_key -> play probability for the one participation pricing (see the module docstring)."""
+    """person_key -> play probability for the one participation pricing (see the module docstring). A person
+    is left unmasked only when roles priced his absence from evidence: a skater missing from his team's usable
+    projected lineup (apply_state moved his dressing toward 0), or a goalie whose team report names or confirms
+    another starter. A listed player whose dressing merely drifted (toward df_listed_p, or a budget cut) is
+    still masked. table0 is kept for the caller's comparison and reports."""
     out, skipped = {}, []
     for k, r in roles.persons.items():
         p = float(r.p_play)
         if k not in table.persons or p >= 1.0:
             continue
-        a, b = table0.persons.get(k), table.persons[k]
-        if a is not None and _avail(b) < _avail(a) - 1e-9:
+        if _absence_priced(k, r, roles):
             skipped.append(k)
             continue
         out[k] = p
     notes = [f"participation priced once: {len(out)} person(s) at their role-state play probability"]
     if skipped:
-        notes.append(f"{len(skipped)} person(s) with p_play < 1 not masked: roles already lowered their dressing or start "
-                     "probability (a projected-lineup absence), so the mask is not stacked")
+        notes.append(f"{len(skipped)} person(s) with p_play < 1 not masked: absent from a usable projected lineup (or another "
+                     "goalie named), which roles already priced in dressing or start probability; the mask is not stacked")
     return out, notes
+
+
+def _absence_priced(k: str, r, roles) -> bool:
+    if r.group == "G":
+        g = roles.goalies.get(r.team)
+        return g is not None and any(x is not None and x != k for x in (g.confirmed, g.named))
+    page = roles.team_pages.get(r.team)
+    return bool(page and page.get("usable") and not r.df_listed)
 
 
 def _avail(pp) -> float:
@@ -369,7 +380,7 @@ class ScenarioObjective:
     def policy(self, entry_id: str, cid: str) -> str:
         fam = self.cache.contests[cid].family
         base = self.fam_cfg["families"][fam]["selection"]
-        if self.live is not None:
+        if self.live is not None and fam not in ("cash", "satellite"):  # C8: cash and satellite ignore ownership
             state = self.live.entry_state.get(entry_id)
             if state == "TRAILING":
                 return "dup_first"

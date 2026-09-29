@@ -78,13 +78,14 @@ def test_the_trailing_policy_applies_only_with_a_snapshot():
     from nhl_dfs.models.contests import load_contest_families
 
     so = ScenarioObjective.__new__(ScenarioObjective)
-    so.cache = NS(contests={"c1": NS(family="large_gpp")})
+    so.cache = NS(contests={"c1": NS(family="large_gpp"), "c2": NS(family="cash")})
     so.fam_cfg = load_contest_families()
     so.live = None
     assert so.policy("e1", "c1") == "own_then_dup"
     so.live = live.Conditioned(_scen(), live.CONDITIONED, {"e1": "TRAILING", "e2": "AHEAD"})
     assert so.policy("e1", "c1") == "dup_first" and so.policy("e2", "c1") == "mean"
     assert so.policy("e3", "c1") == "own_then_dup"
+    assert so.policy("e1", "c2") == "mean"  # cash ignores ownership even when trailing
 
 
 def _live_snapshot(r, as_of, rank):
@@ -115,5 +116,9 @@ def test_a_trailing_entry_prefers_lower_duplication_only_with_a_snapshot(full_cl
     assert s.ok and s.manifest["live"]["LIVE_STATUS"] == live.CONDITIONED
     rec = s.manifest["objective"]["scenario"]["live"]
     assert set(rec["entry_state"].values()) == {"TRAILING"}
-    picks = [e["selection"] for e in s.manifest["objective"]["entries"].values() if e["selection"].get("candidates")]
-    assert picks and all(p["policy"] == "dup_first" for p in picks)
+    fam = {c["contest_id"]: c["family"] for c in r.manifest["scenario"]["contests"]}
+    picks = [(fam[e["contest_id"]], e["selection"]) for e in s.manifest["objective"]["entries"].values()
+             if e["selection"].get("candidates")]
+    assert any(f == "large_gpp" for f, _ in picks)
+    for f, p in picks:
+        assert p["policy"] == ("mean" if f in ("cash", "satellite") else "dup_first")

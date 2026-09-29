@@ -12,8 +12,9 @@ re-solved. Then:
   game's score is the observation alone. An approximation of "remaining upside": the draw is not
   re-conditioned on the game state (recorded);
 - each entry is TRAILING when its current rank is outside its contest's cash line, else AHEAD. A
-  TRAILING entry's tie band prefers lower duplication (policy dup_first); an AHEAD entry's prefers the
-  higher metric (mean). Outside the band the family objective still decides.
+  TRAILING tournament entry's tie band prefers lower duplication (policy dup_first); an AHEAD one's prefers
+  the higher metric (mean). Cash and satellite keep their own policy (they ignore ownership, C8). Outside
+  the band the family objective still decides.
 """
 
 from __future__ import annotations
