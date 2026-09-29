@@ -322,7 +322,8 @@ class ScenarioObjective:
 
         teams = {c for g in self.slate.games if g.key in self.resim for c in (g.home, g.away)}
         for k in self.keys:
-            if self.pool.persons[k].team in teams:
+            rows = self.pool.persons[k]
+            if (rows.classic or rows.flex or rows.cpt).team in teams:
                 base[:, col[k]] = 0
         new = np.concatenate([score.base_tenths(o) for o in
                               game.iter_chunks(self.slate, self.table, n, self.cache.seed, purpose, self.resim)], axis=0)
