@@ -45,6 +45,12 @@ def _is_captain(pool: SalaryPool, role_id: str) -> bool:
     return pool.mode is Mode.SHOWDOWN and "CPT" in pool.by_role_id[role_id].roster_positions
 
 
+def objective(pool: SalaryPool, proj: Projection) -> dict[str, float]:
+    """Solver objective in DK points per role_id: the projection mean, times 1.5 on CPT rows only."""
+    return {r.role_id: proj.mean_tenths(r.role_id) / 10.0 * (CAPTAIN_MULTIPLIER if _is_captain(pool, r.role_id) else 1.0)
+            for r in pool.rows}
+
+
 def lineup_mean_tenths(pool: SalaryPool, proj: Projection, role_ids: Iterable[str]) -> float:
     """Lineup mean in tenths, with the Captain row at 1.5x."""
     return sum(proj.mean_tenths(r) * (CAPTAIN_MULTIPLIER if _is_captain(pool, r) else 1.0) for r in role_ids)

@@ -66,7 +66,7 @@ from nhl_dfs.data.sources import dk_public
 from nhl_dfs.export.writer import write_entries
 from nhl_dfs.intake.entries import EntriesFile, read_entries
 from nhl_dfs.intake.salary import PersonRows, SalaryPool, parse_game_info, read_salary
-from nhl_dfs.models.priors import prior_objective, prior_table
+from nhl_dfs.models.projection import PriorProjection, objective as objective_from
 from nhl_dfs.referee.check_file import check_file
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -223,6 +223,34 @@ def _fallback_bank(pool, objective, n_entries, runtime, why) -> SearchOutcome:
     return SearchOutcome(bank, SearchStatus.FEASIBLE, "feasible", f"{why}; {len(bank)} fallback lineup(s)")
 
 
+# -- projection (C5) ----------------------------------------------------------------------
+
+def slate_as_of(pool: SalaryPool, clock) -> "date":
+    """Features use games strictly before this date: the earlier of today and the first slate game
+    day, both in Eastern time (NHL game dates)."""
+    et = ZoneInfo("America/New_York")
+    today = clock().astimezone(et).date()
+    starts = [g.start_utc.astimezone(et).date() for g in pool.games.values()]
+    return min([today] + starts)
+
+
+def _projection(work: SalaryPool, pool: SalaryPool, clock, m: dict, messages: list[str]):
+    """Per-person ParamTable from stored history (C5), or the salary/APPG priors if it cannot be built."""
+    from nhl_dfs.models import params
+
+    as_of = slate_as_of(pool, clock)
+    try:
+        table = params.projection_for(work, as_of)
+    except Exception as exc:  # reported; the run continues on priors
+        messages.append(f"per-person params unavailable ({type(exc).__name__}: {str(exc)[:120]}); using priors")
+        m["model"] = {"as_of": as_of.isoformat(), "status": ModelStatus.PRIOR.value, "error": type(exc).__name__}
+        return PriorProjection(work)
+    m["statuses"]["MODEL_STATUS"] = table.source().value
+    m["model"] = {"as_of": as_of.isoformat(), "status": table.source().value, "counts": table.counts(),
+                  "notes": table.notes[:5]}
+    return table
+
+
 # -- run -----------------------------------------------------------------------------------
 
 @dataclass
@@ -364,7 +392,8 @@ def run_slate(
     work = pool_without(pool, excluded)
     timings["intake_s"] = round(time.perf_counter() - t_start, 3)
 
-    objective = prior_objective(work, prior_table(work))
+    proj = _projection(work, pool, clock, m, messages)
+    objective = objective_from(work, proj)
     t = time.perf_counter()
     search = build_bank(work, objective, len(entries.entries), runtime, seed=seed)
     timings["candidates_s"] = round(time.perf_counter() - t, 3)
@@ -396,7 +425,7 @@ def run_slate(
     write_manifest(run, m)  # durable before any network call
 
     # Phase B ---------------------------------------------------------------------------------
-    after_b = {"work": work, "sha": v1["sha256"], "bank": search.bank, "details": {}}
+    after_b = {"work": work, "sha": v1["sha256"], "bank": search.bank, "details": {}, "proj": proj}
     if offline:
         m["news"]["phase_b_summary"] = "skipped (offline)"
     else:
@@ -404,6 +433,7 @@ def run_slate(
         after_b = _phase_b(run, entries, pool, work, a, objective, excluded, runtime, caps, seed, slate_id,
                            outputs_root, v1, starts, cache, m, messages)
         after_b.setdefault("bank", search.bank)
+        after_b["proj"] = proj
         timings["phase_b_s"] = round(time.perf_counter() - t, 3)
     if baseline_only:
         return finish()
@@ -618,13 +648,13 @@ def _provisional_pass(run, entries, pool, after_b, st, starts, offline, runtime,
         messages.append(f"prefit skipped: {exc}")
 
     statuses = {rid: p for rid, (p, _) in st.items() if rid in work.by_role_id}
-    proj = PriorProjection(work)
+    proj = after_b.get("proj") or PriorProjection(work)
     fb = prov.build_fields(work, proj, contexts, seed=seed, statuses=statuses, own_cfg=own_cfg)
     atomic_write(run.path / "field.json",
                  json.dumps(prov.field_summary(work, fb, contexts), indent=2).encode("utf-8"))
     bank = after_b.get("bank")
     if not bank:
-        bank = build_bank(work, prior_objective(work, prior_table(work)), len(entries.entries), runtime,
+        bank = build_bank(work, objective_from(work, proj), len(entries.entries), runtime,
                           seed=seed + 2).bank
     if not bank:
         raise RuntimeError("no candidate bank for the provisional pass")

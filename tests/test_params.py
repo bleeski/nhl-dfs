@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pandas as pd
@@ -71,6 +71,8 @@ def test_statuses_per_person_and_run_level(cfg):
     assert all(t2.persons[pk].source is ModelStatus.HISTORY for pk in xw2)
     none = params.build(pool, {}, AS_OF, cfg, features=features([]), line_games=pd.DataFrame())
     assert none.source() is ModelStatus.PRIOR
+    pri = prior_table(pool)
+    assert all(none.mean_tenths(r) == pri[r].mean_tenths for r in pool.by_role_id)  # all-prior run = C2 baseline
 
 
 def test_prior_person_is_dress_weighted_prior_table(cfg):
@@ -111,3 +113,35 @@ def test_call_up_role_state_reaches_the_person(cfg):
     t = params.build(pool, {}, AS_OF, cfg, features=features([]), line_games=pd.DataFrame(), roles=roles)
     o = t.persons[pk].opportunity
     assert o.source == "role" and o.toi_pp_s == cfg["roles"]["F"]["pp_unit_toi_s"][0]
+
+
+def test_run_reports_mixed_and_never_writes_identity_files(tmp_path, monkeypatch):
+    from conftest import mini_pair
+    from nhl_dfs.build.run import run_slate
+    from nhl_dfs.data.history import store as store_mod
+    from nhl_dfs.data.identity import crosswalk as cw
+    from test_nhl_reports import run as backfill_fixture
+
+    backfill_fixture(tmp_path, moneypuck=False)  # store holding 8 real skaters from 2025-10-09
+    monkeypatch.setattr(store_mod, "DEFAULT_ROOT", tmp_path / "a" / "store")
+    acc = tmp_path / "accepted.csv"
+    acc.write_bytes((",".join(cw.ACCEPTED_HEADER) + "\n" + ",".join(
+        [cw.key_sha("Connor McDavid", "EDM", "F"), "Connor McDavid", "EDM", "F", "8478449", "exact", "t"]) + "\n").encode())
+    monkeypatch.setattr(cw, "ACCEPTED_CSV", acc)
+    before = acc.read_bytes()
+    r = run_slate(*mini_pair("classic"), offline=True, baseline_only=True, out_root=tmp_path / "runs",
+                  outputs_root=tmp_path / "outputs", clock=lambda: datetime(2026, 9, 28, 18, 0, tzinfo=timezone.utc))
+    assert r.ok and r.statuses["MODEL_STATUS"] == "MIXED"
+    assert r.manifest["model"]["counts"]["MIXED"] + r.manifest["model"]["counts"]["HISTORY"] >= 1
+    assert r.manifest["model"]["as_of"] == "2026-09-28"
+    assert acc.read_bytes() == before and not (cw.PROPOSALS_JSON).exists()
+
+
+def test_slate_as_of_is_the_earlier_of_today_and_first_game():
+    from conftest import mini_pair
+    from nhl_dfs.build.run import slate_as_of
+    from nhl_dfs.intake.salary import read_salary
+
+    pool = read_salary(mini_pair("classic")[0])  # first game 2026-09-29 (ET)
+    assert slate_as_of(pool, lambda: datetime(2026, 9, 28, 18, tzinfo=timezone.utc)) == date(2026, 9, 28)
+    assert slate_as_of(pool, lambda: datetime(2026, 10, 3, 18, tzinfo=timezone.utc)) == date(2026, 9, 29)

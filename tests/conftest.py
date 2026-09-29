@@ -17,6 +17,25 @@ REAL = TESTS / "fixtures" / "real"
 HTTP = TESTS / "fixtures" / "http"
 
 
+REAL_ACCEPTED_CSV = TESTS.parent / "data" / "identity" / "accepted.csv"
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _no_real_history(tmp_path_factory):
+    """Point the history store and identity files at empty temp paths (C5), so results never
+    depend on whether this machine has run a backfill or seeded identities. Session scope, so it
+    is in place before any module-scoped fixture runs a slate."""
+    import nhl_dfs.data.history.store as store_mod
+    import nhl_dfs.data.identity.crosswalk as cw
+
+    root = tmp_path_factory.mktemp("no_history")
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(store_mod, "DEFAULT_ROOT", root / "store")
+        mp.setattr(cw, "ACCEPTED_CSV", root / "accepted.csv")
+        mp.setattr(cw, "PROPOSALS_JSON", root / "proposals.json")
+        yield
+
+
 @pytest.fixture(autouse=True)
 def _no_real_network(monkeypatch):
     """Any test that forgets to inject a transport fails instead of going online."""

@@ -14,6 +14,8 @@ A PRIOR person's mean is prior dress (or start) probability x models.priors.prio
 band population prior blended with DK APPG where shown: the no-history fallback Ben allows).
 That table is a per-game-played mean, so the probability puts PRIOR and history persons on one
 scale; the parameter row still holds the config position priors for C6.
+In a table where every person is PRIOR there is nothing to match, so the plain prior_table
+means are kept (the C2 baseline, unchanged).
 Run-level status: PRIOR if every person is PRIOR, HISTORY if every person is HISTORY, else MIXED.
 """
 
@@ -253,6 +255,12 @@ def build(pool: SalaryPool, crosswalk: dict[str, int], as_of: date, cfg: dict | 
             sd = math.sqrt(max(p_play * (v + m * m) - mean * mean, 0.0))
         pp.mean_tenths, pp.sd_tenths = int(round(mean)), max(1, int(round(sd)))
         persons[pk] = pp
+    if all(p.source is ModelStatus.PRIOR for p in persons.values()):
+        # Nothing to share a scale with: keep the plain priors, so an all-prior run is exactly the
+        # C2 baseline (dress / start weighting exists only to mix PRIOR and history persons).
+        for pk, pp in persons.items():
+            rid = next(x.role_id for x in (pool.persons[pk].classic, pool.persons[pk].flex, pool.persons[pk].cpt) if x)
+            pp.mean_tenths, pp.sd_tenths = pri[rid].mean_tenths, pri[rid].sd_tenths
     role_map = {row.role_id: row.person_key for row in pool.rows}
     return ParamTable(persons, role_map, as_of, list(features.notes))
 

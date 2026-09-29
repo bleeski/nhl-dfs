@@ -325,6 +325,13 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def run_clock(run_id: str):
+    """The UTC time a run id encodes (YYYYMMDD-HHMMSS-mode)."""
+    from datetime import datetime, timezone
+
+    return datetime.strptime(run_id[:15], "%Y%m%d-%H%M%S").replace(tzinfo=timezone.utc)
+
+
 def field_lines(summary: dict) -> list[str]:
     out = [summary.get("label", "PROVISIONAL")]
     for fam, f in summary["families"].items():
@@ -376,7 +383,14 @@ def cmd_field(args: argparse.Namespace) -> int:
         ctx = contests.resolve(entries)
         statuses = {r: p for r, (p, _) in st.items() if r in work.by_role_id}
         seed = int(pool.sha256[:8], 16)
-        fb = provisional.build_fields(work, PriorProjection(work), ctx, seed=seed, statuses=statuses)
+        from nhl_dfs.build.run import slate_as_of
+        from nhl_dfs.models import params as params_mod
+
+        try:
+            proj = params_mod.projection_for(work, slate_as_of(pool, lambda: run_clock(run.run_id)))
+        except Exception:  # history unavailable: the priors still give a field
+            proj = PriorProjection(work)
+        fb = provisional.build_fields(work, proj, ctx, seed=seed, statuses=statuses)
         summary = provisional.field_summary(work, fb, ctx)
         source = "sampled now from the run's inputs (offline, family priors)"
     print(f"field for run {args.run} ({source})")

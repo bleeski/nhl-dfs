@@ -118,9 +118,9 @@ def test_nhl_positions_l_r_map_to_forward():
 
 
 def test_committed_accepted_csv_is_header_only_or_generated():
-    from nhl_dfs.data.identity.crosswalk import ACCEPTED_CSV
+    from conftest import REAL_ACCEPTED_CSV  # the tracked file, not the per-test temp path
 
-    head = ACCEPTED_CSV.read_bytes().decode("utf-8").splitlines()[0]
+    head = REAL_ACCEPTED_CSV.read_bytes().decode("utf-8").splitlines()[0]
     assert head.split(",") == cw.ACCEPTED_HEADER
 
 
