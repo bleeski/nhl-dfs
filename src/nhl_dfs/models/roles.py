@@ -95,6 +95,7 @@ class RoleState:
     goalies: dict[str, GoalieRole] = field(default_factory=dict)
     team_pages: dict[str, dict] = field(default_factory=dict)  # DK team -> {updated_utc, age_h, usable, source, low_confidence}
     role_person: dict[str, str] = field(default_factory=dict)  # role_id -> person_key
+    team_games: dict[str, str] = field(default_factory=dict)  # DK team -> game key (AWAY@HOME)
     warnings: list[str] = field(default_factory=list)
     reports: list[str] = field(default_factory=list)  # informational lines (unmatched names, unverified codes, ...)
     goalie_path: str = "none"
@@ -201,6 +202,7 @@ def merge(dk, df_lines: dict[str, TeamLines] | None, df_goalies: list[GoalieRepo
 
     dk_of = _dk_of_nhl(pool.teams)
     game_of = _team_game(pool)
+    rs.team_games = {t: g[0] for t, g in game_of.items()}
     unverified = sorted(t for t in pool.teams if t not in dk_of.values())
     if unverified:
         rs.reports.append("DK team code not verified in config/teams.yaml, so no Daily Faceoff data is used for: " + ", ".join(unverified))

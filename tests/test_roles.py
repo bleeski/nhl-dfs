@@ -300,3 +300,19 @@ def test_role_state_satisfies_the_opportunity_role_interface():
     assert rs.ev_line and rs.pp_unit and set(rs.ev_line) <= set(rs.persons)
     o = opp_mod.prior_opportunity("F", MODEL_CFG, next(iter(rs.pp_unit)), rs)
     assert o.source == "role"
+
+
+def test_news_state_counts_only_usable_second_signals():
+    from nhl_dfs.build import news
+    from nhl_dfs.contracts.statuses import NewsState
+
+    assert news.state(None, POOL) is NewsState.NONE
+    nothing = merged(lines={}, reports=[], csv={RID["Brock Boeser"]: (Participation.QUESTIONABLE, "DTD")})
+    assert news.state(nothing, POOL) is NewsState.NONE  # DK status alone is intake data
+    partial = merged()  # VAN page and both goalie reports, but no EDM lines
+    assert news.state(partial, POOL) is NewsState.PARTIAL
+    edm = dataclasses.replace(VAN, team="EDM")
+    full = merged(lines={"VAN": VAN, "EDM": edm})
+    assert news.state(full, POOL) is NewsState.FULL
+    stale = merged(lines={"VAN": VAN, "EDM": edm}, now=VAN.updated_utc + timedelta(hours=30))
+    assert news.state(stale, POOL) is NewsState.PARTIAL  # goalie reports are still matched; the pages are too old
