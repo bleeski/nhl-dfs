@@ -1,0 +1,35 @@
+# Roles and news (C7, plan section 11). All values below are PLACEHOLDERS (engineering choices with no
+# measurement behind them yet) unless a comment says otherwise.
+
+# Age policy (plan section 11): projected lines are acceptable for modeling within 24 hours if no later
+# contrary news; older lines are reported and not used. Inside the last `low_confidence_min` minutes before
+# a team's start, lines older than `low_confidence_age_h` are flagged low confidence and that team is
+# listed first for a check.
+max_line_age_h: 24
+low_confidence_min: 60
+low_confidence_age_h: 12
+
+# Participation. DK OUT (mapped) is OUT. QUESTIONABLE (DK DTD, or a Daily Faceoff dtd / game-time
+# decision tag) carries this play probability, the same 0.85 as the provisional pass (flag 8). A
+# Daily Faceoff out / ir tag against a DK status that is not OUT is a conflict: a mixture with this
+# play probability until resolved, with a warning.
+p_play_questionable: 0.85
+p_play_conflict: 0.5
+
+# Dressing from Daily Faceoff lines. A skater on a fresh projected lineup moves toward df_listed_p by
+# weight w = df_weight x (1 - 0.5 x age / max_line_age_h); a skater not listed moves toward 0 by the same
+# weight. Team totals stay at the dress budget of config/model.yaml (12 F, 6 D), cut in this order: listed,
+# then other history players, then no-history players.
+df_weight: 0.7
+df_listed_p: 0.97
+
+# Goalies. CONFIRMED (the goalie page's strength name exactly "Confirmed" for this game) is 1 for the
+# named goalie. An unconfirmed named starter moves the rotation probabilities toward him by this weight
+# (the goalie page's projection; the team page's depth order alone is weaker). Two fresh sources that
+# name different unconfirmed starters are CONFLICTED: this split between them and the rotation.
+expected_weight: {next_data: 0.6, team_pages: 0.35}
+conflict_split: [0.4, 0.4, 0.2]   # first named, second named, rotation
+game_match_tolerance_s: 120       # a report belongs to a slate game only if its dateGmt equals the start
+
+# Overrides (models/overrides.py): line and unit capacity.
+capacity: {f_line: 3, d_pair: 2, pp_unit: 5}

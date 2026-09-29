@@ -61,7 +61,7 @@ class TeamLines:
     updated_utc: datetime
     source_name: str | None
     source_url: str | None
-    f_lines: list[list[DFPlayer]]
+    f_lines: list[list[DFPlayer]]  # f1..f4 in order; an absent group is an empty list, so the index is the line number - 1
     d_pairs: list[list[DFPlayer]]
     pp1: list[DFPlayer]
     pp2: list[DFPlayer]
@@ -179,7 +179,7 @@ def parse_team_page(html: str, slug: str | None = None) -> TeamLines:
     return TeamLines(
         slug=slug or "", team=codes.get("nhl"), team_name=str(c.get("teamName") or ""), updated_utc=parse_iso_utc(c["updatedAt"]),
         source_name=c.get("sourceName"), source_url=c.get("source"),
-        f_lines=[g for g in (grp(k) for k in EV_GROUPS) if g], d_pairs=[g for g in (grp(k) for k in D_GROUPS) if g],
+        f_lines=[grp(k) for k in EV_GROUPS], d_pairs=[grp(k) for k in D_GROUPS if k != "d4" or "d4" in groups],
         pp1=grp("pp1"), pp2=grp("pp2"), pk1=grp("pk1"), pk2=grp("pk2"), goalies=grp("g"), injuries=sorted(injuries),
         players=by_id,
     )
