@@ -22,6 +22,12 @@ sampled field per contest family -> provisional leverage selection -> referee ->
 next version with a compare-and-swap on the last published sha. Any failure leaves the current
 version in place and is recorded. Every figure it adds is labeled provisional.
 
+Scenario pass (C8; `scenario=True`, which `nhl.ps1 run` without --baseline sets): after the
+provisional pass, the slate is simulated (design, selection and referee seed streams), candidates
+are discovered and the portfolio is chosen against each contest's family objective, the risk
+budget and the caps (build/scenario_pass.py), and the next version is published with a
+compare-and-swap. Any failure leaves the current version in place and is recorded.
+
 A run refuses to publish once any slate game has started: late swap is C2c's job.
 """
 
@@ -303,9 +309,12 @@ def run_slate(
     seed: int | None = None,
     runtime: dict | None = None,
     caps: Caps | None = None,
+    scenario: bool = False,
+    scenario_n: dict | None = None,
 ) -> RunResult:
     """Build, check and publish the baseline, then (unless baseline_only) the provisional
-    leverage version. outputs_root defaults to <out_root>/../outputs."""
+    leverage version, then (with scenario=True) the scenario version. outputs_root defaults to
+    <out_root>/../outputs. scenario_n overrides config/risk.yaml scenario counts (tests)."""
     clock = clock or (lambda: datetime.now(timezone.utc))
     runtime = runtime or load_runtime_config()
     caps = caps or load_caps()
@@ -451,13 +460,34 @@ def run_slate(
 
     # Provisional pass (C3) -------------------------------------------------------------------
     t = time.perf_counter()
+    prov = None
     try:
-        _provisional_pass(run, entries, pool, after_b, st, starts, offline, runtime, caps, seed, slate_id,
-                          outputs_root, cache, m, messages, out_root)
+        prov = _provisional_pass(run, entries, pool, after_b, st, starts, offline, runtime, caps, seed, slate_id,
+                                 outputs_root, cache, m, messages, out_root)
     except Exception as exc:  # the current version stays; never raised out of the run
         m["failed"].append(f"provisional pass: {type(exc).__name__}: {str(exc)[:160]}")
         messages.append(f"provisional pass failed ({type(exc).__name__}); the previous version stays current")
     timings["provisional_s"] = round(time.perf_counter() - t, 3)
+    if not scenario:
+        return finish()
+
+    # Scenario pass (C8) -----------------------------------------------------------------------
+    from nhl_dfs.build.scenario_pass import run_scenario_pass
+
+    t = time.perf_counter()
+    try:
+        run_scenario_pass(run=run, entries=entries, pool=pool, work=after_b["work"], proj=after_b["proj"], st=st,
+                          starts=starts, offline=offline, runtime=runtime, seed=seed, slate_id=slate_id,
+                          outputs_root=outputs_root, cache=cache, m=m, messages=messages, prov=prov, v1_assignment=a,
+                          expect_sha=m["versions"][-1]["sha256"], clock=clock, publish_fn=_export_and_publish,
+                          set_fields_fn=_set_assignment_fields, scenario_n=scenario_n)
+    except Exception as exc:  # the current version stays; never raised out of the run
+        import traceback
+
+        m["failed"].append(f"scenario pass: {type(exc).__name__}: {str(exc)[:160]}")
+        m.setdefault("scenario", {})["error"] = traceback.format_exc()[-1500:]
+        messages.append(f"scenario pass failed ({type(exc).__name__}); the previous version stays current")
+    timings["scenario_s"] = round(time.perf_counter() - t, 3)
     return finish()
 
 
@@ -622,7 +652,9 @@ def _fetch_contest_details(contest_ids, cache, budget_s: float) -> tuple[dict, l
 
 
 def _provisional_pass(run, entries, pool, after_b, st, starts, offline, runtime, caps, seed, slate_id,
-                      outputs_root, cache, m, messages, out_root) -> None:
+                      outputs_root, cache, m, messages, out_root) -> dict:
+    """Returns what the scenario pass (C8) builds on: contexts, fields, FIELD_CALIBRATION, the
+    provisional assignment and the candidate bank (also when its own publish failed)."""
     import json
 
     from nhl_dfs.build import provisional as prov
@@ -711,11 +743,12 @@ def _provisional_pass(run, entries, pool, after_b, st, starts, offline, runtime,
     for fam, f in fields.items():
         if f["degraded"]:
             messages.append(f"field for {fam} is short: {f['n_draws']} of {f['n_requested']} draws; ownership is degraded")
+    state = {"contexts": contexts, "fb": fb, "field_cal": field_cal, "assignment": a_p, "bank": bank}
     vp = _export_and_publish(run, entries, pool, a_p, slate_id, outputs_root, m, messages, phase="P",
                              expect=after_b["sha"])
     if vp is None:
         m["failed"].append("provisional pass: its file was not published; the previous version stays current")
-        return
+        return state
     m["provisional"]["version"] = vp["version"]
     _set_assignment_fields(m, a_p, pool)
     m["statuses"].update(evidence)
@@ -724,3 +757,4 @@ def _provisional_pass(run, entries, pool, after_b, st, starts, offline, runtime,
         m["statuses"]["DELIVERY_STATUS"] = DeliveryStatus.DEGRADED_REVIEW.value
     m["worked"].append(f"provisional pass published v{vp['version']} (PROVISIONAL, MODEL_STATUS={proj.source().value}, "
                        f"PAYOUT_SOURCE={payout.value})")
+    return state

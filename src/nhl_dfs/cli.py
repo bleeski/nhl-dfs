@@ -2,7 +2,7 @@
 
 `status`, `verify`, `probe`, `run --baseline` (C2b), `late-swap`, and `refresh` (C2c) are real.
 `run` without --baseline adds the provisional leverage pass, and `field --run` reports the
-sampled opponent field (C3). `history --backfill` and `identity --seed | --accept` are C4.
+sampled opponent field (C3); since C8 it then adds the scenario version (objective-aware portfolio). `history --backfill` and `identity --seed | --accept` are C4.
 """
 
 from __future__ import annotations
@@ -193,7 +193,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     runs_root = Path(args.runs_root)
     outputs_root = Path(args.outputs_root) if args.outputs_root else runs_root.parent / "outputs"
     result = run_slate(args.salary, args.entries, offline=args.offline, baseline_only=args.baseline,
-                       out_root=runs_root, outputs_root=outputs_root)
+                       out_root=runs_root, outputs_root=outputs_root, scenario=not args.baseline)
     return _print_result(result)
 
 
