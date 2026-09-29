@@ -46,6 +46,34 @@ def simulate_base(slate, params, n: int, seed: int, purpose: str) -> tuple[np.nd
     return np.concatenate(parts, axis=0), sorted(params.persons)
 
 
+def peak_mb() -> float | None:
+    """Process peak working set in MB (Windows GetProcessMemoryInfo; ru_maxrss elsewhere); None if unreadable."""
+    import os
+
+    try:
+        if os.name == "nt":
+            import ctypes
+            from ctypes import wintypes
+
+            class PMC(ctypes.Structure):
+                _fields_ = [("cb", wintypes.DWORD), ("PageFaultCount", wintypes.DWORD)] + [
+                    (n, ctypes.c_size_t) for n in ("PeakWorkingSetSize", "WorkingSetSize", "QuotaPeakPagedPoolUsage",
+                                                   "QuotaPagedPoolUsage", "QuotaPeakNonPagedPoolUsage",
+                                                   "QuotaNonPagedPoolUsage", "PagefileUsage", "PeakPagefileUsage")]
+            pmc = PMC()
+            pmc.cb = ctypes.sizeof(PMC)
+            k32, psapi = ctypes.WinDLL("kernel32"), ctypes.WinDLL("psapi")
+            k32.GetCurrentProcess.restype = wintypes.HANDLE
+            psapi.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(PMC), wintypes.DWORD]
+            psapi.GetProcessMemoryInfo(k32.GetCurrentProcess(), ctypes.byref(pmc), pmc.cb)
+            return round(pmc.PeakWorkingSetSize / 1e6, 1)
+        import resource
+
+        return round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1e3, 1)
+    except Exception:
+        return None
+
+
 def assignment_from(by_entry: dict[str, tuple[str, ...]], pool, relaxations) -> Assignment:
     keys, persons, caps_ = Counter(), Counter(), Counter()
     placed = []
@@ -223,6 +251,7 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
     a_s = assignment_from(by_entry, work, sel.relaxations)
     vs = publish_fn(run, entries, pool, a_s, slate_id, outputs_root, m, messages, phase="S", expect=expect_sha)
     timings["total_s"] = round(time.perf_counter() - t0, 3)
+    timings["peak_working_set_mb"] = peak_mb()
     sec["timings"] = timings
     if vs is None:
         m["failed"].append("scenario pass: its file was not published; the previous version stays current")
