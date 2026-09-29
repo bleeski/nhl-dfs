@@ -743,7 +743,8 @@ def _provisional_pass(run, entries, pool, after_b, st, starts, offline, runtime,
     for fam, f in fields.items():
         if f["degraded"]:
             messages.append(f"field for {fam} is short: {f['n_draws']} of {f['n_requested']} draws; ownership is degraded")
-    state = {"contexts": contexts, "fb": fb, "field_cal": field_cal, "assignment": a_p, "bank": bank}
+    state = {"contexts": contexts, "fb": fb, "field_cal": field_cal, "assignment": a_p, "bank": bank,
+             "own_cfg": own_cfg, "statuses": statuses}
     vp = _export_and_publish(run, entries, pool, a_p, slate_id, outputs_root, m, messages, phase="P",
                              expect=after_b["sha"])
     if vp is None:

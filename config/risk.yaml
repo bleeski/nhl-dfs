@@ -43,6 +43,19 @@ objectives:
   sampled_max_opponents: 1000    # fewer opponents than this: draw the actual opponents per scenario
   memory_cap_mb: 384             # per-chunk working memory for payout evaluation
 
+# GPP field growth (build/scenario_pass._grow_fields): a GPP's upper tail needs about as many
+# distinct field lineups as opponents, so large_gpp and small_field fields are grown to
+# min(target, opponents) draws with the provisional field's behaviors (models.field.sample_parallel).
+# mip_rel_gap loosens each field draw's MILP (measured 2026-09-29 on the real Classic pool: 12.8 ms
+# per draw on 8 threads at 0.5% against 17.4 ms at the default gap; 358 of 400 draws identical).
+field_growth:
+  families: [large_gpp, small_field]
+  target: 5000
+  mip_rel_gap: 0.005
+  workers: 8
+  sub_size: 50
+  time_limit_s: 150
+
 # Scenario counts for the full run (sim purposes: design for discovery, selection for choosing,
 # referee for the reported figures; separate seed streams, config/sim.yaml).
 scenarios:

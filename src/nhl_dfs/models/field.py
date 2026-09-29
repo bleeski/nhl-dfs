@@ -198,6 +198,86 @@ def sample(
     return Field(contest_family, lineups, keys, beh, n, detail)
 
 
+def sample_parallel(
+    pool: SalaryPool,
+    mode: Mode,
+    util: Mapping[str, float],
+    behaviors: Sequence[Behavior],
+    n: int,
+    seed: int,
+    contest_family: str,
+    *,
+    proj: Projection,
+    feats: Mapping[str, Mapping[str, float]] | None = None,
+    cfg: dict | None = None,
+    time_limit_s: float = 120.0,
+    workers: int = 8,
+    sub_size: int = 50,
+    mip_rel_gap: float | None = None,
+) -> Field:
+    """The same behaviors and draw counts as `sample`, split into fixed sub-jobs of `sub_size` draws,
+    each seeded by (seed, behavior, team, sub-job index), run on a thread pool (HiGHS releases the
+    GIL). The draws depend on the seed and n only, never on the worker count. Used by the C8
+    scenario pass to grow a GPP field to thousands of lineups; C3's `sample` is unchanged.
+    mip_rel_gap loosens each field draw's MILP (a noisy field model needs no proven optimum;
+    every draw is still a legal lineup)."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    cfg = cfg if cfg is not None else load_ownership_config()
+    feats = feats if feats is not None else feature_table(pool, proj, cfg=cfg)
+    deadline = time.perf_counter() + float(time_limit_s)
+    counts = split_counts([b.weight for b in behaviors], n)
+    skaters_by_team: dict[str, list[str]] = defaultdict(list)
+    for r in pool.rows:
+        if mode is Mode.SHOWDOWN or not r.is_goalie:
+            skaters_by_team[r.team].append(r.role_id)
+    stack_teams = sorted(t for t, rids in skaters_by_team.items()
+                         if len({pool.by_role_id[x].person_key for x in rids}) >= _stack_min(mode))
+    team_total = {t: next((feats[rid]["implied_total"] for rid in skaters_by_team[t]), 0.0) for t in stack_teams}
+    jobs = []  # (behavior, objective, team or None, sub index, draws)
+    for b, n_b in zip(behaviors, counts):
+        if n_b == 0:
+            continue
+        obj = behavior_objective(pool, mode, util, proj, feats, b, cfg["field"]["captain_rules"])
+        if b.stack_rule == "team3" and stack_teams:
+            per = [(t, k) for t, k in zip(stack_teams, split_counts([math.exp(team_total[t]) for t in stack_teams], n_b)) if k]
+        else:
+            per = [(None, n_b)]
+        for team, k in per:
+            for j, a in enumerate(range(0, k, sub_size)):
+                jobs.append((b, obj, team, j, min(sub_size, k - a)))
+
+    def run(job):
+        b, obj, team, j, k = job
+        remaining = deadline - time.perf_counter()
+        if remaining <= 0:
+            return []
+        menu = ()
+        if team is not None:
+            menu = ((f"stack:{team}", (GroupConstraint(role_ids=frozenset(skaters_by_team[team]), min_count=_stack_min(mode)),)),)
+        return generate(pool, mode, obj, k, seed=_seed(seed, b.name, team or "", f"sub{j}"), perturb_sd=b.noise_sd,
+                        groups_menu=menu, time_limit_total_s=remaining, distinct=False, mip_rel_gap=mip_rel_gap)
+
+    with ThreadPoolExecutor(max_workers=max(1, int(workers))) as ex:
+        results = list(ex.map(run, jobs))  # map keeps job order: deterministic assembly
+    lineups: list[tuple[str, ...]] = []
+    beh: list[str] = []
+    short: Counter[str] = Counter()
+    for (b, _, team, _, k), got in zip(jobs, results):
+        lineups += [c.role_ids for c in got]
+        beh += [b.name] * len(got)
+        short[b.name] += k - len(got)
+    detail = [f"behavior {name}: {k} draws short (time budget or solver errors)" for name, k in sorted(short.items()) if k]
+    keys = [lineup_key([pool.by_role_id[r] for r in lu], mode) for lu in lineups]
+    return Field(contest_family, lineups, keys, beh, n, detail)
+
+
+def join(a: Field, b: Field) -> Field:
+    """Two samples of one family's field as one (ownership and duplicates are read off the union)."""
+    return Field(a.family, a.lineups + b.lineups, a.keys + b.keys, a.behavior_id + b.behavior_id,
+                 a.requested + b.requested, a.detail + b.detail)
+
+
 def _salary_bucket(left: int) -> str:
     lo = 0
     for edge in SALARY_LEFT_EDGES:

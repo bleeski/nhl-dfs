@@ -85,6 +85,8 @@ class FrontierPoint:
     feasible: bool
     dominated: bool = False
     reasons: list[str] = field(default_factory=list)
+    portfolio_key: str = ""
+    kappas: list[float] = field(default_factory=list)  # every knob that produced this portfolio
 
     def record(self) -> dict:
         return {k: (round(v, 5) if isinstance(v, float) else v) for k, v in self.__dict__.items()}
@@ -359,8 +361,19 @@ def mark_dominated(points: list[FrontierPoint]) -> None:
 
 
 def frontier_report(points: list[FrontierPoint]) -> list[FrontierPoint]:
-    """The reported frontier: non-dominated points by increasing risk (call mark_dominated first)."""
-    return sorted((p for p in points if not p.dominated), key=lambda p: (p.p_lose80, -p.tail_utility, p.kappa))
+    """The reported frontier: non-dominated points by increasing risk (call mark_dominated first); knob
+    settings that produced the same portfolio are one row listing every such knob."""
+    rows: dict[str, FrontierPoint] = {}
+    for p in sorted(points, key=lambda p: p.kappa):
+        if p.dominated:
+            continue
+        key = p.portfolio_key or f"k{p.kappa}"
+        if key in rows:
+            rows[key].kappas.append(p.kappa)
+        else:
+            p.kappas = [p.kappa]
+            rows[key] = p
+    return sorted(rows.values(), key=lambda p: (p.p_lose80, -p.tail_utility, p.kappa))
 
 
 def choose(points: list[FrontierPoint]) -> tuple[FrontierPoint, str]:
@@ -406,6 +419,7 @@ def select(candidates: Sequence[Candidate], role_base: ob.ScenarioSet, fields: M
                          role_mean, tournament, sleeve)
         by_entry = {e: candidates[ch[e].cand].role_ids for e in order}
         pt, pm = _frontier_point(kappa, by_entry, contests_eval, role_base, pool, fees, risk, risk_cfg)
+        pt.portfolio_key = "|".join(sorted(lineup_keys(by_entry, pool).values()))
         points.append(pt)
         results.append((ch, rl, by_entry, pm))
     mark_dominated(points)

@@ -128,6 +128,10 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
         messages.append("scenario pass rebuilt the fields because the provisional pass did not finish")
     contests = {cid: ob.contest_from(ctx, fam_cfg) for cid, ctx in contexts.items()}
     own_n = Counter(str(e.contest_id) for e in entries.entries)
+    t = time.perf_counter()
+    fb, grown = _grow_fields(work, proj, contexts, fb, own_n, prov, st, risk_cfg, seed, scenario_n or {})
+    timings["field_growth_s"] = round(time.perf_counter() - t, 3)
+    sec["field_growth"] = grown
     fields = {}
     for purpose in ("selection", "referee"):
         fields[purpose] = {}
@@ -230,6 +234,52 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
         m["statuses"]["DELIVERY_STATUS"] = DeliveryStatus.DEGRADED_REVIEW.value
     m["worked"].append(f"scenario pass published v{vs['version']} ({sets['selection'].n} selection and "
                        f"{sets['referee'].n} referee scenarios, PAYOUT_SOURCE={payout_overall}, knob {sel.chosen_kappa:g})")
+
+
+def _grow_fields(work, proj, contexts, fb, own_n, prov, st, risk_cfg, seed, override: dict):
+    """A GPP field's upper tail needs about as many distinct lineups as opponents: a 300-draw field
+    weighted up to 5,000 has the top score of 300 entries, which made a $1 GPP look worth $7 on the
+    first real run. Grow large_gpp and small_field fields to min(target, opponents) draws with the
+    same behaviors (a new seed), join them to the provisional draws, and read ownership and duplicate
+    counts off the joined field, so field and ownership stay one object. Cash (a mid-field line) and
+    WTA (a handful of opponents) keep the provisional field."""
+    from nhl_dfs.build.provisional import FieldBuild
+    from nhl_dfs.models import field as field_mod
+    from nhl_dfs.models import ownership
+
+    g = risk_cfg["field_growth"]
+    target = int(override.get("field_target", g["target"]))
+    own_cfg = (prov or {}).get("own_cfg") or ownership.load_ownership_config()
+    statuses = (prov or {}).get("statuses") or {rid: p for rid, (p, _) in st.items() if rid in work.by_role_id}
+    fields = dict(fb.fields)
+    margs = dict(fb.marginals)
+    report = {}
+    feats = None
+    for fam in sorted({c.family for c in contexts.values()}):
+        if fam not in g["families"]:
+            continue
+        need = min(target, max(c.field_size - own_n[cid] for cid, c in contexts.items() if c.family == fam))
+        have = fields[fam].n
+        if need <= have:
+            report[fam] = {"draws": have, "grown_by": 0}
+            continue
+        if feats is None:
+            feats = ownership.feature_table(work, proj, None, cfg=own_cfg, statuses=statuses)
+        util = ownership.perceived(work, proj, feats, ownership.family_weights(own_cfg, fam))
+        t = time.perf_counter()
+        extra = field_mod.sample_parallel(work, work.mode, util, field_mod.behaviors_for(fam, own_cfg), need - have,
+                                          seed + 9001, fam, proj=proj, feats=feats, cfg=own_cfg,
+                                          time_limit_s=float(g["time_limit_s"]), workers=int(g["workers"]),
+                                          sub_size=int(g["sub_size"]), mip_rel_gap=g.get("mip_rel_gap"))
+        joined = field_mod.join(fields[fam], extra)
+        fields[fam] = joined
+        for cid, c in contexts.items():
+            if c.family == fam:
+                margs[cid] = field_mod.marginals(joined, work, c.field_size)
+        report[fam] = {"draws": joined.n, "requested": joined.requested, "grown_by": extra.n,
+                       "distinct": len(set(joined.keys)), "seconds": round(time.perf_counter() - t, 2),
+                       "mip_rel_gap": g.get("mip_rel_gap"), "detail": extra.detail}
+    return FieldBuild(fields, margs, fb.elapsed_s), report
 
 
 def _chalk_team(pool, own: dict) -> str | None:

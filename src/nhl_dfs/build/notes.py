@@ -63,6 +63,8 @@ def render(m: dict[str, Any]) -> str:
     lines.append(f"- Keep / change: {m.get('recommendation', 'keep')}")
     if m.get("provisional"):
         lines += _provisional_lines(m["provisional"])
+    if m.get("scenario"):
+        lines += _scenario_lines(m["scenario"])
     if m.get("messages"):
         lines += ["", "## Messages", ""] + [f"- {x}" for x in m["messages"]]
     return "\n".join(lines) + "\n"
@@ -98,6 +100,98 @@ def _provisional_lines(p: dict[str, Any]) -> list[str]:
     out += ["", "Dup proxy: sum of log ownership + salary-left term + Captain log ownership; higher means more "
             "likely duplicated. Field dup est.: sampled copies of the lineup scaled to the field size. Both are "
             "uncalibrated scenario proxies, not measured facts."]
+    return out
+
+
+def _pm(x, se, nd=3) -> str:
+    return f"{x:.{nd}f} +/- {se:.{nd}f}"
+
+
+def _scenario_lines(s: dict[str, Any]) -> list[str]:
+    """C8 section. Every payout figure is a scenario estimate with its Monte Carlo standard error and
+    the three evidence states; a PRIOR payout curve makes it an uncalibrated scenario proxy."""
+    out = ["", "## Scenario portfolio (C8)", ""]
+    if s.get("skipped") or s.get("error"):
+        out.append(f"- Not published: {s.get('skipped') or 'the pass failed (see What failed)'}; the previous version stays current.")
+        return out
+    ev = s.get("evidence", {})
+    ver = f"v{s['version']}" if s.get("version") else "not published (previous version stays current)"
+    out += [
+        f"- {s['label']}. Version: {ver}.",
+        "- Evidence on every figure below: " + " ".join(f"{k}={v}" for k, v in ev.items())
+        + (" (PRIOR payout curves: every dollar figure is an uncalibrated scenario proxy)" if ev.get("PAYOUT_SOURCE") == "PRIOR" else ""),
+        "- Scenarios: " + "; ".join(f"{p} {v['n']} (seed {v['seed']}, spec {v['spec_sha256']})" for p, v in s["scenarios"].items())
+        + ". Discovery used design, the choice used selection, the figures below use referee.",
+        "- Games (odds source per game; MODEL is the hockey model, never a market price): "
+        + "; ".join(f"{k} {v}" for k, v in s.get("game_sources", {}).items()),
+    ]
+    out += [f"  - {x}" for x in s.get("odds", []) + s.get("games", [])]
+    part = s.get("participation", {})
+    out.append(f"- Participation: {len(part.get('persons', []))} QUESTIONABLE (DTD) person(s) play in "
+               f"{part.get('questionable_play_prob', 1):.0%} of scenarios, priced once here (no ranking haircut on top); "
+               "their minutes are not handed to teammates.")
+    fg = s.get("field_growth") or {}
+    if fg:
+        out.append("- Field: " + "; ".join(f"{fam} {v['draws']} draws" + (f" ({v['distinct']} distinct, grown by {v['grown_by']} in "
+                                                                         f"{v['seconds']} s)" if v.get("grown_by") else "")
+                                         for fam, v in fg.items())
+                   + ". Ownership in this section is read off these fields.")
+    out += ["", "| Contest | Family | PAYOUT_SOURCE | Field size | Fee | Paid / cash line | First prize | Field |", "|---|---|---|---:|---:|---|---:|---|"]
+    for c in s.get("contests", []):
+        out.append(f"| {c['contest_id']} {c['name']} | {c['family']} ({c['family_source']}) | {c['PAYOUT_SOURCE']} | {c['field_size']} "
+                   f"| {c['fee']:.2f} | {c['paid_positions']} / {c['cash_line']} | {c['first_prize']:.2f} | {c['field']} |")
+    out += ["", "Frontier (selection scenarios; dominated points removed; knobs that chose the same portfolio share a row):", "",
+            "| Knobs (kappa) | Tail utility / fees | P(lose >= 80% of fees) | E[payout] $ | Max goalie fee share | Max game fee share "
+            "| Max Captain fee share | Inside budget |", "|---|---:|---:|---:|---:|---:|---:|---|"]
+    for p in s.get("frontier", []):
+        ks = ", ".join(f"{k:g}" for k in (p.get("kappas") or [p["kappa"]]))
+        g = "n/a" if p.get("game_share_max") is None else f"{p['game_share_max']:.2f}"
+        cp = "n/a" if p.get("captain_share_max") is None else f"{p['captain_share_max']:.2f}"
+        out.append(f"| {ks} | {_pm(p['tail_utility'], p['tail_utility_se'])} | {_pm(p['p_lose80'], p['p_lose80_se'])} "
+                   f"| {p['exp_payout']:.2f} | {p['goalie_share_max']:.2f} | {g} | {cp} | "
+                   f"{'yes' if p['feasible'] else 'no: ' + '; '.join(p['reasons'])} |")
+    ch = s.get("chosen", {})
+    out += ["", f"- Chosen: knob {ch.get('kappa')}: {ch.get('reason')}.",
+            f"- Budget in force (config/risk.yaml, [BEN] flag 2 placeholder): " + ", ".join(
+                f"{k} {v:.2f}" for k, v in s.get("budget", {}).items() if v is not None),
+            "- Caps: " + "; ".join(s.get("caps", {}).get("notes", []) or ["defaults"]),
+            f"- Candidate families: target {s.get('family_mix', {}).get('target')}, selected {s.get('family_mix', {}).get('selected')}; "
+            f"{s.get('discovery', {}).get('candidates')} candidates ({s.get('discovery', {}).get('from_bank_and_provisional')} from the "
+            f"Phase A bank and the provisional picks); chalk team {s.get('discovery', {}).get('chalk_team')}.",
+            f"- PRIOR (no-history) persons selected: v1 {s['prior_persons_selected']['baseline_v1']}, provisional "
+            f"{s['prior_persons_selected']['provisional']}, scenario {s['prior_persons_selected']['scenario']}."]
+    if s.get("relaxations"):
+        out.append("- Relaxations: " + "; ".join(f"{r['entry_id']} {r['kind']}" for r in s["relaxations"]))
+    pf = s.get("portfolio", {})
+    if pf:
+        conc = pf.get("concentration", {})
+        sf = conc.get("shared_failure", {})
+        out += ["", "Portfolio (referee scenarios; R(s) = sum of payouts - fees):", "",
+                f"- Fees ${pf['fees']:.2f}; E[payout] ${_pm(pf['exp_payout'], pf['exp_payout_se'], 2)}; P(zero payout) {pf['p_zero_payout']:.3f}; "
+                f"P(net loss) {pf['p_net_loss']:.3f}; P(lose >= 80% of fees) {_pm(pf['p_lose80'], pf['p_lose80_se'])}; "
+                f"worst-5% expected shortfall ${pf['es5']:.2f}; tail utility / fees {_pm(pf['tail_utility'], pf['tail_utility_se'])}; "
+                f"tickets (not cash) ${pf.get('tickets_value', 0):.2f}.",
+                "- Recovery (payout / fees) quantiles: " + ", ".join(f"{k} {v}" for k, v in pf.get("recovery_quantiles", {}).items()),
+                "- Fee share by goalie: " + ", ".join(f"{k} {v:.2f}" for k, v in list(conc.get("goalie", {}).items())[:4]),
+                "- Fee share by primary game: " + (", ".join(f"{k} {v:.2f}" for k, v in conc.get("game", {}).items())
+                                                   if conc.get("n_games", 1) > 1 else "single-game slate (no per-game cap)"),
+                ]
+        if conc.get("captain"):
+            out.append("- Fee share by Captain: " + ", ".join(f"{k} {v:.2f}" for k, v in list(conc["captain"].items())[:4]))
+        if sf:
+            out.append(f"- Shared failure ({sf.get('definition')}): fees cashing nothing {sf.get('baseline_fee_share_cashing_nothing', 0):.2f} "
+                       "in all scenarios; worst teams " + ", ".join(f"{w['team']} {w['fee_share_cashing_nothing']:.2f}" for w in sf.get("worst", [])))
+    out += ["", "| Entry | Contest | Family | Objective (value +/- SE) | E[payout] $ | P(cash) | P(top 1%) | First-place equity "
+            "| P(clear line) | P(seat) | Own % sum | Dup (measure) | Candidate family | DTD |", "|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---|---|---:|"]
+    for e in s.get("entries", []):
+        out.append(f"| {e['entry_id']} | {e['contest_id']} | {e['family']} | {e['objective']} {_pm(e['value'], e['se'], 4)} "
+                   f"| {_pm(e['exp_payout'], e['exp_payout_se'], 2)} | {e['p_cash']:.3f} | {_pm(e['p_top1pct'], e['p_top1pct_se'], 4)} "
+                   f"| {_pm(e['first_place_equity'], e['first_place_equity_se'], 5)} | {_pm(e['p_clear_line'], e['p_clear_line_se'])} "
+                   f"| {_pm(e['p_seat'], e['p_seat_se'])} | {e['own_sum_pct']:.1f} | {e['dup']:.2f} ({e['dup_measure']}) "
+                   f"| {e['candidate_family']} | {e['dtd_players']} |")
+    out += ["", "OUTCOME_CALIBRATION=UNVALIDATED: the C6 calibration flags the simulated 3+ point tail as thin (backlog B6), so "
+            "top-1% and first-place figures are labeled scenario estimates with their Monte Carlo error; 20,000 scenarios "
+            "cannot give precise massive-field win rates. None of these figures is a measured ROI, EV or ruin probability."]
     return out
 
 

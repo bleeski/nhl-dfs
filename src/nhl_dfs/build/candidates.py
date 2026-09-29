@@ -55,11 +55,13 @@ def generate(
     time_limit_total_s: float = 20.0,
     distinct: bool = True,
     min_pairwise_diff: int = 2,
+    mip_rel_gap: float | None = None,
 ) -> list[Candidate]:
     """Up to n candidates. Fewer come back when the budget ends or every family is exhausted.
 
     groups_menu: (family name, group constraints) entries; draw i uses entry i mod len.
     An empty menu is one family, "base", with no groups.
+    mip_rel_gap: HiGHS relative MIP gap (None: the solver default); C8's field sampler loosens it.
     """
     import numpy as np
 
@@ -121,6 +123,7 @@ def generate(
                 overlaps=active if distinct else (),
                 time_limit_s=max(min(_PER_SOLVE_CAP_S, remaining), 1e-3),
                 score=base,
+                mip_rel_gap=mip_rel_gap,
             )
             if not distinct or res.lineup is None:
                 break

@@ -337,8 +337,18 @@ class FieldSpec:
         distinct = scen.scores(self.lineups, pool_mode)
         if self.mode == "weighted":
             return distinct, self.weights
-        full = distinct.full()
-        return np.take_along_axis(full, self.draws, axis=1), np.ones(self.n_opponents, np.int64)
+        return SampledScores(distinct, self.draws), np.ones(self.n_opponents, np.int64)
+
+
+class SampledScores:
+    """Lazy (S, n_opponents): each scenario's own opponents, gathered per row slice (no full matrix)."""
+
+    def __init__(self, distinct: "LineupScores", draws: np.ndarray):
+        self.distinct, self.draws = distinct, draws
+        self.shape = (distinct.shape[0], draws.shape[1])
+
+    def __getitem__(self, sl) -> np.ndarray:
+        return np.take_along_axis(self.distinct[sl], self.draws[sl], axis=1)
 
 
 def field_spec(lineups: Sequence[Sequence[str]], keys: Sequence[str], n_opponents: int, cfg: dict, *, n_scenarios: int,
@@ -367,7 +377,8 @@ def field_spec(lineups: Sequence[Sequence[str]], keys: Sequence[str], n_opponent
         rng = np.random.Generator(np.random.PCG64(np.random.SeedSequence([int(seed), MASK_STREAM + 1,
                                                                            zlib.crc32(salt.encode())])))
         p = cnt / cnt.sum()
-        draws = rng.choice(len(distinct), size=(int(n_scenarios), n_opp), p=p) if n_opp else np.zeros((n_scenarios, 0), np.int64)
+        draws = (rng.choice(len(distinct), size=(int(n_scenarios), n_opp), p=p).astype(np.int32) if n_opp
+                 else np.zeros((n_scenarios, 0), np.int32))
         return FieldSpec(distinct, kk, cnt, n_opp, "sampled", None, draws,
                          f"{n_opp} opponents drawn per scenario from {len(distinct)} distinct sampled lineups")
     w = largest_remainder(cnt, n_opp)
