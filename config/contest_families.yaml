@@ -44,6 +44,19 @@ families:
     field_size_prior: 5000
     paid_fraction_prior: 0.20
 
+# Payout curve priors (C8, build/objectives.prior_curve). Used only when the DK contest endpoint
+# did not describe the contest (PAYOUT_SOURCE=PRIOR); every figure built on them is an
+# uncalibrated scenario proxy. PLACEHOLDERS: rake, shapes, min-cash multiple and exponent are
+# engineering choices, not facts about DK contests.
+payout_priors:
+  rake: 0.15                    # share of fees not returned as prizes
+  families:
+    cash:        {shape: flat}                                   # paid_fraction_prior of the field, one flat prize
+    satellite:   {shape: tickets}                                # seats = paid_fraction_prior x field; face value = pool / seats
+    wta:         {shape: wta}                                    # first place takes the pool
+    small_field: {shape: power, min_cash_mult: 2.0, exponent: 1.1}
+    large_gpp:   {shape: power, min_cash_mult: 2.0, exponent: 1.1}  # last paid position = 2 x fee; top-heavy power law above
+
 # Provisional selection (build/provisional.py, plan section 7 "Deterministic tie-break").
 selection:
   # Tie band on the lineup's projected mean: max(tie_band_pct * anchor mean, floor). The floor is

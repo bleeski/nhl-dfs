@@ -1,0 +1,51 @@
+# Risk budget, frontier and scenario-objective settings (C8, plan section 7).
+#
+# [BEN] flag 2: set the risk budget. Every value below is the plan's PLACEHOLDER, in force until
+# Ben answers. None of it is a fact about any contest or a claim about profitability.
+
+budget:
+  classic:
+    p_lose80_max: 0.60          # P(losing at least 80% of slate fees) at most this
+    goalie_fee_share_max: 0.40  # share of fees in entries that use any one goalie
+    game_fee_share_max: 0.40    # share of fees whose lineup's primary game is one game; only when the slate has > 1 game
+    captain_fee_share_max: null
+  showdown:
+    p_lose80_max: 0.60
+    goalie_fee_share_max: 0.40
+    game_fee_share_max: null    # a single-game slate cannot diversify its game
+    captain_fee_share_max: 0.40 # Showdown concentration is measured by Captain share (and the shared failure scenario, reported)
+  # A concentration budget below what the entries can achieve (for example 2 entries: some goalie
+  # carries at least half the fees) is compared against max(budget, achievable floor); the floor
+  # is computed and recorded (build/exposure.fee_floor), never hidden.
+
+# Frontier: five knob settings. kappa prices the portfolio's P(lose >= 80% of fees) against the
+# tail utility, both in dollars (kappa x total fees x delta probability). Knob 0 is pure tail.
+frontier:
+  kappas: [0.0, 0.25, 0.5, 1.0, 2.0]
+
+# Deterministic tie-break (build/tiebreak.py): the band on a metric is
+# max(band_pct x |anchor value|, se_mult x anchor Monte Carlo standard error), never below the SE.
+tiebreak:
+  band_pct: 0.03
+  se_mult: 1.0
+
+# Candidate discovery (build/portfolio.discover): search allocation, not scenario probabilities.
+discovery:
+  families: [0.65, 0.25, 0.10]   # central case, alternate viable cores, "priors wrong"
+  cluster_quantile: 0.8          # alternate cores: scenarios where a team's skater points are in its top 20%
+  failure_quantile: 0.2          # priors wrong: scenarios where the chalk team's skater points are in its bottom 20%
+  stress_sleeve_max: 0.10        # at most this share of entries from the priors-wrong family
+
+# Scenario objectives (build/objectives.py)
+objectives:
+  top_pct: 0.01                  # large GPP tail region: the top 1% of the field size
+  max_distinct: 5000             # at most this many distinct field lineups per contest
+  sampled_max_opponents: 1000    # fewer opponents than this: draw the actual opponents per scenario
+  memory_cap_mb: 384             # per-chunk working memory for payout evaluation
+
+# Scenario counts for the full run (sim purposes: design for discovery, selection for choosing,
+# referee for the reported figures; separate seed streams, config/sim.yaml).
+scenarios:
+  design: 5000
+  selection: 20000
+  referee: 20000
