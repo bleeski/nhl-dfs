@@ -48,8 +48,13 @@ objectives:
 # min(target, opponents) draws with the provisional field's behaviors (models.field.sample_parallel).
 # mip_rel_gap loosens each field draw's MILP (measured 2026-09-29 on the real Classic pool: 12.8 ms
 # per draw on 8 threads at 0.5% against 17.4 ms at the default gap; 358 of 400 draws identical).
+# sampler fast: Classic uses the vectorized sampler (models/field_fast.py: the same draws' objectives,
+# about 1 ms per draw; on the real 2026-09-29 pool it matched the MILP's lineup in 51% to 100% of
+# draws by behavior with a mean value gap of 0.00% to 0.45%, every lineup legal); Showdown and any
+# non-compact pool use the threaded MILP (models.field.sample_parallel) with mip_rel_gap below.
 field_growth:
   families: [large_gpp, small_field]
+  sampler: fast
   target: 5000
   mip_rel_gap: 0.005
   workers: 8

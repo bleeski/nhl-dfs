@@ -267,10 +267,18 @@ def _grow_fields(work, proj, contexts, fb, own_n, prov, st, risk_cfg, seed, over
             feats = ownership.feature_table(work, proj, None, cfg=own_cfg, statuses=statuses)
         util = ownership.perceived(work, proj, feats, ownership.family_weights(own_cfg, fam))
         t = time.perf_counter()
-        extra = field_mod.sample_parallel(work, work.mode, util, field_mod.behaviors_for(fam, own_cfg), need - have,
-                                          seed + 9001, fam, proj=proj, feats=feats, cfg=own_cfg,
-                                          time_limit_s=float(g["time_limit_s"]), workers=int(g["workers"]),
-                                          sub_size=int(g["sub_size"]), mip_rel_gap=g.get("mip_rel_gap"))
+        extra, sampler = None, "milp"
+        if g.get("sampler") == "fast" and work.mode is Mode.CLASSIC:
+            from nhl_dfs.models import field_fast
+
+            extra = field_fast.sample_fast(work, util, field_mod.behaviors_for(fam, own_cfg), need - have, seed + 9001, fam,
+                                           proj=proj, feats=feats, cfg=own_cfg)
+            sampler = "fast" if extra is not None else "milp (pool not in the compact Classic form)"
+        if extra is None:
+            extra = field_mod.sample_parallel(work, work.mode, util, field_mod.behaviors_for(fam, own_cfg), need - have,
+                                              seed + 9001, fam, proj=proj, feats=feats, cfg=own_cfg,
+                                              time_limit_s=float(g["time_limit_s"]), workers=int(g["workers"]),
+                                              sub_size=int(g["sub_size"]), mip_rel_gap=g.get("mip_rel_gap"))
         joined = field_mod.join(fields[fam], extra)
         fields[fam] = joined
         for cid, c in contexts.items():
@@ -278,7 +286,8 @@ def _grow_fields(work, proj, contexts, fb, own_n, prov, st, risk_cfg, seed, over
                 margs[cid] = field_mod.marginals(joined, work, c.field_size)
         report[fam] = {"draws": joined.n, "requested": joined.requested, "grown_by": extra.n,
                        "distinct": len(set(joined.keys)), "seconds": round(time.perf_counter() - t, 2),
-                       "mip_rel_gap": g.get("mip_rel_gap"), "detail": extra.detail}
+                       "sampler": sampler, "mip_rel_gap": g.get("mip_rel_gap") if sampler.startswith("milp") else None,
+                       "detail": extra.detail}
     return FieldBuild(fields, margs, fb.elapsed_s), report
 
 
