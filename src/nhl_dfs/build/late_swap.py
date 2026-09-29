@@ -38,6 +38,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 from nhl_dfs.build import feasible, milp
+from nhl_dfs.build import live as live_mod
+from nhl_dfs.build import swap_objective
 from nhl_dfs.build import locks as locks_mod
 from nhl_dfs.build.assign import Assignment, Caps, load_caps
 from nhl_dfs.build.manifest import exposures_top20, read_manifest, write_manifest
@@ -45,6 +47,7 @@ from nhl_dfs.build.notes import chicago, write_run_notes
 from nhl_dfs.build.run import (
     RunResult,
     load_runtime_config,
+    pool_without,
     salary_statuses,
     slate_id_for,
 )
@@ -68,7 +71,6 @@ from nhl_dfs.data.sources import dk_public
 from nhl_dfs.export.writer import field_spans, format_cell
 from nhl_dfs.intake.entries import EntriesFile, cell_role_id, physical_lines, read_entries, template_permutation
 from nhl_dfs.intake.salary import SalaryPool, read_salary
-from nhl_dfs.models.priors import prior_objective, prior_table
 from nhl_dfs.referee.check_file import check_file
 
 KEEP_BONUS = 1000.0  # points; larger than any lineup's objective, so fewer changes always win
@@ -218,8 +220,34 @@ def _place(before: list[str | None], pins: dict[int, str], lineup: list[str], po
     return list(lineup)
 
 
-def _solve_entry(pool, mode, objective, before, pins, *, fast, exclude_rows, capped_rows, overlaps, time_limit_s):
-    """(lineup | None, route, relaxations, detail)."""
+def _alternatives(pool, mode, objective, before, pins, first, *, fast, exclude_rows, step, k: int, time_limit_s) -> list[list[str]]:
+    """Up to k repair candidates: `first` (the MILP's best) plus the next best by the same linear objective
+    under no-good cuts (each differs in at least one role), with the constraints of the ladder step that
+    produced `first`. In fast mode only candidates that change as few cells as `first` are kept."""
+    size = len(CLASSIC_SLOTS if mode is Mode.CLASSIC else SHOWDOWN_SLOTS)
+    keep = {rid for k_, rid in enumerate(before) if rid is not None and k_ not in pins and rid not in exclude_rows}
+    obj = dict(objective)
+    if fast:
+        for rid in keep:
+            obj[rid] = obj.get(rid, 0.0) + KEEP_BONUS
+    caps_ex, ovl = step
+    kept_first = len(keep & set(first))
+    out = [list(first)]
+    while len(out) < k:
+        res = milp.solve_lineup(pool, mode, obj, exclude=frozenset(exclude_rows | caps_ex), locked=pins,
+                                max_overlap_with=list(ovl) + [(lu, size - 1) for lu in out], time_limit_s=time_limit_s)
+        if res.lineup is None:
+            break
+        if fast and len(keep & set(res.lineup)) < kept_first:
+            break  # the keep bonus orders every minimal repair first; the rest change more cells
+        out.append(list(res.lineup))
+    return out
+
+
+def _solve_entry(pool, mode, objective, before, pins, *, fast, exclude_rows, capped_rows, overlaps, time_limit_s,
+                 steps: list | None = None):
+    """(lineup | None, route, relaxations, detail). steps: when a list, the successful MILP ladder step's
+    (excluded capped rows, overlap pairs) is appended to it (for _alternatives)."""
     keep = {rid for k, rid in enumerate(before) if rid is not None and k not in pins and rid not in exclude_rows}
     obj = dict(objective)
     if fast:
@@ -235,6 +263,8 @@ def _solve_entry(pool, mode, objective, before, pins, *, fast, exclude_rows, cap
             res = milp.solve_lineup(pool, mode, obj, exclude=frozenset(exclude_rows | caps_ex), locked=pins,
                                     max_overlap_with=ovl, time_limit_s=time_limit_s)
             if res.lineup is not None:
+                if steps is not None:
+                    steps.append((caps_ex, ovl))
                 return res.lineup, "milp", relax, ""
             last = res.detail or res.status.value
             if res.status is not SearchStatus.INFEASIBLE:
@@ -248,6 +278,34 @@ def _solve_entry(pool, mode, objective, before, pins, *, fast, exclude_rows, cap
         if r.status is FeasibleStatus.FOUND:
             return r.lineup, "feasible", ("EXPOSURE",) if capped_rows else (), ""
     return None, "feasible", (), f"feasibility search found no legal repair ({r.status.value}: {r.detail})"
+
+
+def _scenario_report(so, m, picks, outcomes, final, contest_of, budget_left: float, messages) -> None:
+    """Per changed entry: the family objective on the choosing (selection) draws, then on the referee draws
+    (independent of the choice) when time allows; the evidence states of the cached contests and field."""
+    changed = {eid: o.after for eid, o in outcomes.items() if o.action in ("repaired", "reoptimized") and o.after != o.before}
+    ref: dict[str, dict] = {}
+    t = time.perf_counter()
+    if changed and budget_left > 0:
+        by_contest: dict[str, list] = {}
+        for eid, lu in changed.items():
+            by_contest.setdefault(contest_of[eid], []).append((eid, list(lu)))
+        all_by: dict[str, dict] = {}
+        for eid, lu in final.items():
+            all_by.setdefault(contest_of[eid], {})[eid] = lu
+        ref = so.referee(by_contest, all_by)
+    elif changed:
+        messages.append("referee-draw figures skipped: the scenario scoring budget was spent")
+    so.record["referee_s"] = round(time.perf_counter() - t, 3)
+    contests = so.cache.contests
+    payout = "EXACT" if contests and all(c.payout_source.value == "EXACT" for c in contests.values()) else "PRIOR"
+    evidence = {"PAYOUT_SOURCE": payout, "OUTCOME_CALIBRATION": OutcomeCalibration.UNVALIDATED.value,
+                "FIELD_CALIBRATION": so.field_cal.value}
+    m["statuses"].update(evidence)
+    m["objective"]["evidence"] = evidence
+    m["objective"]["game_sources"] = getattr(so, "game_sources", {})
+    m["objective"]["entries"] = {eid: {"contest_id": contest_of[eid], "selection": picks.get(eid), "referee": ref.get(eid)}
+                                 for eid in picks}
 
 
 # -- the core ------------------------------------------------------------------------------
@@ -268,7 +326,17 @@ def swap_core(
     runtime: dict | None = None,
     caps: Caps | None = None,
     rehearsal: datetime | None = None,
+    objective: str = "auto",
+    standings=None,
+    eager_objective: bool = False,
+    apply_state: Callable | None = None,
 ) -> RunResult:
+    """objective: "auto" | "scenario" | "provisional" | "baseline" (C9; stepped down in that order and
+    reported). standings: an optional live.StandingsSnapshot. eager_objective: resolve (and, for a
+    scenario objective, re-simulate and persist the changed games) even when no entry needs a change
+    (refresh). apply_state: test hook counting roles.apply_state calls."""
+    if objective not in swap_objective.ORDER:
+        raise ValueError(f"objective must be one of {', '.join(swap_objective.ORDER)} (got {objective!r})")
     t_start = time.perf_counter()
     runtime = runtime or load_runtime_config()
     caps = caps or load_caps()
@@ -333,6 +401,7 @@ def swap_core(
     else:
         m["news"]["phase_b_summary"] = "skipped (offline); statuses are as of the salary file's download"
     st = salary_statuses(pool)
+    rec = None
     out_people = {pool.by_role_id[r].person_key for r, (p, _) in st.items() if p is Participation.OUT}
     unknown = {pool.by_role_id[r].name: raw for r, (p, raw) in st.items() if p is Participation.UNKNOWN}
     if draftables is not None:
@@ -367,7 +436,6 @@ def swap_core(
 
     # Re-solve.
     t = time.perf_counter()
-    objective = prior_objective(pool, prior_table(pool))
     mode = pool.mode
     size = len(CLASSIC_SLOTS if mode is Mode.CLASSIC else SHOWDOWN_SLOTS)
     befores = {e.entry_id: _canonical(current, e) for e in current.entries}
@@ -388,6 +456,39 @@ def swap_core(
             continue
         if not fast or needs_repair(e.entry_id):
             targets.append(e.entry_id)
+    # Objective (C9): resolved only when an entry needs solving (refresh resolves eagerly), so a
+    # zero-change late swap stays byte-identical to C2c and spends nothing on models.
+    ls_cfg = runtime.get("late_swap", {})
+    entry_ids = [e.entry_id for e in current.entries]
+    live_status, live_reason = live_mod.reliability(standings, now=clock(), needed_entries=entry_ids,
+                                                    max_age_min=float(runtime.get("live", {}).get("max_age_min", 15)))
+    m["live"] = {"LIVE_STATUS": live_status, "reason": live_reason}
+    resolved = None
+    if targets or eager_objective:
+        open_games = set(pool.games) - set(ls.started_games) - set(ls.edit_stop_games)
+        ok = swap_objective.optional_work_ok(ls, pool, open_games, clock(), runtime)
+        resolved = swap_objective.resolve(
+            objective, pool=pool, work=pool_without(pool, excluded_rows), st=st, started_games=ls.started_games,
+            dk_rec=rec, runs_root=runs_root, run_id=parent.run_id, offline=offline, cache=cache, clock=clock, now=clock(),
+            runtime=runtime, fast=fast, optional_ok=ok, live=standings, entry_ids=entry_ids, apply_state=apply_state,
+            persist_to=run.path if eager_objective else None)
+        linear = resolved.linear
+        m["objective"] = resolved.record()
+        for f in resolved.fallbacks:
+            messages.append(f"objective: {f['from']} not used ({f['reason']})")
+        if resolved.role_model is not None:
+            rm = resolved.role_model
+            m["statuses"]["MODEL_STATUS"] = rm.table.source().value
+            m["news"]["roles_news_state"] = rm.news_state
+            m["news"]["roles_warnings"] = rm.warnings[:20]
+    else:
+        linear = {}
+        m["objective"] = {"kind": "not needed", "requested": objective, "fallbacks": [],
+                          "notes": ["no entry needs a change, so no objective was evaluated (nothing was simulated)"]}
+    so = resolved.scenario if resolved is not None else None
+    contest_of = {e.entry_id: str(e.contest_id) for e in current.entries}
+    if so is not None:
+        targets.sort(key=lambda x: contest_of[x])  # one sorted field per contest at a time (memory)
     final: dict[str, list[str | None]] = {eid: list(b) for eid, b in befores.items()}
     person_n: Counter[str] = Counter()
     for eid, lineup in final.items():
@@ -396,15 +497,34 @@ def swap_core(
     cap = caps.person_cap(len(current.entries))
     outcomes: dict[str, EntryOutcome] = {}
     decided: list[list[str]] = [lu for eid, lu in final.items() if eid not in targets and all(lu)]
-    time_limit = float(runtime.get("late_swap", {}).get("per_entry_time_limit_s", 2.0))
+    time_limit = float(ls_cfg.get("per_entry_time_limit_s", 2.0))
+    k_alt = int(ls_cfg.get("candidates_per_entry", 8))
+    budget = float(ls_cfg.get("scenario_budget_s", 12.0))
+    picks: dict[str, dict] = {}
+    t_sc = time.perf_counter()
     for eid in targets:
         before, pin = befores[eid], pins[eid]
         pinned_people = {pool.by_role_id[r].person_key for r in pin.values()}
         capped = frozenset(r.role_id for r in pool.rows if person_n[r.person_key] >= cap and r.person_key not in pinned_people)
         overlaps = [] if fast else [(lu, size - 2) for lu in decided]
+        steps: list = []
         lineup, route, relax, detail = _solve_entry(
-            pool, mode, objective, before, pin, fast=fast,
-            exclude_rows=excluded_rows | ls.not_addable, capped_rows=capped, overlaps=overlaps, time_limit_s=time_limit)
+            pool, mode, linear, before, pin, fast=fast,
+            exclude_rows=excluded_rows | ls.not_addable, capped_rows=capped, overlaps=overlaps, time_limit_s=time_limit,
+            steps=steps)
+        if lineup is not None and so is not None and route == "milp" and so.has_contest(contest_of[eid]):
+            if time.perf_counter() - t_sc < budget:
+                cands = _alternatives(pool, mode, linear, before, pin, lineup, fast=fast,
+                                      exclude_rows=excluded_rows | ls.not_addable, step=steps[-1], k=k_alt,
+                                      time_limit_s=time_limit)
+                others = [final[x] for x in final if x != eid and contest_of[x] == contest_of[eid] and all(final[x])]
+                pick = so.choose(eid, contest_of[eid], cands, others)
+                lineup = cands[pick.index]
+                picks[eid] = pick.figures
+            else:
+                picks[eid] = {"note": f"scenario scoring budget ({budget:g}s) spent: the surrogate's best repair was kept"}
+        elif lineup is not None and so is not None:
+            picks[eid] = {"note": "contest not in the scenario cache or repaired by the feasibility fallback: surrogate best"}
         if lineup is None:
             outcomes[eid] = EntryOutcome(eid, "unrepairable", before, before, detail, route=route)
             if all(before):
@@ -419,6 +539,10 @@ def swap_core(
         action = "reoptimized" if not fast else "repaired"
         outcomes[eid] = EntryOutcome(eid, action, before, placed, detail, relax, route)
     timings["solve_s"] = round(time.perf_counter() - t, 3)
+    if so is not None:
+        _scenario_report(so, m, picks, outcomes, final, contest_of, budget - (time.perf_counter() - t_sc), messages)
+    if resolved is not None:
+        timings.update({f"objective_{k}": v for k, v in resolved.timings.items()})
 
     changes = {eid: {k: rid for k, rid in enumerate(final[eid]) if rid != befores[eid][k] and rid is not None}
                for eid in final}
@@ -517,8 +641,13 @@ def run(
     runtime: dict | None = None,
     caps: Caps | None = None,
     as_of: datetime | None = None,
+    objective: str = "auto",
+    standings=None,
+    apply_state=None,
 ) -> RunResult:
-    """Late swap run `run_id`'s slate from the current DK export. as_of: rehearsal clock (labeled)."""
+    """Late swap run `run_id`'s slate from the current DK export. as_of: rehearsal clock (labeled).
+    objective: auto (scenario, then provisional, then baseline; each fallback reported) or one of them.
+    standings: an optional live.StandingsSnapshot (none exists yet: LIVE_STATUS=NO_SNAPSHOT)."""
     runs_root = Path(runs_root)
     outputs_root = Path(outputs_root) if outputs_root is not None else runs_root.parent / "outputs"
     if as_of is not None:
@@ -527,4 +656,5 @@ def run(
     parent = open_run(runs_root, run_id)
     return swap_core(parent, Path(entries_current_path), kind="late_swap", offline=offline, fast=fast,
                      assumed_parent=False, runs_root=runs_root, outputs_root=outputs_root, clock=clock, cache=cache,
-                     salary_path=salary_path, runtime=runtime, caps=caps, rehearsal=as_of)
+                     salary_path=salary_path, runtime=runtime, caps=caps, rehearsal=as_of, objective=objective,
+                     standings=standings, apply_state=apply_state)

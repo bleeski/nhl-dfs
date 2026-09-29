@@ -93,7 +93,8 @@ def save(run_path: Path, *, purposes: dict[str, dict], person_keys: list[str], s
     purposes = {p: {**v, "code": int(slate.cfg["purposes"][p])} for p, v in purposes.items()}
     meta = {"format": FORMAT, "seed": int(seed), "chunk_size": int(chunk_size), "purposes": purposes,
             "person_keys": list(person_keys), "games": [g.key for g in slate.games], "game_sha256": game_hashes(slate, params),
-            "game_sources": {g.key: g.rates.source for g in slate.games}, "model_status": model_status,
+            "game_sources": {g.key: g.rates.source for g in slate.games},
+            "game_rates": {g.key: asdict(g.rates) for g in slate.games}, "model_status": model_status,
             "field_calibration": field_cal}
     (root / "contests.json").write_text(json.dumps({cid: _contest_json(c) for cid, c in contests.items()}), encoding="utf-8")
     fam_fields = {fam: {"lineups": [list(x) for x in lus], "keys": list(ks)} for fam, (lus, ks) in fields.items()}
