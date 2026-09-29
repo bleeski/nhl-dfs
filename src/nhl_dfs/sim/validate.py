@@ -48,7 +48,9 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 CAL_DIR = REPO_ROOT / "docs" / "calibration"
 ROSTER_GAMES = 10
 STATS = {"goals": "goals", "assists": "assists", "points": None, "sog": "sog", "blocks": "blocks"}
-BONUSES = [("sog>=5", "sog", 5), ("blocks>=3", "blocks", 3), ("points>=3", "points", 3), ("goals>=3", "goals", 3)]
+# DK bonus thresholds first, then the shoulders that show whether a miss is in the tail or the body.
+BONUSES = [("sog>=5", "sog", 5), ("blocks>=3", "blocks", 3), ("points>=3", "points", 3), ("goals>=3", "goals", 3),
+           ("points>=2", "points", 2), ("goals>=2", "goals", 2), ("sog>=3", "sog", 3), ("blocks>=2", "blocks", 2)]
 
 
 @dataclass
@@ -95,7 +97,10 @@ class CalibrationReport:
         out += ["", "## Line-pair co-ceiling (both linemates with 2+ points)", "",
                 f"- model lines (predicted from ice time and shared-ice ids, not actual lines): {cc.get('pairs', 0)} pair-games, "
                 f"observed {cc.get('observed', 0)}, expected {cc.get('expected', 0.0):.1f}, ratio {cc.get('ratio', 0.0):.2f} "
-                f"({cc.get('flag', 'n/a')})", "", "## Team goals", ""]
+                f"({cc.get('flag', 'n/a')})",
+                f"- control (forward teammates on different model lines): {cc.get('control_pairs', 0)} pair-games, observed "
+                f"{cc.get('control_observed', 0)}, expected {cc.get('control_expected', 0.0):.1f}, ratio {cc.get('control_ratio', 0.0):.2f}; "
+                "a co-ceiling miss that shows up equally in the control is not about line structure", "", "## Team goals", ""]
         t = self.team
         out.append(f"- MODEL intensities (no odds): observed mean {t.get('obs_mean', 0):.2f}, simulated {t.get('sim_mean', 0):.2f}; "
                    f"observed sd {t.get('obs_sd', 0):.2f}, simulated {t.get('sim_sd', 0):.2f}; PIT chi-square/df {t.get('chi2_per_df', 0):.2f}")
@@ -194,6 +199,8 @@ def report(as_of_dates, cfg: dict | None = None, *, store_root=None, n_scenarios
     n_ev = {k: 0 for k in obs_ev}
     co_obs = co_pairs = 0
     co_exp = 0.0
+    ctl_obs = ctl_pairs = 0  # control: forward teammates from DIFFERENT model lines
+    ctl_exp = 0.0
     team_obs: list[float] = []
     team_sim_mean: list[float] = []
     team_sim_var: list[float] = []
@@ -285,22 +292,26 @@ def report(as_of_dates, cfg: dict | None = None, *, store_root=None, n_scenarios
                     team_sim_var.append(float(sim_g.var()))
         obs_pts = {(int(r.nhl_id)): int(r.goals + r.assists) for r in day_sk.itertuples(index=False)}
         for team, tp in prep.teams.items():
-            for u in range(tp.m_f.shape[1]):
-                mem = [i for i in range(tp.n_listed) if tp.m_f[i, u] > 0]
-                for a in range(len(mem)):
-                    for b in range(a + 1, len(mem)):
-                        ka = o.person_keys[tp.cols[mem[a]]]
-                        kb = o.person_keys[tp.cols[mem[b]]]
-                        ia, ib = crosswalk.get(ka), crosswalk.get(kb)
-                        if ia not in obs_pts or ib not in obs_pts:
-                            continue
-                        both = o.dressed[:, tp.cols[mem[a]]] & o.dressed[:, tp.cols[mem[b]]]
-                        if both.sum() < 50:
-                            continue
-                        pa, pb = pts[:, tp.cols[mem[a]]], pts[:, tp.cols[mem[b]]]
-                        co_exp += float(((pa >= 2) & (pb >= 2))[both].mean())
-                        co_obs += int(obs_pts[ia] >= 2 and obs_pts[ib] >= 2)
-                        co_pairs += 1
+            line_of = {i: int(np.argmax(tp.m_f[i])) for i in range(tp.n_listed) if tp.is_f[i]}
+            fwd = sorted(line_of)
+            for x in range(len(fwd)):
+                for y in range(x + 1, len(fwd)):
+                    i, j = fwd[x], fwd[y]
+                    same = line_of[i] == line_of[j]
+                    ka, kb = o.person_keys[tp.cols[i]], o.person_keys[tp.cols[j]]
+                    ia, ib = crosswalk.get(ka), crosswalk.get(kb)
+                    if ia not in obs_pts or ib not in obs_pts:
+                        continue
+                    both = o.dressed[:, tp.cols[i]] & o.dressed[:, tp.cols[j]]
+                    if both.sum() < 50:
+                        continue
+                    pa, pb = pts[:, tp.cols[i]], pts[:, tp.cols[j]]
+                    e = float(((pa >= 2) & (pb >= 2))[both].mean())
+                    hit = int(obs_pts[ia] >= 2 and obs_pts[ib] >= 2)
+                    if same:
+                        co_exp, co_obs, co_pairs = co_exp + e, co_obs + hit, co_pairs + 1
+                    else:
+                        ctl_exp, ctl_obs, ctl_pairs = ctl_exp + e, ctl_obs + hit, ctl_pairs + 1
         if progress:
             progress(f"{D}: {len(games)} games, {len(roster)} rostered persons")
 
@@ -332,9 +343,14 @@ def report(as_of_dates, cfg: dict | None = None, *, store_root=None, n_scenarios
                                      "value": ratio})
     ratio = co_obs / co_exp if co_exp > 0 else float("nan")
     cflag = "FLAG" if co_exp >= flag_min and not (lo <= ratio <= hi) else ("ok" if co_exp >= flag_min else "too few to flag")
-    rep.co_ceiling = {"pairs": co_pairs, "observed": co_obs, "expected": co_exp, "ratio": ratio, "flag": cflag}
+    cratio = ctl_obs / ctl_exp if ctl_exp > 0 else float("nan")
+    rep.co_ceiling = {"pairs": co_pairs, "observed": co_obs, "expected": co_exp, "ratio": ratio, "flag": cflag,
+                      "control_pairs": ctl_pairs, "control_observed": ctl_obs, "control_expected": ctl_exp, "control_ratio": cratio}
     if cflag == "FLAG":
-        rep.deficiencies.append({"kind": "co_ceiling", "what": "line-pair 2+ points", "detail": f"ratio {ratio:.2f}", "value": ratio})
+        rep.deficiencies.append({"kind": "co_ceiling", "what": "model-line pairs, both 2+ points",
+                                 "detail": f"observed/expected {ratio:.2f} within model lines, {cratio:.2f} across model lines: "
+                                           "the rank-built model lines do not identify actual linemates (a segment or "
+                                           "line-level model would need real deployment data)", "value": ratio})
     if team_obs:
         chi = rep.pit.get("team_goals", {}).get("chi2_per_df", 0.0)
         rep.team = {"obs_mean": float(np.mean(team_obs)), "obs_sd": float(np.std(team_obs)), "sim_mean": float(np.mean(team_sim_mean)),
@@ -374,7 +390,9 @@ def run_cli(args) -> int:
         print(f"PIT {stat}: n {p['n']}, chi-square/df {p['chi2_per_df']:.2f}{' FLAG' if p['flagged'] else ''}")
     for r in rep.rates:
         print(f"rate {r['event']}: observed {r['observed']}, expected {r['expected']:.1f}, ratio {r['ratio']:.2f} ({r['flag']})")
-    print(f"co-ceiling: observed {rep.co_ceiling['observed']}, expected {rep.co_ceiling['expected']:.1f} ({rep.co_ceiling['flag']})")
+    cc = rep.co_ceiling
+    print(f"co-ceiling: observed {cc['observed']}, expected {cc['expected']:.1f} ({cc['flag']}); control pairs observed "
+          f"{cc['control_observed']}, expected {cc['control_expected']:.1f}")
     print(f"deficiencies flagged: {len(rep.deficiencies)}; UNAVAILABLE: {', '.join(rep.unavailable)}")
     print(f"wall clock {rep.wall_s:.0f} s; wrote {md} and {js}")
     return 0

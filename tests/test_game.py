@@ -229,3 +229,32 @@ def test_cache_writes_chunks_with_hashes_and_matches_a_direct_run(tmp_path):
     # rebuilding replaces the old chunks
     cache.build(tmp_path / "sim", slate, params, 500, seed=21)
     assert len(list((tmp_path / "sim").glob("chunk_*.npy"))) == 1
+
+
+def test_showdown_pool_roles_end_to_end_and_the_captain_counts_once():
+    """A real Showdown pool structure (CPT and FLEX rows per person): the role columns of one person are
+    identical in every scenario, and a lineup's captain multiplier changes its score exactly once."""
+    from conftest import MINI
+    from nhl_dfs.intake.salary import read_salary
+    from nhl_dfs.sim.slate import build_slate
+
+    pool = read_salary(MINI / "showdown" / "DKSalaries.csv")
+    table = params_mod.projection_for(pool, __import__("datetime").date(2026, 9, 28))
+    slate, _ = build_slate(pool, table, None)
+    o = game.simulate(slate, table, 600, seed=17)
+    role_ids, cols = score.role_map_for(pool, o.person_keys)
+    rb = score.role_tenths(score.base_tenths(o), cols)
+    by_person = {}
+    for i, rid in enumerate(role_ids):
+        by_person.setdefault(pool.by_role_id[rid].person_key, []).append(i)
+    pairs = [v for v in by_person.values() if len(v) == 2]
+    assert pairs
+    for a, b in pairs:
+        assert np.array_equal(rb[:, a], rb[:, b])  # CPT and FLEX rows are the same realized stat line
+    cpt = next(i for i, rid in enumerate(role_ids) if "CPT" in pool.by_role_id[rid].roster_positions)
+    flex = [i for i, rid in enumerate(role_ids) if "FLEX" in pool.by_role_id[rid].roster_positions and i not in by_person[
+        pool.by_role_id[role_ids[cpt]].person_key]][:5]
+    lineup = np.array([[cpt] + flex])
+    plain = score.lineup_twentieths(rb, lineup, captain_col=None)
+    capt = score.lineup_twentieths(rb, lineup, captain_col=0)
+    assert np.array_equal(capt - plain, rb[:, [cpt]])  # exactly one extra 1x of the captain's base

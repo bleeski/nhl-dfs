@@ -98,3 +98,27 @@ participation status the engine does not recognize is `UNKNOWN`, never
 coerced to a known value (CLAUDE.md); other vocabularies here that have no
 `UNKNOWN` member raise on an unrecognized input instead (see
 `contracts/ids.py:position_group`) rather than guess.
+
+## Simulator (C6, `src/nhl_dfs/sim/`)
+
+- One process for market and simulation: `sim/resolve.py` (regulation Poisson goals, equalizers and
+  empty-net goals while a goalie is pulled, then overtime or a shootout). `market.fit_game` inverts it
+  analytically (implied win probability and expected book total, shootout winner's goal counted when
+  `so_adds_goal`), `game.simulate` samples it, so a fit that hits its target hits it in simulation.
+- `sim/game.py`: per PERSON outcomes, `Outcomes` arrays `(n, P)`, person axis sorted by `person_key`.
+  Empty-net goals are never charged to a goalie; shootout goals have their own column
+  (`so_goals`, 1.5 points, never goals, SOG, GA or a bonus input); saves are exactly the opposing
+  non-goal shots. Seeds: `SeedSequence([seed, purpose, chunk, game])`, purposes design / selection /
+  referee (config/sim.yaml `purposes`). `chunk_size` is fixed in config: a memory-cap change never
+  changes the draws.
+- `sim/score.py`: `base_tenths` (int32, constants from `contracts.scoring`), `role_tenths` (a role row
+  copies its person's column; CPT is not multiplied), `lineup_twentieths` (Captain applied once).
+  `role_map_for(pool, person_keys)` builds the role to column map.
+- `sim/cache.py`: `runs/<id>/sim/chunk_XXXX.npy` (int32 tenths) plus `meta.json` (seed, purpose,
+  chunk size, spec hash). No candidates x scenarios matrix is ever stored.
+- Odds: a snapshot older than `market.max_age_h` is not used; a game with no verified team-code match
+  is `source=MODEL`, reported per game. A market that predates a goalie confirmation is STALE and
+  blended toward the model.
+- `sim/validate.py` (`cli calibrate`): graded conditional on who dressed and started; historical odds
+  do not exist in the store, so market comparisons print UNAVAILABLE. Machine-readable
+  `deficiencies` in `docs/calibration/<date>.json` are what C13's gate reads.

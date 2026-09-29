@@ -12,14 +12,21 @@ from nhl_dfs.sim import market
 from nhl_dfs.sim.game import GameSpec, SlateSpec
 
 
-def fetch_odds(cache=None) -> tuple[object | None, list[str]]:
-    """Partner odds first, Covers second; (snapshot or None, messages). Never raises."""
+def fetch_odds(cache=None, *, now: datetime | None = None, max_age_h: float | None = None) -> tuple[object | None, list[str]]:
+    """Partner odds first, Covers second; (snapshot or None, messages). A snapshot older than
+    max_age_h (default market.max_age_h) is passed over for the next source. Never raises."""
     from nhl_dfs.data.sources import covers, nhl
 
+    now = now or datetime.now(timezone.utc)
+    limit = float(max_age_h if max_age_h is not None else market.load_sim_config()["market"]["max_age_h"])
     msgs: list[str] = []
     for name, fn in (("nhl_partner_odds", nhl.partner_odds), ("covers", covers.odds)):
         try:
             snap = fn(cache=cache)
+            age_h = (now - snap.as_of_utc).total_seconds() / 3600.0
+            if snap.games and age_h > limit:
+                msgs.append(f"odds: {name} snapshot is {age_h / 24:.1f} days old ({snap.as_of_utc:%Y-%m-%d %H:%MZ}, {snap.as_of_basis}); passed over")
+                continue
             if snap.games:
                 msgs.append(f"odds: {name} {len(snap.games)} games, as of {snap.as_of_utc:%Y-%m-%d %H:%MZ} ({snap.as_of_basis})")
                 return snap, msgs

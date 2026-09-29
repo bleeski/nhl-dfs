@@ -49,3 +49,16 @@ def lineup_twentieths(role_base: np.ndarray, lineups: np.ndarray, captain_col: i
             else sc.BASE_TENTHS_TO_TWENTIETHS_MULTIPLIER
         out += role_base[:, lineups[:, j]].astype(np.int32) * mult
     return out
+
+
+def role_map_for(pool, person_keys) -> tuple[list[str], np.ndarray]:
+    """(role_ids, person column per role) for a SalaryPool against the simulator's sorted person axis.
+    A Showdown person's CPT and FLEX rows map to the same column. A role whose person was not
+    simulated (excluded before the run) is left out."""
+    col = {k: i for i, k in enumerate(person_keys)}
+    ids, cols = [], []
+    for r in pool.rows:
+        if r.person_key in col:
+            ids.append(r.role_id)
+            cols.append(col[r.person_key])
+    return ids, np.asarray(cols, dtype=np.int64)

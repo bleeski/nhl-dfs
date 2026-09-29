@@ -1,0 +1,287 @@
+{
+ "as_of_dates": [
+  "2025-11-07",
+  "2025-11-22",
+  "2025-12-08",
+  "2025-12-23",
+  "2026-01-10",
+  "2026-01-26",
+  "2026-03-01",
+  "2026-03-16",
+  "2026-03-31",
+  "2026-04-16"
+ ],
+ "n_scenarios": 1500,
+ "created_utc": "2026-09-29T13:32:54.927141+00:00",
+ "coverage": {
+  "games": 79,
+  "skaters_observed": 2844,
+  "skaters_matched": 2810,
+  "goalies_observed": 158,
+  "goalies_matched": 154,
+  "skaters_unmatched": 34,
+  "goalies_unmatched": 4
+ },
+ "pit": {
+  "goals": {
+   "n": 2810,
+   "chi2_per_df": 0.498220640569395,
+   "hist": [
+    293,
+    282,
+    277,
+    280,
+    299,
+    285,
+    261,
+    263,
+    286,
+    284
+   ],
+   "flagged": false
+  },
+  "assists": {
+   "n": 2810,
+   "chi2_per_df": 1.575326215895611,
+   "hist": [
+    277,
+    297,
+    285,
+    293,
+    248,
+    290,
+    310,
+    290,
+    277,
+    243
+   ],
+   "flagged": false
+  },
+  "points": {
+   "n": 2810,
+   "chi2_per_df": 1.0968762356662713,
+   "hist": [
+    298,
+    271,
+    277,
+    300,
+    276,
+    302,
+    301,
+    258,
+    264,
+    263
+   ],
+   "flagged": false
+  },
+  "sog": {
+   "n": 2810,
+   "chi2_per_df": 2.306840648477659,
+   "hist": [
+    320,
+    305,
+    284,
+    291,
+    275,
+    296,
+    267,
+    228,
+    262,
+    282
+   ],
+   "flagged": false
+  },
+  "blocks": {
+   "n": 2810,
+   "chi2_per_df": 2.6935547647291416,
+   "hist": [
+    295,
+    338,
+    295,
+    282,
+    282,
+    283,
+    262,
+    285,
+    239,
+    249
+   ],
+   "flagged": false
+  },
+  "saves": {
+   "n": 154,
+   "chi2_per_df": 0.7243867243867244,
+   "hist": [
+    16,
+    15,
+    17,
+    21,
+    15,
+    13,
+    11,
+    20,
+    15,
+    11
+   ],
+   "flagged": false
+  },
+  "ga": {
+   "n": 154,
+   "chi2_per_df": 0.8253968253968255,
+   "hist": [
+    17,
+    13,
+    7,
+    15,
+    16,
+    16,
+    19,
+    20,
+    15,
+    16
+   ],
+   "flagged": false
+  },
+  "team_goals": {
+   "n": 158,
+   "chi2_per_df": 0.2222222222222222,
+   "hist": [
+    16,
+    17,
+    13,
+    13,
+    17,
+    17,
+    15,
+    16,
+    15,
+    19
+   ],
+   "flagged": false
+  }
+ },
+ "rates": [
+  {
+   "event": "sog>=5",
+   "observed": 116,
+   "expected": 112.8716016849395,
+   "ratio": 1.027716434146056,
+   "n": 2810,
+   "flag": "ok"
+  },
+  {
+   "event": "blocks>=3",
+   "observed": 185,
+   "expected": 208.87142618442465,
+   "ratio": 0.8857123416998781,
+   "n": 2810,
+   "flag": "ok"
+  },
+  {
+   "event": "points>=3",
+   "observed": 66,
+   "expected": 47.135565642962305,
+   "ratio": 1.4002165689477473,
+   "n": 2810,
+   "flag": "FLAG"
+  },
+  {
+   "event": "goals>=3",
+   "observed": 8,
+   "expected": 4.252580792395599,
+   "ratio": 1.8812105849477285,
+   "n": 2810,
+   "flag": "too few to flag"
+  },
+  {
+   "event": "points>=2",
+   "observed": 246,
+   "expected": 236.64678847524718,
+   "ratio": 1.0395239317846527,
+   "n": 2810,
+   "flag": "ok"
+  },
+  {
+   "event": "goals>=2",
+   "observed": 47,
+   "expected": 45.52664360167702,
+   "ratio": 1.0323625086710477,
+   "n": 2810,
+   "flag": "ok"
+  },
+  {
+   "event": "sog>=3",
+   "observed": 586,
+   "expected": 610.5340229368567,
+   "ratio": 0.9598154697115151,
+   "n": 2810,
+   "flag": "ok"
+  },
+  {
+   "event": "blocks>=2",
+   "observed": 513,
+   "expected": 565.7428445909017,
+   "ratio": 0.9067724053513379,
+   "n": 2810,
+   "flag": "ok"
+  },
+  {
+   "event": "saves>=35",
+   "observed": 8,
+   "expected": 9.612128701557754,
+   "ratio": 0.8322818231411643,
+   "n": 154,
+   "flag": "too few to flag"
+  },
+  {
+   "event": "goalie win",
+   "observed": 77,
+   "expected": 73.37670018566249,
+   "ratio": 1.04937943250609,
+   "n": 154,
+   "flag": "ok"
+  }
+ ],
+ "co_ceiling": {
+  "pairs": 1500,
+  "observed": 44,
+  "expected": 80.58627363026997,
+  "ratio": 0.5459986920585522,
+  "flag": "FLAG",
+  "control_pairs": 8642,
+  "control_observed": 131,
+  "control_expected": 82.51023244429366,
+  "control_ratio": 1.5876818682875962
+ },
+ "team": {
+  "obs_mean": 3.0316455696202533,
+  "obs_sd": 1.8840465677142415,
+  "sim_mean": 2.980590717299578,
+  "sim_sd": 1.7684531386260067,
+  "chi2_per_df": 0.2222222222222222,
+  "n": 158
+ },
+ "unavailable": {
+  "team totals vs market": "the store holds no historical odds; the rows above are the MODEL-source intensities only",
+  "goalie win vs implied": "no historical moneylines; 'goalie win' above is graded against the simulator's own probability"
+ },
+ "deficiencies": [
+  {
+   "kind": "rate",
+   "what": "points>=3",
+   "detail": "observed 66 vs expected 47.1 (ratio 1.40)",
+   "value": 1.4002165689477473
+  },
+  {
+   "kind": "co_ceiling",
+   "what": "model-line pairs, both 2+ points",
+   "detail": "observed/expected 0.55 within model lines, 1.59 across model lines: the rank-built model lines do not identify actual linemates (a segment or line-level model would need real deployment data)",
+   "value": 0.5459986920585522
+  }
+ ],
+ "notes": [
+  "persons with no history use position priors (PRIOR); the calibration includes them",
+  "team SOG-to-goal correlation is higher in the simulation than in history (score effects are not modeled)"
+ ],
+ "wall_s": 98.67309890000615
+}
