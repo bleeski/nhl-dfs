@@ -157,7 +157,8 @@ def _scenario_lines(s: dict[str, Any]) -> list[str]:
             "- Caps: " + "; ".join(s.get("caps", {}).get("notes", []) or ["defaults"]),
             f"- Candidate families: target {s.get('family_mix', {}).get('target')}, selected {s.get('family_mix', {}).get('selected')}; "
             f"{s.get('discovery', {}).get('candidates')} candidates ({s.get('discovery', {}).get('from_bank_and_provisional')} from the "
-            f"Phase A bank and the provisional picks); chalk team {s.get('discovery', {}).get('chalk_team')}.",
+            f"Phase A bank and the provisional picks), {s.get('discovery', {}).get('screened', {}).get('kept', '?')} kept by the "
+            f"per-contest screen; chalk team {s.get('discovery', {}).get('chalk_team')}.",
             f"- PRIOR (no-history) persons selected: v1 {s['prior_persons_selected']['baseline_v1']}, provisional "
             f"{s['prior_persons_selected']['provisional']}, scenario {s['prior_persons_selected']['scenario']}."]
     if s.get("relaxations"):

@@ -206,8 +206,9 @@ def _prepare(cand_scores: np.ndarray, fields: Mapping[str, tuple], contests: Map
     for key, cids in groups.items():
         fs = fields[cids[0]][0]
         wl = [fields[cid][1] for cid in cids]
-        for cid in cids:
-            GE[cid] = (np.zeros((S, K), np.int32), np.zeros((S, K), np.int32))
+        for cid in cids:  # ranks never exceed the field size: int16 below 32,000 entries halves the memory
+            dt = np.int16 if contests[cid].field_size < 32000 else np.int32
+            GE[cid] = (np.zeros((S, K), dt), np.zeros((S, K), dt))
         step = ob._chunk_rows(S, fs.shape[1] * 64 + K * (96 + 16 * len(cids)), float(risk_cfg["objectives"]["memory_cap_mb"]))
         for a in range(0, S, step):
             b = min(S, a + step)
@@ -263,7 +264,7 @@ def _greedy(kappa: float, order: list, entry_contest: Mapping[str, str], fees: M
     S, K = cand_scores.shape
     tp = float(risk_cfg["objectives"]["top_pct"])
     curves = {cid: _Curve(st.contest, tp) for cid, st in states.items()}
-    inc = {cid: (np.zeros((S, K), np.int16), np.zeros((S, K), np.int16)) for cid in states}
+    inc = {cid: (np.zeros((S, K), st.G.dtype), np.zeros((S, K), st.G.dtype)) for cid, st in states.items()}
     step = ob._chunk_rows(S, K * 80, float(risk_cfg["objectives"]["memory_cap_mb"]) * mem_share)
     total_fees = sum(int(fees[e]) for e in order)
     thr = 0.2 * total_fees  # losing >= 80% of fees <=> total payout <= 20% of fees
