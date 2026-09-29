@@ -2,7 +2,7 @@
 
 `status`, `verify`, `probe`, `run --baseline` (C2b), `late-swap`, and `refresh` (C2c) are real.
 `run` without --baseline adds the provisional leverage pass, and `field --run` reports the
-sampled opponent field (C3).
+sampled opponent field (C3). `history --backfill` and `identity --seed | --accept` are C4.
 """
 
 from __future__ import annotations
@@ -285,6 +285,25 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--outputs-root", type=str, default=None)
     run_parser.set_defaults(func=cmd_run)
 
+    hist = sub.add_parser("history")
+    hist.add_argument("--backfill", type=int, default=None, help="number of completed seasons")
+    hist.add_argument("--since", type=str, default=None, help="incremental: refetch from this date (YYYY-MM-DD)")
+    hist.add_argument("--no-moneypuck", action="store_true", help="Tier B only (NHL reports)")
+    hist.add_argument("--store-root", type=str, default=None)
+    hist.add_argument("--raw-root", type=str, default=None)
+    hist.set_defaults(func=cmd_history)
+
+    ident = sub.add_parser("identity")
+    ident.add_argument("--seed", action="store_true")
+    ident.add_argument("--salary", type=str, default=None)
+    ident.add_argument("--accept", type=str, default=None, metavar="PROPOSAL_ID")
+    ident.add_argument("--nhl-id", type=int, default=None)
+    ident.add_argument("--offline", action="store_true", help="use stored history only (no roster calls)")
+    ident.add_argument("--store-root", type=str, default=None)
+    ident.add_argument("--accepted-path", type=str, default=None)
+    ident.add_argument("--proposals-path", type=str, default=None)
+    ident.set_defaults(func=cmd_identity)
+
     field_parser = sub.add_parser("field")
     field_parser.add_argument("--run", type=str, default=None)
     field_parser.add_argument("--runs-root", type=str, default=str(RUNS_ROOT))
@@ -363,6 +382,86 @@ def cmd_field(args: argparse.Namespace) -> int:
     print(f"field for run {args.run} ({source})")
     for line in field_lines(summary):
         print(line)
+    return 0
+
+
+def cmd_history(args: argparse.Namespace) -> int:
+    import time
+    from datetime import date, datetime, timezone
+
+    from nhl_dfs.data.history import history_seasons, nhl_reports, regular_season_complete, store
+    from nhl_dfs.data.http import load_sources_config
+
+    if not args.backfill:
+        print("history needs --backfill <number of completed seasons>")
+        return 2
+    cfg = load_sources_config()
+    today = datetime.now(timezone.utc).date()
+    seasons = history_seasons(today, int(args.backfill))
+    since = date.fromisoformat(args.since) if args.since else None
+    mp_on = cfg["moneypuck"]["enabled"] and not args.no_moneypuck
+    print(f"history backfill: seasons {', '.join(map(str, seasons))}" + (f" since {since}" if since else ""))
+    print("run this outside any slate clock (it is not part of a slate run)")
+    if mp_on:
+        print(f"credit: {cfg['moneypuck']['attribution']}")
+    stats = nhl_reports.backfill(seasons, since=since, cfg=cfg, today=today, moneypuck=mp_on,
+                                 store_root=args.store_root, raw_root=args.raw_root)
+    for k, v in sorted(stats.rows.items()):
+        print(f"rows {k}: {v}")
+    for season, t in sorted(stats.tiers.items()):
+        print(f"tiers {season}: A={t.get('A', 0)} B={t.get('B', 0)}")
+    for k, v in sorted(stats.moneypuck.items()):
+        print(f"moneypuck {k}: {v}")
+    checked = sum(c["checked"] for c in stats.crosscheck.values())
+    bad = sum(c["mismatch"] for c in stats.crosscheck.values())
+    print(f"box score cross-check: {len(stats.crosscheck)} games, {checked} players checked, {bad} mismatched fields")
+    print(f"requests {stats.calls}, windows {stats.windows}, splits {stats.splits}, elapsed {stats.elapsed_s:.1f}s")
+    for msg in stats.messages:
+        print(f"note: {msg}")
+    done = [s for s in seasons if regular_season_complete(s, today)][-2:]
+    t0 = time.perf_counter()
+    n = len(store.read("skater_games", done, root=args.store_root))
+    print(f"store read of {len(done)} completed seasons: {n} skater-game rows in {time.perf_counter() - t0:.2f}s")
+    return 0 if not bad else 1
+
+
+def cmd_identity(args: argparse.Namespace) -> int:
+    from nhl_dfs.data.history import store
+    from nhl_dfs.data.identity import crosswalk as cw
+
+    paths = {"accepted_path": args.accepted_path, "proposals_path": args.proposals_path}
+    if args.accept:
+        try:
+            prop = cw.accept(args.accept, args.nhl_id, **paths)
+        except (KeyError, ValueError) as exc:
+            print(f"not accepted: {exc}")
+            return 1
+        print(f"accepted: {prop.dk_name} ({prop.dk_team}, {prop.position_group}) -> NHL {prop.nhl_id} "
+              f"{prop.nhl_name} ({prop.nhl_team})")
+        return 0
+    if not (args.seed and args.salary):
+        print("identity needs --seed --salary <DKSalaries.csv>, or --accept <proposal_id>")
+        return 2
+    from nhl_dfs.intake.salary import read_salary
+
+    pool = read_salary(args.salary)
+    people, problems = [], []
+    if not args.offline:
+        people, problems = cw.directory_from_rosters(cw.nhl_codes())
+    seasons = sorted({s for k in ("skater_games", "goalie_games") for s in store.seasons_present(k, root=args.store_root)})
+    people += cw.directory_from_history(seasons, store_root=args.store_root)
+    res = cw.seed(pool, directory=people, **paths)
+    c = res.counts()
+    print(f"identity seed: accepted={c['accepted']} proposals={c['proposals']} unmatched={c['unmatched']} "
+          f"(new exact accepts written: {res.new_exact}; directory {len(people)} NHL people)")
+    for pr in res.proposals:
+        print(f"proposal {pr.proposal_id}: {pr.dk_name} ({pr.dk_team}, {pr.position_group}) -> NHL {pr.nhl_id} "
+              f"{pr.nhl_name} ({pr.nhl_team} {pr.nhl_position}): {pr.reason}")
+    for u in res.unmatched:
+        print(f"unmatched: {u['name']} ({u['team']}, {u['group']}): {u['reason']}")
+    for msg in problems:
+        print(f"note: {msg}")
+    print("review proposals, then: .\\nhl.ps1 identity --accept <proposal_id>")
     return 0
 
 

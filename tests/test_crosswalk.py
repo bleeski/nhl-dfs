@@ -130,3 +130,41 @@ def test_roster_directory_from_fixture(make_cache):
     people, problems = cw.directory_from_rosters(["VGK"], cache=cache)
     assert people and not problems and {p.team for p in people} == {"VGK"}
     assert json.dumps([p.position for p in people])
+
+
+def test_cli_identity_seed_and_accept(tmp_path, capsys):
+    from nhl_dfs import cli
+    from test_nhl_reports import SEASON, run
+
+    run(tmp_path, moneypuck=False)  # store with the 8 fixture skaters (DAL / WPG) and 2 goalies
+    salary = mini_pair("classic")[0]
+    args = ["identity", "--seed", "--salary", str(salary), "--offline", "--store-root", str(tmp_path / "a" / "store"),
+            "--accepted-path", str(tmp_path / "acc.csv"), "--proposals-path", str(tmp_path / "prop.json")]
+    assert cli.main(args) == 0
+    out = capsys.readouterr().out
+    assert "identity seed: accepted=0 proposals=0 unmatched=" in out and "directory 10 NHL people" in out
+    assert cli.main(["identity", "--accept", "nope", "--accepted-path", str(tmp_path / "acc.csv"),
+                     "--proposals-path", str(tmp_path / "prop.json")]) == 1
+    assert cli.main(["identity"]) == 2
+
+
+def test_cli_history_prints_counts_and_credit(monkeypatch, capsys):
+    from nhl_dfs import cli
+    from nhl_dfs.data.history import nhl_reports
+
+    seen = {}
+
+    def fake_backfill(seasons, **kw):
+        seen["seasons"], seen["moneypuck"] = seasons, kw["moneypuck"]
+        s = nhl_reports.BackfillStats(seasons=list(seasons), windows=3, calls=12)
+        s.rows = {"skater_games/20252026": 8}
+        s.tiers = {"20252026": {"A": 8, "B": 0}}
+        s.crosscheck = {"2025020017": {"checked": 10, "mismatch": 0}}
+        return s
+
+    monkeypatch.setattr(nhl_reports, "backfill", fake_backfill)
+    assert cli.main(["history", "--backfill", "2", "--store-root", "none-here"]) == 0
+    out = capsys.readouterr().out
+    assert "credit: " in out and "MoneyPuck.com" in out and "rows skater_games/20252026: 8" in out
+    assert len(seen["seasons"]) >= 2 and seen["moneypuck"] is True
+    assert cli.main(["history"]) == 2
