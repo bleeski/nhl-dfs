@@ -459,10 +459,32 @@ def contest_metrics(cand, field, weights, contest: Contest, own_copies=None, *, 
     LineupScores); weights (F,) integer multiplicities; own_copies (S, J) scores of the user's OTHER
     entries in this contest (or None). Chunked by scenario within objectives.memory_cap_mb."""
     cfg = cfg if cfg is not None else load_risk_config()
-    o = cfg["objectives"]
     S, K = cand.shape
-    F = field.shape[1]
     J = 0 if own_copies is None else own_copies.shape[1]
+
+    def block(a: int, b: int):
+        return ranks(np.asarray(cand[a:b]), np.asarray(field[a:b]), weights,
+                     None if own_copies is None else np.asarray(own_copies[a:b]))
+    return _evaluate(S, K, field.shape[1] * 28 + K * (J + 96), block, contest, cfg)
+
+
+def joint_payouts(own, field, weights, contest: Contest, *, cfg: dict | None = None) -> Metrics:
+    """All of the user's entries in one contest ranked together: own (S, J) scores; each entry's
+    finish counts the field and every OTHER own entry (they are opponents of each other)."""
+    cfg = cfg if cfg is not None else load_risk_config()
+    S, J = own.shape
+
+    def block(a: int, b: int):
+        o = np.asarray(own[a:b])
+        G, E = ranks(o, np.asarray(field[a:b]), weights)
+        G += (o[:, None, :] > o[:, :, None]).sum(axis=2)
+        E += (o[:, None, :] == o[:, :, None]).sum(axis=2) - 1  # every other own entry tied with it
+        return G, E
+    return _evaluate(S, J, field.shape[1] * 28 + J * (J + 96), block, contest, cfg)
+
+
+def _evaluate(S: int, K: int, per_row_bytes: int, block, contest: Contest, cfg: dict) -> Metrics:
+    o = cfg["objectives"]
     L = contest.field_size
     cash = contest.prefix(contest.prizes_cents)
     seatp = contest.prefix(contest.seats.astype(np.int64))
@@ -470,8 +492,7 @@ def contest_metrics(cand, field, weights, contest: Contest, own_copies=None, *, 
     line = contest.cash_line
     first = int(contest.prizes_cents[0]) if contest.paid else 0
     face = contest.ticket_face_cents or 0
-    per_row = F * 28 + K * (J + 96)
-    step = _chunk_rows(S, per_row, float(o["memory_cap_mb"]))
+    step = _chunk_rows(S, per_row_bytes, float(o["memory_cap_mb"]))
     pay = np.zeros((S, K), np.int32)
     util = np.zeros((S, K), np.int32)
     topd = np.zeros((S, K), np.int32)
@@ -479,24 +500,22 @@ def contest_metrics(cand, field, weights, contest: Contest, own_copies=None, *, 
     eq = np.zeros((S, K), np.float32)
     clear = np.zeros((S, K), np.float32)
     seat = np.zeros((S, K), np.float32)
+    fam = contest.family
     for a in range(0, S, step):
         b = min(S, a + step)
-        cc = np.asarray(cand[a:b])
-        G, E = ranks(cc, np.asarray(field[a:b]), weights, None if own_copies is None else np.asarray(own_copies[a:b]))
+        G, E = block(a, b)
         T = E + 1
         hi = np.minimum(G + T, L)
         lo = np.minimum(G, L)
         share = (cash[hi] - cash[lo]) // T  # pooled over the tied positions, rounded down to the cent
-        top_share = (cash[np.minimum(G + T, top_k)] - cash[np.minimum(G, top_k)]) // T
         pay[a:b] = share
-        topd[a:b] = top_share
+        topd[a:b] = (cash[np.minimum(G + T, top_k)] - cash[np.minimum(G, top_k)]) // T
         top[a:b] = np.clip(top_k - G, 0, T) / T
         eq[a:b] = (G == 0) / T
         clear[a:b] = np.clip(line - G, 0, T) / T
         seat[a:b] = (seatp[hi] - seatp[lo]) / T
-        fam = contest.family
         if fam == "large_gpp":
-            util[a:b] = top_share
+            util[a:b] = topd[a:b]
         elif fam == "wta":
             util[a:b] = np.floor(eq[a:b] * first)
         elif fam == "satellite":
@@ -512,24 +531,13 @@ def contest_metrics(cand, field, weights, contest: Contest, own_copies=None, *, 
         "p_clear_line": (clear.mean(axis=0), _se(clear, S)),
         "p_seat": (seat.mean(axis=0), _se(seat, S)),
     }
-    name = FAMILY_OBJECTIVE[contest.family]
+    name = FAMILY_OBJECTIVE[fam]
     return Metrics(
-        contest.contest_id, contest.family, S, name, vals[name][0], vals[name][1],
+        contest.contest_id, fam, S, name, vals[name][0], vals[name][1],
         vals["exp_payout"][0], vals["exp_payout"][1], vals["exp_payout_top1pct"][0], vals["exp_payout_top1pct"][1],
         (pay > 0).mean(axis=0), top.mean(axis=0), _se(top, S), vals["first_place_equity"][0], vals["first_place_equity"][1],
         vals["p_clear_line"][0], vals["p_clear_line"][1], vals["p_seat"][0], vals["p_seat"][1],
         seat.mean(axis=0) * face / 100.0, pay, util, top_k)
-
-
-def joint_payouts(own: np.ndarray, field, weights, contest: Contest, *, cfg: dict | None = None) -> Metrics:
-    """All of the user's entries in one contest ranked together: own (S, J) scores; each entry's
-    finish counts the field and every OTHER own entry (they are opponents of each other)."""
-    S, J = own.shape
-    cols = []
-    for j in range(J):
-        others = np.delete(own, j, axis=1) if J > 1 else None
-        cols.append(contest_metrics(own[:, [j]], field, weights, contest, others, cfg=cfg))
-    return _stack(cols)
 
 
 def _stack(ms: list[Metrics]) -> Metrics:

@@ -1,0 +1,420 @@
+"""Objective-aware portfolio: candidate discovery, frontier and fee-weighted allocation (C8, plan
+section 7 "Portfolio policies", "Contest treatment and optimization").
+
+Discovery (`discover`, design scenarios only; the referee stream never feeds it): a search
+allocation of about 65% central-case candidates (scenario-mean objective with perturbation), 25%
+alternate viable cores (conditional means in the scenarios where one team's skaters score in their
+top 20%, cycling teams) and 10% "priors wrong" (conditional means where the field's chalk team
+scores in its bottom 20%). The mix is a search allocation, not a claim about probabilities.
+
+Selection (`select`, selection scenarios): every candidate is scored once in the shared scenarios
+and ranked against each contest's field (objectives.ranks). Entries are filled in family order
+(config/contest_families.yaml selection.family_order), then by fee (dearest first), then file order;
+each takes the candidate with the best
+    score = E[family utility in dollars] - kappa x total fees x P(portfolio loses >= 80% of fees)
+among those that pass the caps, ordered by the deterministic tie-break inside one band (band >= the
+score's Monte Carlo SE; ownership never moves a choice past one band; cash and satellite use no
+ownership). The user's entries already placed in a contest count as copies and opponents. Caps are
+relaxed in the plan's order when nothing passes (OVERLAP, then EXPOSURE, then REPEAT), recorded.
+
+Frontier: one portfolio per knob setting (five kappas, config/risk.yaml), each measured jointly
+(own entries ranked together). Dominated points are dropped from the report; the choice is the
+highest tail utility with P(lose >= 80%) and the fee concentrations inside the budget, else the
+least-risk point, recorded. Monotonicity in the knob is not assumed. WTA entries are allocated by
+first-place equity (their family utility).
+"""
+
+from __future__ import annotations
+
+import math
+from collections import Counter, defaultdict
+from dataclasses import dataclass, field
+from typing import Mapping, Sequence
+
+import numpy as np
+
+from nhl_dfs.build import exposure, tiebreak
+from nhl_dfs.build import objectives as ob
+from nhl_dfs.build.assign import Relaxation
+from nhl_dfs.build.candidates import Candidate
+from nhl_dfs.contracts.geometry import Mode, lineup_key
+
+
+@dataclass(frozen=True)
+class RiskBudget:
+    p_lose80_max: float
+    goalie_fee_share_max: float | None
+    game_fee_share_max: float | None
+    captain_fee_share_max: float | None
+
+    @classmethod
+    def from_config(cls, risk_cfg: dict, mode: Mode, caps: exposure.Caps) -> "RiskBudget":
+        b = risk_cfg["budget"][mode.value]
+        return cls(float(b["p_lose80_max"]), caps.goalie_fee_share, caps.game_fee_share, caps.captain_fee_share)
+
+
+@dataclass
+class Choice:
+    entry_id: str
+    contest_id: str
+    family: str  # contest family
+    cand: int
+    key: str
+    cand_family: str  # discovery family
+    score: float  # dollars
+    score_se: float
+    band: float
+    band_index: int
+    own_pct: float
+    dup: float
+    dup_measure: str
+    level: int  # 0 all caps, 1 overlap dropped, 2 exposure dropped, 3 repeat
+
+
+@dataclass
+class FrontierPoint:
+    kappa: float
+    tail_utility: float
+    tail_utility_se: float
+    p_lose80: float
+    p_lose80_se: float
+    exp_payout: float
+    goalie_share_max: float
+    game_share_max: float | None
+    captain_share_max: float | None
+    feasible: bool
+    dominated: bool = False
+    reasons: list[str] = field(default_factory=list)
+
+    def record(self) -> dict:
+        return {k: (round(v, 5) if isinstance(v, float) else v) for k, v in self.__dict__.items()}
+
+
+@dataclass
+class Selection:
+    by_entry: dict[str, tuple[str, ...]]
+    choices: dict[str, Choice]
+    frontier: list[FrontierPoint]
+    chosen_kappa: float
+    chosen_reason: str
+    relaxations: list[Relaxation]
+    family_mix: dict[str, int]
+    families_target: tuple[float, ...]
+    portfolio: ob.PortfolioMetrics | None = None
+
+
+# -- discovery ------------------------------------------------------------------------------------
+
+def role_objective(scen: ob.ScenarioSet, pool, rows: np.ndarray | None = None) -> dict[str, float]:
+    """Per-role objective in points from scenario means (the Captain row at 1.5x); rows restricts to a
+    scenario subset (a cluster)."""
+    base = scen.base if rows is None else scen.base[rows]
+    m = base.mean(axis=0) / 10.0
+    out = {}
+    for i, r in enumerate(scen.role_ids):
+        v = float(m[i])
+        if pool.mode is Mode.SHOWDOWN and "CPT" in pool.by_role_id[r].roster_positions:
+            v *= 1.5
+        out[r] = v
+    return out
+
+
+def team_points(scen: ob.ScenarioSet, pool) -> dict[str, np.ndarray]:
+    """Per team: its skaters' summed base points per scenario (one column per person)."""
+    cols: dict[str, list[int]] = defaultdict(list)
+    seen = set()
+    for r in pool.rows:
+        if r.is_goalie or r.person_key in seen or r.role_id not in scen.col:
+            continue
+        if pool.mode is Mode.SHOWDOWN and "CPT" in r.roster_positions:
+            continue
+        seen.add(r.person_key)
+        cols[r.team].append(scen.col[r.role_id])
+    return {t: scen.base[:, c].sum(axis=1) for t, c in sorted(cols.items())}
+
+
+def discover(pool, design: ob.ScenarioSet, n_total: int, runtime: dict, risk_cfg: dict, *, seed: int,
+             chalk_team: str | None = None, families: Sequence[float] | None = None,
+             time_limit_s: float | None = None) -> tuple[list[Candidate], dict]:
+    """Candidates tagged central / alternate:<team> / priors_wrong:<team>. Returns (candidates, report)."""
+    from nhl_dfs.build import candidates as cand_mod
+    from nhl_dfs.models.field import split_counts
+
+    d = risk_cfg["discovery"]
+    fam = tuple(families if families is not None else d["families"])
+    c = runtime["candidates"]
+    per = split_counts(list(fam), int(n_total))
+    budget = float(time_limit_s if time_limit_s is not None else c["time_limit_total_s"])
+    tp = team_points(design, pool)
+    jobs: list[tuple[str, dict, int]] = [("central", role_objective(design, pool), per[0])]
+    teams = sorted(tp)
+    for t, k in zip(teams, split_counts([1.0] * len(teams), per[1])):
+        if k:
+            rows = tp[t] >= np.quantile(tp[t], float(d["cluster_quantile"]))
+            jobs.append((f"alternate:{t}", role_objective(design, pool, rows), k))
+    if per[2] and teams:
+        t = chalk_team if chalk_team in tp else max(teams, key=lambda x: float(tp[x].mean()))
+        rows = tp[t] <= np.quantile(tp[t], float(d["failure_quantile"]))
+        jobs.append((f"priors_wrong:{t}", role_objective(design, pool, rows), per[2]))
+    out: list[Candidate] = []
+    seen: set[str] = set()
+    report = {"target": dict(zip(("central", "alternate", "priors_wrong"), per)), "made": Counter()}
+    total_k = sum(k for _, _, k in jobs) or 1
+    for i, (name, obj, k) in enumerate(jobs):
+        try:
+            got = cand_mod.generate(pool, pool.mode, obj, k, seed=seed + 101 * i, perturb_sd=float(c["perturb_sd_points"]),
+                                    time_limit_total_s=max(1.0, budget * k / total_k),
+                                    min_pairwise_diff=int(c["min_pairwise_diff"]))
+        except cand_mod.SolverUnavailable:
+            got = []
+        for g in got:
+            if g.key in seen:
+                continue
+            seen.add(g.key)
+            out.append(Candidate(g.role_ids, g.key, g.objective_value, name))
+            report["made"][name.split(":")[0]] += 1
+    report["made"] = dict(report["made"])
+    return out, report
+
+
+# -- selection ------------------------------------------------------------------------------------
+
+@dataclass
+class _ContestState:
+    contest: ob.Contest
+    G: np.ndarray  # (S, K) int32 weight strictly above each candidate: field plus own entries placed
+    E: np.ndarray
+    own_pct: np.ndarray  # (K,) lineup ownership sum in this contest's field (percent)
+    dup: np.ndarray
+    dup_name: str
+    policy: str
+
+
+def _prepare(cand_scores: np.ndarray, fields: Mapping[str, tuple], contests: Mapping[str, ob.Contest],
+             candidates: Sequence[Candidate], pool, fam_cfg: dict, risk_cfg: dict, own_by_contest, dup_by_contest,
+             field_cal) -> dict[str, _ContestState]:
+    S, K = cand_scores.shape
+    out = {}
+    for cid, ct in contests.items():
+        fs, w = fields[cid]
+        G = np.zeros((S, K), np.int32)
+        E = np.zeros((S, K), np.int32)
+        step = ob._chunk_rows(S, fs.shape[1] * 28 + K * 96, float(risk_cfg["objectives"]["memory_cap_mb"]))
+        for a in range(0, S, step):
+            b = min(S, a + step)
+            g, e = ob.ranks(cand_scores[a:b], np.asarray(fs[a:b]), w)
+            G[a:b], E[a:b] = g, e
+        own = own_by_contest.get(cid, {})
+        counts = dup_by_contest.get(cid, {})
+        own_pct = np.asarray([sum(float(own.get(r, 0.0)) for r in c.role_ids) for c in candidates])
+        dups = [tiebreak.dup_measure(c.role_ids, c.key, own, counts, field_cal, pool) for c in candidates]
+        out[cid] = _ContestState(ct, G, E, own_pct, np.asarray([d for d, _ in dups]), dups[0][1] if dups else "proxy",
+                                 fam_cfg["families"][ct.family]["selection"])
+    return out
+
+
+def _utility(st: _ContestState, top_k_pct: float) -> tuple[np.ndarray, np.ndarray]:
+    """(payout cents, family utility cents) per scenario and candidate from the current ranks."""
+    ct = st.contest
+    L = ct.field_size
+    cash = ct.prefix(ct.prizes_cents)
+    T = st.E.astype(np.int64) + 1
+    G = st.G.astype(np.int64)
+    hi, lo = np.minimum(G + T, L), np.minimum(G, L)
+    pay = (cash[hi] - cash[lo]) // T
+    if ct.family == "large_gpp":
+        k = max(1, int(math.floor(top_k_pct * L)))
+        util = (cash[np.minimum(G + T, k)] - cash[np.minimum(G, k)]) // T
+    elif ct.family == "wta":
+        util = np.floor((G == 0) / T * (int(ct.prizes_cents[0]) if ct.paid else 0)).astype(np.int64)
+    elif ct.family == "satellite":
+        seatp = ct.prefix(ct.seats.astype(np.int64))
+        util = np.floor((seatp[hi] - seatp[lo]) / T * (ct.ticket_face_cents or 0)).astype(np.int64) + pay
+    else:
+        util = pay
+    return pay, util
+
+
+def _greedy(kappa: float, order: list, entry_contest: Mapping[str, str], fees: Mapping[str, int], cand_scores: np.ndarray,
+            candidates: Sequence[Candidate], states: dict, caps: exposure.Caps, pool, risk_cfg: dict,
+            role_mean: Mapping[str, float], tournament: set[str], sleeve_max: int):
+    S, K = cand_scores.shape
+    states = {cid: _ContestState(st.contest, st.G.copy(), st.E.copy(), st.own_pct, st.dup, st.dup_name, st.policy)
+              for cid, st in states.items()}
+    total_fees = sum(int(fees[e]) for e in order)
+    thr = 0.2 * total_fees  # losing >= 80% of fees <=> total payout <= 20% of fees
+    pay_total = np.zeros(S, np.int64)
+    games = exposure.game_of(pool)
+    persons = [{pool.by_role_id[r].person_key for r in c.role_ids} for c in candidates]
+    goalies = [exposure.goalies_in(c.role_ids, pool) for c in candidates]
+    captains = [exposure.captain_of(c.role_ids, pool) for c in candidates]
+    pgame = [exposure.primary_game(c.role_ids, role_mean, games, pool) for c in candidates]
+    person_n, goalie_n, captain_n, used = Counter(), Counter(), Counter(), Counter()
+    fee_g, fee_game, fee_c = Counter(), Counter(), Counter()
+    placed: list[set] = []
+    stress = 0
+    choices: dict[str, Choice] = {}
+    relax: list[Relaxation] = []
+    tk = float(risk_cfg["objectives"]["top_pct"])
+
+    def passes(k: int, eid: str, level: int) -> bool:
+        if used[candidates[k].key] and level < 3:
+            return False
+        if candidates[k].family.startswith("priors_wrong") and stress >= sleeve_max and level < 3:
+            return False
+        if level >= 2:
+            return True
+        f = int(fees[eid])
+        if caps.goalie_fee_share is not None and any((fee_g[g] + f) / total_fees > caps.goalie_fee_share + 1e-9 for g in goalies[k]):
+            return False
+        if caps.game_fee_share is not None and pgame[k] and (fee_game[pgame[k]] + f) / total_fees > caps.game_fee_share + 1e-9:
+            return False
+        if caps.captain_fee_share is not None and captains[k] and (fee_c[captains[k]] + f) / total_fees > caps.captain_fee_share + 1e-9:
+            return False
+        if eid in tournament:
+            if caps.person is not None and any(person_n[p] >= caps.person for p in persons[k]):
+                return False
+            if caps.goalie is not None and any(goalie_n[g] >= caps.goalie for g in goalies[k]):
+                return False
+            if caps.captain is not None and captains[k] and captain_n[captains[k]] >= caps.captain:
+                return False
+            if level < 1 and caps.max_overlap is not None and any(len(persons[k] & o) > caps.max_overlap for o in placed):
+                return False
+        return True
+
+    for eid in order:
+        cid = entry_contest[eid]
+        st = states[cid]
+        pay, util = _utility(st, tk)
+        mean_u = util.mean(axis=0) / 100.0
+        se_u = util.std(axis=0) / 100.0 / math.sqrt(S)
+        p80 = ((pay_total[:, None] + pay) <= thr).mean(axis=0)
+        score = mean_u - kappa * total_fees / 100.0 * p80
+        se = np.sqrt(se_u ** 2 + (kappa * total_fees / 100.0) ** 2 * p80 * (1 - p80) / S)
+        pick, level = None, 0
+        for level in (0, 1, 2, 3):
+            ok = [k for k in range(K) if passes(k, eid, level)]
+            if not ok:
+                continue
+            items = [tiebreak.Item(candidates[k].key, float(score[k]), float(se[k]), float(st.own_pct[k]), float(st.dup[k]), k)
+                     for k in ok]
+            best = tiebreak.rank(items, risk_cfg, st.policy)[0]
+            pick = best
+            break
+        k = pick.item.ref
+        if level:
+            kind = {1: "OVERLAP", 2: "EXPOSURE", 3: "REPEAT"}[level]
+            relax.append(Relaxation(eid, kind, f"kappa {kappa:g}: no candidate passed the caps at level {level - 1}"))
+        choices[eid] = Choice(eid, cid, st.contest.family, k, candidates[k].key, candidates[k].family, float(score[k]),
+                              float(se[k]), pick.band, pick.band_index, float(st.own_pct[k]), float(st.dup[k]),
+                              st.dup_name, level)
+        # update state: fees, counts, own copies in this contest
+        f = int(fees[eid])
+        for g in goalies[k]:
+            fee_g[g] += f
+        if pgame[k]:
+            fee_game[pgame[k]] += f
+        if captains[k]:
+            fee_c[captains[k]] += f
+        if eid in tournament:
+            person_n.update(persons[k])
+            goalie_n.update(goalies[k])
+            if captains[k]:
+                captain_n[captains[k]] += 1
+            placed.append(persons[k])
+        used[candidates[k].key] += 1
+        stress += candidates[k].family.startswith("priors_wrong")
+        pay_total += pay[:, k]
+        own = cand_scores[:, [k]]
+        st.G += (own > cand_scores).astype(np.int32)
+        st.E += (own == cand_scores).astype(np.int32)
+    return choices, relax
+
+
+def _frontier_point(kappa: float, by_entry: dict, contests_eval: dict, scen: ob.ScenarioSet, pool, fees: Mapping[str, int],
+                    budget: RiskBudget, risk_cfg: dict) -> tuple[FrontierPoint, ob.PortfolioMetrics]:
+    pm = ob.portfolio_metrics(by_entry, contests_eval, scen, pool=pool, fees_cents=fees, cfg=risk_cfg)
+    c = pm.concentration
+    gmax = max(c["goalie"].values(), default=0.0)
+    game_max = max(c["game"].values(), default=0.0) if c["n_games"] > 1 else None
+    cap_max = max(c["captain"].values(), default=0.0) if pool.mode is Mode.SHOWDOWN else None
+    reasons = []
+    if pm.p_lose80 > budget.p_lose80_max + 1e-12:
+        reasons.append(f"P(lose >= 80%) {pm.p_lose80:.3f} > {budget.p_lose80_max:.2f}")
+    if budget.goalie_fee_share_max is not None and gmax > budget.goalie_fee_share_max + 1e-9:
+        reasons.append(f"goalie fee share {gmax:.2f} > {budget.goalie_fee_share_max:.2f}")
+    if budget.game_fee_share_max is not None and game_max is not None and game_max > budget.game_fee_share_max + 1e-9:
+        reasons.append(f"game fee share {game_max:.2f} > {budget.game_fee_share_max:.2f}")
+    if budget.captain_fee_share_max is not None and cap_max is not None and cap_max > budget.captain_fee_share_max + 1e-9:
+        reasons.append(f"Captain fee share {cap_max:.2f} > {budget.captain_fee_share_max:.2f}")
+    return FrontierPoint(kappa, pm.tail_utility, pm.tail_utility_se, pm.p_lose80, pm.p_lose80_se, pm.exp_payout, gmax,
+                         game_max, cap_max, not reasons, False, reasons), pm
+
+
+def mark_dominated(points: list[FrontierPoint]) -> None:
+    """A point is dominated when another has tail utility >= and P(lose >= 80%) <= with one strict."""
+    for p in points:
+        p.dominated = any((q.tail_utility >= p.tail_utility and q.p_lose80 <= p.p_lose80)
+                          and (q.tail_utility > p.tail_utility or q.p_lose80 < p.p_lose80) for q in points if q is not p)
+
+
+def frontier_report(points: list[FrontierPoint]) -> list[FrontierPoint]:
+    """The reported frontier: non-dominated points by increasing risk (call mark_dominated first)."""
+    return sorted((p for p in points if not p.dominated), key=lambda p: (p.p_lose80, -p.tail_utility, p.kappa))
+
+
+def choose(points: list[FrontierPoint]) -> tuple[FrontierPoint, str]:
+    ok = [p for p in points if p.feasible]
+    if ok:
+        best = max(ok, key=lambda p: (p.tail_utility, -p.p_lose80, -p.kappa))
+        return best, f"highest tail utility inside the risk budget (kappa {best.kappa:g})"
+    best = min(points, key=lambda p: (p.p_lose80, -p.tail_utility, p.kappa))
+    return best, ("no knob setting meets the risk budget; least-risk point chosen (kappa "
+                  f"{best.kappa:g}: " + "; ".join(best.reasons) + ")")
+
+
+def select(candidates: Sequence[Candidate], role_base: ob.ScenarioSet, fields: Mapping[str, ob.FieldSpec],
+           contests: Mapping[str, ob.Contest], entries, caps: exposure.Caps, risk: RiskBudget,
+           families: tuple[float, ...] = (0.65, 0.25, 0.10), *, seed: int, pool, fam_cfg: dict, risk_cfg: dict,
+           own_by_contest: Mapping[str, Mapping[str, float]] | None = None,
+           dup_by_contest: Mapping[str, Mapping[str, float]] | None = None, field_cal=None,
+           fees_cents: Mapping[str, int] | None = None) -> Selection:
+    """Fill every entry from the candidates on the selection scenarios; see the module docstring."""
+    from nhl_dfs.contracts.statuses import FieldCalibration
+
+    if not candidates:
+        raise ValueError("no candidates to select from")
+    field_cal = field_cal or FieldCalibration.PRIOR
+    rows = list(getattr(entries, "entries", entries))
+    entry_contest = {e.entry_id: str(e.contest_id) for e in rows}
+    fees = dict(fees_cents) if fees_cents is not None else {e.entry_id: contests[str(e.contest_id)].fee_cents for e in rows}
+    fam_order = {f: i for i, f in enumerate(fam_cfg["selection"]["family_order"])}
+    file_pos = {e.entry_id: i for i, e in enumerate(rows)}
+    order = sorted(entry_contest, key=lambda e: (fam_order[contests[entry_contest[e]].family], -fees[e], file_pos[e]))
+    tournament = {e for e in entry_contest if contests[entry_contest[e]].family not in ("cash",)}
+    cand_scores = role_base.scores([c.role_ids for c in candidates], pool.mode).full()
+    fscores = {cid: fields[cid].scores(role_base, pool.mode) for cid in contests}
+    states = _prepare(cand_scores, fscores, contests, candidates, pool, fam_cfg, risk_cfg, own_by_contest or {},
+                      dup_by_contest or {}, field_cal)
+    role_mean = role_base.means_tenths()
+    sleeve = max(1, int(round(float(risk_cfg["discovery"]["stress_sleeve_max"]) * len(order))))
+    contests_eval = {cid: ob.ContestEval(ct, fields[cid], [e for e in order if entry_contest[e] == cid])
+                     for cid, ct in contests.items()}
+    points, results = [], []
+    for kappa in [float(k) for k in risk_cfg["frontier"]["kappas"]]:
+        ch, rl = _greedy(kappa, order, entry_contest, fees, cand_scores, candidates, states, caps, pool, risk_cfg,
+                         role_mean, tournament, sleeve)
+        by_entry = {e: candidates[ch[e].cand].role_ids for e in order}
+        pt, pm = _frontier_point(kappa, by_entry, contests_eval, role_base, pool, fees, risk, risk_cfg)
+        points.append(pt)
+        results.append((ch, rl, by_entry, pm))
+    mark_dominated(points)
+    best, why = choose(points)
+    ch, rl, by_entry, pm = results[points.index(best)]
+    mix = Counter(c.cand_family.split(":")[0] for c in ch.values())
+    ordered = {e.entry_id: by_entry[e.entry_id] for e in rows}
+    return Selection(ordered, ch, points, best.kappa, why, rl, dict(mix), tuple(families), pm)
+
+
+def lineup_keys(by_entry: Mapping[str, Sequence[str]], pool) -> dict[str, str]:
+    return {e: lineup_key([pool.by_role_id[r] for r in lu], pool.mode) for e, lu in by_entry.items()}
