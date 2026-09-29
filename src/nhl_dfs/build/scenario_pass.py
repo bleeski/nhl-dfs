@@ -10,6 +10,8 @@ its gate). Odds: none are usable today (backlog B5), so each game's source is pr
 never presented as MARKET. DTD (QUESTIONABLE) is priced once, as a participation mask in the
 scenarios (objectives.scenario_set); the C3 0.85 ranking haircut is not applied again and the
 simulator's dressing is untouched. The C7 role state is not wired in here (backlog B9: C9, C10).
+C9: the unmasked selection and referee draws, the contests and the fields are also written to
+runs/<id>/scenario/ (build/scenario_cache.py) for late swap and refresh.
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ import numpy as np
 from nhl_dfs.build import exposure
 from nhl_dfs.build import objectives as ob
 from nhl_dfs.build import portfolio as pf
+from nhl_dfs.build import scenario_cache as scache
 from nhl_dfs.build.assign import Assignment, arrange_util
 from nhl_dfs.build.candidates import Candidate
 from nhl_dfs.contracts.geometry import Mode, lineup_key
@@ -133,9 +136,17 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
     n.update(scenario_n or {})
     sets: dict[str, ob.ScenarioSet] = {}
     hashes = {}
+    # C9: the unmasked selection and referee draws are kept for late swap and refresh (build/scenario_cache.py)
+    keep = int(runtime.get("late_swap", {}).get("cache_scenarios", 8000))
+    kept: dict[str, dict] = {}
     for purpose in ("design", "selection", "referee"):
         t = time.perf_counter()
         base, keys = simulate_base(slate, proj, int(n[purpose]), seed, purpose)
+        if purpose in scache.PURPOSES:
+            try:
+                kept[purpose] = scache.save_base(run.path, purpose, base, keep, int(slate.cfg["chunk_size"]))
+            except OSError as exc:
+                messages.append(f"scenario cache not written ({type(exc).__name__}); late swap will fall back")
         sets[purpose] = ob.scenario_set(base, keys, work, purpose=purpose, seed=seed,
                                         purpose_code=int(slate.cfg["purposes"][purpose]), play_prob=play)
         hashes[purpose] = cache_mod.spec_hash(slate, proj, seed, purpose, int(n[purpose]))[:16]
@@ -171,6 +182,19 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
                                                  n_scenarios=sets[purpose].n, seed=seed, salt=f"{cid}|{purpose}")
     own_by = {cid: fb.marginals[cid].own for cid in contexts}
     dup_by = {cid: fb.marginals[cid].dup_counts for cid in contexts}
+    if set(kept) == set(scache.PURPOSES):
+        try:
+            sec["cache"] = scache.save(
+                run.path, purposes=kept, person_keys=keys, slate=slate, params=proj, seed=seed,
+                chunk_size=int(slate.cfg["chunk_size"]), contests=contests,
+                contest_family={cid: ctx.family for cid, ctx in contexts.items()},
+                fields={fam: (list(f.lineups), list(f.keys)) for fam, f in fb.fields.items()},
+                n_opponents={cid: int(ctx.field_size - own_n[cid]) for cid, ctx in contexts.items()},
+                own_by={cid: {r: float(v) for r, v in own_by[cid].items()} for cid in contexts},
+                dup_by={cid: {k: float(v) for k, v in dup_by[cid].items()} for cid in contexts},
+                field_cal=field_cal.value, model_status=proj.source().value)
+        except (OSError, TypeError, ValueError) as exc:
+            messages.append(f"scenario cache not written ({type(exc).__name__}: {str(exc)[:80]}); late swap will fall back")
 
     # candidates: discovery on design scenarios, plus the Phase A bank and the provisional picks
     t = time.perf_counter()
