@@ -142,3 +142,27 @@ coerced to a known value (CLAUDE.md); other vocabularies here that have no
   or goalie cap, Showdown Captain cap 1 for 2 to 3 entries. Fee-share budgets compare against max(budget, LPT floor).
 - Frontier: five kappas (risk.yaml); dominated points dropped, identical portfolios share a row; choose the highest tail
   utility inside the budget, else the least-risk point (recorded). Budget is the [BEN] flag 2 placeholder.
+
+## Late swap and refresh objective (C9, `build/swap_objective.py`, `scenario_cache.py`, `live.py`)
+
+- Lock semantics are C2c's, unchanged: pinned cells (LOCKED, EDIT_STOP) byte-identical, no started or edit-stop
+  player added, only changed cells spliced, lock recheck before writing, referee on every file.
+- Objective order from `--objective auto`: scenario, provisional, baseline. Every step down is recorded
+  (manifest `objective.fallbacks`, RUN_NOTES `OBJECTIVE=`, CLI). A late swap with nothing to repair evaluates no
+  objective (`not needed`) and returns the input bytes; refresh always resolves (eager).
+- Scenario: the C8 pass keeps the first 8,000 UNMASKED selection and referee draws per person plus per-game hashes,
+  contests (payout curves) and field lineups under `runs/<id>/scenario/`; late swap looks on the run, then its
+  `parent_run_id` chain. Changed, unstarted games are re-simulated with their full-slate seed streams (games are
+  independent draws, tested); started games keep cached draws. `--fast` scores on 4,000. Candidates: the MILP's best
+  repair plus no-good-cut alternatives with the same (minimal) number of changed cells, chosen by the contest family's
+  C8 objective jointly with the user's other entries, then `tiebreak.rank`. Figures: choosing draws (labeled
+  optimistic) and referee draws, each with its Monte Carlo SE.
+- Provisional: the role-applied ParamTable mean times the play probability. Baseline: the C2 prior objective.
+- Roles: ParamTable, then `roles.merge`, then `roles.apply_state` exactly once per run; `confirmed_at()` goes to
+  `build_slate`. Participation is priced once per person: RoleState `p_play` replaces C8's 0.85 unless roles already
+  lowered that person's dressing or start probability. NEWS_STATE stays DK status coverage; ROLES_NEWS_STATE is C7's.
+- Optional work stops at T-5 (engine) / T-8 (LLM) before the earliest start among games with open cells
+  (`config/runtime.yaml late_swap`); inside it the objective is baseline. Separate from `edit_stop_buffer_s`.
+- `live.condition(scenarios, snapshot)`: without a reliable snapshot (declared source, at most 15 min old, covering
+  every entry) a no-op with `LIVE_STATUS=NO_SNAPSHOT` or `UNRELIABLE`, and no chase pivot. With one: observed points
+  plus the draw scaled by time left; TRAILING entries use `dup_first` inside the band, AHEAD ones `mean`.
