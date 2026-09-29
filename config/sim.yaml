@@ -1,0 +1,85 @@
+# Aggregate joint simulator settings (C6, plan section 5 "Joint simulation", "Vegas integration",
+# "Simulation scale and calibration").
+#
+# Provenance tags:
+#   MEASURED    from the history store, regular season 2024-25 and 2025-26 (2,624 games), 2026-09-29.
+#               Population estimation, not tuning to a slate.
+#   DERIVED     solved from MEASURED values by the resolver itself (see resolve below).
+#   PLACEHOLDER an engineering choice with no measurement behind it yet; sim/validate.py reports
+#               how far the simulation sits from held-out games so a later chunk can replace it.
+
+# Budgets (scenarios). Purposes draw from separate seed streams so the referee sample never
+# overlaps candidate discovery.
+budgets: {design: 5000, selection: 20000, referee: 20000}
+purposes: {design: 0, selection: 1, referee: 2}
+
+# Chunking. chunk_size is FIXED (a memory-cap change must never change the draws); the cap is a
+# check that one chunk fits, and simulate() refuses a slate that cannot fit rather than resizing.
+chunk_size: 2000
+memory_cap_mb: 768
+
+# One resolution process shared by the market fit and the simulation (sim/resolve.py).
+resolve:
+  # MEASURED: reg goals 2.970 per team-game (3.046 minus 0.076 OT goals), regulation ties 22.75%
+  # (597 of 2,624 games ended in OT or SO), OT goal share 401 of 597, EN goals 0.196 per team-game
+  # (skater goals minus the opposing goalies' goals against).
+  ot_goal_p: 0.6717            # regular season; playoffs are sudden death (Rules.from_config)
+  # DERIVED (with the placeholder shape below): league pre-EN intensity 2.7475 per team, equalizer
+  # probability while trailing by one, and the EN probability by lead size (1, 2, 3, 4+) that
+  # reproduce the three MEASURED values above.
+  q_eq: 0.1678
+  q_en: [0.6889, 0.4960, 0.3100, 0.1033]
+  q_en_shape: [1.0, 0.72, 0.45, 0.15]   # PLACEHOLDER relative EN chance by lead size
+  lambda0_league: 2.7475
+  goals_league: 3.046          # MEASURED goals per team-game including OT goals
+  ot_slope: 0.5                # PLACEHOLDER: OT winner leans to the stronger side by this much
+  so_home_p: 0.5               # PLACEHOLDER
+  # ASSUMPTION (labeled): book totals count the shootout winner's goal as one goal. Sportsbook
+  # settlement varies; flip to false if the target book excludes it.
+  so_adds_goal: true
+
+# Market fit
+market:
+  stale_weight: 0.5            # a stale market (goalie confirmed after the snapshot) blends this
+                               # much toward the model intensities
+  max_discrepancy: 0.35        # a fitted intensity is clipped to model x (1 +/- this); logged
+  min_lambda: 0.4
+  max_lambda: 6.0
+  book_priority: [nhl_partner_odds, covers]
+
+# Model-only strength (no odds): lambda = lambda0_league * team expected goals / goals_league,
+# scaled by the opposing goalie's expected miss rate over the league miss rate.
+
+# Skater process
+skater:
+  # MEASURED (Tier A rows): assists per goal 1.686, secondary/primary 0.802. With a secondary
+  # assist requiring a primary: P(0 assists)=0.063, P(1)=0.188, P(2)=0.749.
+  assists_per_goal: [0.063, 0.188, 0.749]
+  toi_floor: 0.35              # PLACEHOLDER: a scenario's TOI multiplier is clipped to [floor, cap]
+  toi_cap: 1.8
+  pp_opps_mean: 2.9            # PLACEHOLDER: PP opportunities per team-game (PP clock is 277 s)
+  pp_share_cap: 0.7            # a team's PP share of its goals never exceeds this
+  so_goal_p: 0.33              # PLACEHOLDER: shootout success rate per shooter
+  min_saved_mean: 0.02         # floor on a skater's non-goal SOG mean
+
+# Pace: team pace factor, Gamma with mean 1 and variance pace_var. It scales every skater's
+# non-goal shots and the opponent's blocks. Person dispersion is reduced so each person's marginal
+# stays at C5's mu + phi mu^2 (phi' = (phi - v) / (1 + v)).
+pace:
+  var: 0.0105                  # CALIBRATED: see docs/calibration and BUILD_STATUS C6 log line
+
+# Goalies
+goalie:
+  pull_min_ga: 2               # a starter is only pulled after this many goals against
+  pull_ga_ref: 3.75            # P(pull | GA) = min(pull_max, pull_prob_per_ga * GA^2 / ref)
+  pull_max: 0.9
+  pull_frac: [0.25, 0.85]      # PLACEHOLDER: share of the game the pulled starter played
+
+# Calibration harness (sim/validate.py)
+calibrate:
+  n_dates: 10                  # held-out dates sampled per season
+  n_scenarios: 1500            # scenarios per date
+  pit_bins: 10
+  pit_chi2_flag: 3.0           # a stat is flagged when chi-square / (bins - 1) exceeds this
+  rate_ratio_band: [0.8, 1.25] # observed/simulated bonus-rate ratio outside this is flagged
+  min_expected: 30             # rates with fewer expected events are reported, not flagged
