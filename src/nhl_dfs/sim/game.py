@@ -248,7 +248,9 @@ class Prep:
     pace_var: float
 
 
-def prepare(slate: SlateSpec, params) -> Prep:
+def prepare(slate: SlateSpec, params, games: set[str] | None = None) -> Prep:
+    """games: prepare only the teams of these game keys (C9 re-simulates changed games only); every
+    team's preparation depends on its own persons alone, so a subset prepares identically."""
     keys = sorted(params.persons)
     col_of = {k: i for i, k in enumerate(keys)}
     is_g = np.array([params.persons[k].group == "G" for k in keys])
@@ -258,7 +260,8 @@ def prepare(slate: SlateSpec, params) -> Prep:
             if c not in codes:
                 codes.append(c)
     var = float(slate.cfg["pace"]["var"])
-    teams = {c: _prep_team(c, params, col_of, slate.cfg, slate.model_cfg, var) for c in codes}
+    wanted = {c for g in slate.games if games is None or g.key in games for c in (g.home, g.away)}
+    teams = {c: _prep_team(c, params, col_of, slate.cfg, slate.model_cfg, var) for c in codes if c in wanted}
     return Prep(slate, keys, is_g, teams, codes, var)
 
 
@@ -512,7 +515,10 @@ def _rng(seed: int, purpose: int, chunk: int, game: int) -> np.random.Generator:
     return np.random.Generator(np.random.PCG64(np.random.SeedSequence([int(seed), int(purpose), int(chunk), int(game)])))
 
 
-def simulate_chunk(prep: Prep, n: int, seed: int, purpose: str = "design", chunk: int = 0) -> oc.Outcomes:
+def simulate_chunk(prep: Prep, n: int, seed: int, purpose: str = "design", chunk: int = 0,
+                   games: set[str] | None = None) -> oc.Outcomes:
+    """games: simulate only these game keys; each game keeps its full-slate index in the seed stream, so
+    its columns equal a full-slate run's (other games' columns stay zero)."""
     cfg = prep.slate.cfg
     sim_cfg = cfg
     o = oc.empty(prep.person_keys, prep.is_goalie, n)
@@ -532,6 +538,8 @@ def simulate_chunk(prep: Prep, n: int, seed: int, purpose: str = "design", chunk
     pp_mean = float(cfg["skater"]["pp_opps_mean"])
     cap = float(cfg["skater"]["pp_share_cap"])
     for gi, spec in enumerate(prep.slate.games):
+        if games is not None and spec.key not in games:
+            continue
         rng = _rng(seed, cfg["purposes"][purpose], chunk, gi)
         rules = rs.Rules.from_config(cfg, spec.game_type)
         th, ta = prep.teams[spec.home], prep.teams[spec.away]
@@ -592,11 +600,11 @@ def check_memory(prep: Prep, cfg: dict) -> float:
     return est
 
 
-def iter_chunks(slate: SlateSpec, params, n: int, seed: int, purpose: str = "design"):
-    prep = prepare(slate, params)
+def iter_chunks(slate: SlateSpec, params, n: int, seed: int, purpose: str = "design", games: set[str] | None = None):
+    prep = prepare(slate, params, games)
     check_memory(prep, slate.cfg)
     for ci, size in enumerate(chunk_bounds(n, slate.cfg)):
-        yield simulate_chunk(prep, size, seed, purpose, ci)
+        yield simulate_chunk(prep, size, seed, purpose, ci, games)
 
 
 def simulate(slate: SlateSpec, params, n: int, seed: int, purpose: str = "design") -> oc.Outcomes:
