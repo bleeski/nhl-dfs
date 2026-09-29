@@ -209,7 +209,7 @@ def _prepare(cand_scores: np.ndarray, fields: Mapping[str, tuple], contests: Map
         for cid in cids:  # ranks never exceed the field size: int16 below 32,000 entries halves the memory
             dt = np.int16 if contests[cid].field_size < 32000 else np.int32
             GE[cid] = (np.zeros((S, K), dt), np.zeros((S, K), dt))
-        step = ob._chunk_rows(S, fs.shape[1] * 64 + K * (96 + 16 * len(cids)), float(risk_cfg["objectives"]["memory_cap_mb"]))
+        step = ob._chunk_rows(S, fs.shape[1] * 96 + K * (96 + 16 * len(cids)), float(risk_cfg["objectives"]["memory_cap_mb"]))
         for a in range(0, S, step):
             b = min(S, a + step)
             for cid, (g, e) in zip(cids, ob.ranks_multi(cand_scores[a:b], np.asarray(fs[a:b]), wl)):
@@ -473,23 +473,25 @@ def select(candidates: Sequence[Candidate], role_base: ob.ScenarioSet, fields: M
     kappas = [float(k) for k in risk_cfg["frontier"]["kappas"]]
     threads = max(1, min(len(kappas), int(risk_cfg.get("selection", {}).get("threads", 1))))
 
-    def one(kappa: float):
-        ch, rl, inc = _greedy(kappa, order, entry_contest, fees, cand_scores, candidates, states, caps, pool, risk_cfg,
-                              role_mean, tournament, sleeve, mem_share=1.0 / len(kappas))  # not threads: chunking fixed
-        del inc
+    def fill(kappa: float):
+        ch, rl, _inc = _greedy(kappa, order, entry_contest, fees, cand_scores, candidates, states, caps, pool, risk_cfg,
+                               role_mean, tournament, sleeve, mem_share=1.0 / len(kappas))  # not threads: chunking fixed
+        return ch, rl
+
+    if threads > 1:  # only the fills run concurrently; the joint frontier evaluation runs one knob at a time
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=threads) as ex:
+            fills = list(ex.map(fill, kappas))  # map keeps knob order: the result does not depend on threads
+    else:
+        fills = [fill(k) for k in kappas]
+    outs = []
+    for kappa, (ch, rl) in zip(kappas, fills):
         by_entry = {e: candidates[ch[e].cand].role_ids for e in order}
         joint = _joint_from_states(ch, states, cand_scores, contests_eval, risk_cfg)
         pt, pm = _frontier_point(kappa, by_entry, contests_eval, role_base, pool, fees, risk, risk_cfg, joint)
         pt.portfolio_key = "|".join(sorted(lineup_keys(by_entry, pool).values()))
-        return pt, (ch, rl, by_entry, pm)
-
-    if threads > 1:
-        from concurrent.futures import ThreadPoolExecutor
-
-        with ThreadPoolExecutor(max_workers=threads) as ex:
-            outs = list(ex.map(one, kappas))  # map keeps knob order: the result does not depend on threads
-    else:
-        outs = [one(k) for k in kappas]
+        outs.append((pt, (ch, rl, by_entry, pm)))
     points = [o[0] for o in outs]
     results = [o[1] for o in outs]
     mark_dominated(points)

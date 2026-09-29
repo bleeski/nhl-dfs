@@ -104,7 +104,7 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
     from nhl_dfs.sim.slate import build_slate, fetch_odds
 
     t0 = time.perf_counter()
-    timings: dict[str, float] = {}
+    timings: dict[str, float] = {"start_peak_mb": peak_mb()}
     risk_cfg = ob.load_risk_config()
     fam_cfg = contests_mod.load_contest_families()
     expo_cfg = exposure.load_exposure_config()
@@ -140,6 +140,7 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
                                         purpose_code=int(slate.cfg["purposes"][purpose]), play_prob=play)
         hashes[purpose] = cache_mod.spec_hash(slate, proj, seed, purpose, int(n[purpose]))[:16]
         timings[f"sim_{purpose}_s"] = round(time.perf_counter() - t, 3)
+        timings[f"sim_{purpose}_peak_mb"] = peak_mb()
     sec["scenarios"] = {p: {"n": sets[p].n, "seed": seed, "spec_sha256": hashes[p]} for p in sets}
     sec["participation"] = {"questionable_play_prob": q, "persons": sorted(play), "notes": sets["selection"].notes}
 
@@ -159,6 +160,7 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
     t = time.perf_counter()
     fb, grown = _grow_fields(work, proj, contexts, fb, own_n, prov, st, risk_cfg, seed, scenario_n or {})
     timings["field_growth_s"] = round(time.perf_counter() - t, 3)
+    timings["field_growth_peak_mb"] = peak_mb()
     sec["field_growth"] = grown
     fields = {}
     for purpose in ("selection", "referee"):
@@ -190,6 +192,7 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
             seen.add(key)
             cands.append(Candidate(tuple(lu), key, 0.0, tag))
     timings["discovery_s"] = round(time.perf_counter() - t, 3)
+    timings["discovery_peak_mb"] = peak_mb()
     sec["discovery"] = {**disc, "chalk_team": chalk, "candidates": len(cands),
                         "from_bank_and_provisional": len(cands) - len(found)}
 
@@ -213,12 +216,14 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
                     fam_cfg=fam_cfg, risk_cfg=risk_cfg, own_by_contest=own_by, dup_by_contest=dup_by,
                     field_cal=field_cal, fees_cents=fees)
     timings["selection_s"] = round(time.perf_counter() - t, 3)
+    timings["selection_peak_mb"] = peak_mb()
     by_entry = {e: arrange_util(lu, work, starts) for e, lu in sel.by_entry.items()}
     ev = {cid: ob.ContestEval(ct, fields["referee"][cid], [e.entry_id for e in entries.entries if str(e.contest_id) == cid])
           for cid, ct in contests.items()}
     t = time.perf_counter()
     ref = ob.portfolio_metrics(by_entry, ev, sets["referee"], pool=work, fees_cents=fees, cfg=risk_cfg)
     timings["referee_eval_s"] = round(time.perf_counter() - t, 3)
+    timings["referee_eval_peak_mb"] = peak_mb()
 
     payout_overall = contests_mod.overall_payout_source(contexts.values()).value
     evidence = {"PAYOUT_SOURCE": payout_overall, "OUTCOME_CALIBRATION": OutcomeCalibration.UNVALIDATED.value,
