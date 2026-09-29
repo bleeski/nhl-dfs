@@ -85,17 +85,38 @@ class _Team:
     phi_saved: np.ndarray  # dispersion of the non-goal shots given TOI and pace (see _conditional_phi)
     phi_blocks: np.ndarray
     is_f: np.ndarray
+    rg: np.ndarray  # (Ni, 3) per-hour goal rate by strength
+    ra1: np.ndarray
+    ra2: np.ndarray
+    unit_f: np.ndarray  # (Ni,) forward-line column of each forward (0 for a defenseman)
+    unit_d: np.ndarray  # (Ni,) defense-pair column of each defenseman
+    unit_pp: np.ndarray  # (Ni,) PP-unit column (0 when in none)
     m_f: np.ndarray  # (Ni, UF) membership of forward lines
     m_d: np.ndarray
     m_pp: np.ndarray
     shares: np.ndarray  # (3,) team goal share by strength
     goalies: _Goalies
     n_listed: int = 0
+    a_mult: np.ndarray = None  # (Ni, 3, 2) primary and secondary assist-weight multipliers from the pilot calibration
 
 
 def _rank_units(idx: list[int], key: np.ndarray, size: int) -> list[list[int]]:
     order = sorted(idx, key=lambda i: (-key[i], i))
     return [order[k:k + size] for k in range(0, len(order), size)]
+
+
+def _units_from(by_id: dict[str, list[int]], loose: list[int], key: np.ndarray, size: int, min_size: int) -> list[list[int]]:
+    """Units from measured ids where teammates actually share one (at least min_size members; a
+    person's most-used unit often differs from his linemates', which leaves singletons), and TOI-rank
+    chunks of `size` for everyone else. Ids larger than `size` are split by TOI rank."""
+    units: list[list[int]] = []
+    left = list(loose)
+    for members in by_id.values():
+        if len(members) >= min_size:
+            units.extend(_rank_units(members, key, size))
+        else:
+            left.extend(members)
+    return units + _rank_units(left, key, size)
 
 
 def _membership(units: list[list[int]], ni: int) -> np.ndarray:
@@ -116,6 +137,7 @@ def _prep_team(code: str, params, col_of: dict, sim_cfg: dict, model_cfg: dict, 
     toi = np.zeros((ni, 3))
     cv = np.zeros(ni)
     g, a1, a2 = np.zeros((ni, 3)), np.zeros((ni, 3)), np.zeros((ni, 3))
+    rg, ra1, ra2 = np.zeros((ni, 3)), np.zeros((ni, 3)), np.zeros((ni, 3))
     saved, blk, phi_s, phi_b = np.zeros(ni), np.zeros(ni), np.zeros(ni), np.zeros(ni)
     is_f = np.zeros(ni, bool)
     floor = float(sim_cfg["skater"]["min_saved_mean"])
@@ -126,6 +148,7 @@ def _prep_team(code: str, params, col_of: dict, sim_cfg: dict, model_cfg: dict, 
         for k, s in enumerate(STRENGTHS):
             h = toi[i, k] / 3600.0
             g[i, k], a1[i, k], a2[i, k] = r.g60[s] * h, r.a1_60[s] * h, r.a2_60[s] * h
+            rg[i, k], ra1[i, k], ra2[i, k] = r.g60[s], r.a1_60[s], r.a2_60[s]
         sog = sum(r.sog60[s] * toi[i, k] / 3600.0 for k, s in enumerate(STRENGTHS))
         saved[i] = max(floor, sog - g[i].sum())
         blk[i] = sum(r.blk60[s] * toi[i, k] / 3600.0 for k, s in enumerate(STRENGTHS))
@@ -160,9 +183,9 @@ def _prep_team(code: str, params, col_of: dict, sim_cfg: dict, model_cfg: dict, 
             by_pp.setdefault(up, []).append(i)
         else:
             loose_pp.append(i)
-    lines = list(by_line.values()) + _rank_units(loose_f, toi[:, EV], 3) + [[ns]]
-    pairs = list(by_pair.values()) + _rank_units(loose_d, toi[:, EV], 2) + [[ns + 1]]
-    pps = list(by_pp.values()) + _rank_units([i for i in loose_pp if toi[i, PP] > 0], toi[:, PP], 5) + [[ns, ns + 1]]
+    lines = _units_from(by_line, loose_f, toi[:, EV], 3, 3) + [[ns]]
+    pairs = _units_from(by_pair, loose_d, toi[:, EV], 2, 2) + [[ns + 1]]
+    pps = _units_from(by_pp, [i for i in loose_pp if toi[i, PP] > 0], toi[:, PP], 5, 3) + [[ns, ns + 1]]
 
     gl = [p for p in params.persons.values() if p.team == code and p.group == "G" and p.goalie is not None]
     gl.sort(key=lambda p: p.person_key)
@@ -172,14 +195,18 @@ def _prep_team(code: str, params, col_of: dict, sim_cfg: dict, model_cfg: dict, 
                        np.array([p.goalie.pull_prob_per_ga for p in gl], float) if gl else np.zeros(0),
                        max(0.0, 1.0 - sum(p.goalie.p_start for p in gl)) if gl else 1.0)
     goalies.pull_c = np.append(goalies.pull_c, lg)  # the last slot is the unlisted goalie
+    m_f, m_d, m_pp = _membership(lines, ni), _membership(pairs, ni), _membership(pps, ni)
     k_mix = (1.0 + cv ** 2) * (1.0 + var)  # E[(TOI multiplier x pace)^2]
     # SOG = goals + non-goal shots; give the non-goal part the dispersion that keeps SOG at mu + phi mu^2
     total_sog = saved + g.sum(axis=1)
     phi_saved = _conditional_phi(phi_s * (total_sog / np.maximum(saved, 1e-9)) ** 2, k_mix)
     phi_blocks = _conditional_phi(phi_b, k_mix)
-    return _Team(code, np.array([col_of[p.person_key] for p in persons], dtype=np.int64), scale, p_dress, toi, cv, g, a1, a2,
-                 saved, blk, phi_saved, phi_blocks, is_f, _membership(lines, ni), _membership(pairs, ni), _membership(pps, ni),
-                 shares, goalies, n_listed=ns)
+    tp = _Team(code, np.array([col_of[p.person_key] for p in persons], dtype=np.int64), scale, p_dress, toi, cv, g, a1, a2,
+                 saved, blk, phi_saved, phi_blocks, is_f, rg, ra1, ra2,
+                 m_f.argmax(axis=1), m_d.argmax(axis=1), m_pp.argmax(axis=1), m_f, m_d, m_pp, shares, goalies, n_listed=ns,
+                 a_mult=np.ones((ni, 3, 2)))
+    _calibrate_assists(tp, sim_cfg)
+    return tp
 
 
 @dataclass
@@ -241,64 +268,92 @@ EVENT_LOG: list | None = None  # tests set this to a list to record (team, state
 
 def _allocate(rng, tp: _Team, dm: np.ndarray, counts: dict, sim_cfg: dict, out: dict) -> None:
     """Allocate goals by state to scorers and assisters. dm: (n, Ni) presence x TOI multiplier x scale.
-    out: goals, assists, sh arrays (n, Ni), modified in place."""
+    out: goals, assists, sh arrays (n, Ni), modified in place.
+
+    The scorer is drawn first, proportional to his expected goals per game (rate x TOI), so each
+    person's goal expectation follows the ParamTable. The on-ice group is then conditioned on him:
+    his own unit, and the partner unit (defense pair for a forward, forward line for a defenseman)
+    drawn proportional to its ice-time share times the group's combined scoring rate, since a goal
+    is more likely with a stronger group out. Assisters come from that group by per-minute assist
+    rates (being on the ice already carries the time), excluding the scorer. A group with no eligible
+    assister degrades to team-wide per-game weights."""
     a_p = np.array(sim_cfg["skater"]["assists_per_goal"], float)
     a_cum = np.cumsum(a_p / a_p.sum())
     ni = dm.shape[1]
+    pres = (dm > 0).astype(float)
     for state, cnt in counts.items():
         if cnt.max() <= 0:
             continue
         gw = dm * tp.g[:, state]
-        a1w = dm * tp.a1[:, state]
-        a2w = dm * tp.a2[:, state]
-        toi_w = dm * tp.toi[:, state]
+        team_a = (dm * tp.a1[:, state], dm * tp.a2[:, state])
+        rate_a = (pres * tp.ra1[:, state] * tp.a_mult[:, state, 0], pres * tp.ra2[:, state] * tp.a_mult[:, state, 1])
+        if state == EV:
+            toi_ev = dm * tp.toi[:, EV]
+            line_toi, pair_toi = toi_ev @ tp.m_f, toi_ev @ tp.m_d
+            r_all = pres * tp.rg[:, EV]
+            line_rate, pair_rate = r_all @ tp.m_f, r_all @ tp.m_d
         for j in range(int(cnt.max())):
             rows = np.flatnonzero(cnt > j)
             if rows.size == 0:
                 break
+            m = np.arange(rows.size)
+            ws = gw[rows].copy()
+            zero = ws.sum(axis=1) <= 0  # nobody with scoring weight: uniform over the dressed
+            if zero.any():
+                ws[zero] = pres[rows][zero]
+            sc_i, _ = _choose(rng, ws)
             cand = np.zeros((rows.size, ni), bool)
             if state == EV:
-                for mem in (tp.m_f, tp.m_d):
-                    uw = toi_w[rows] @ mem
-                    ui, ok = _choose(rng, uw)
-                    cand |= (mem[:, ui].T > 0) & ok[:, None]
+                own_f = tp.is_f[sc_i]
+                ul, up = tp.unit_f[sc_i], tp.unit_d[sc_i]
+                # partner defense pair for a forward scorer, partner forward line for a defenseman
+                r_line_own = line_rate[rows][m, ul]
+                r_pair_own = pair_rate[rows][m, up]
+                pw = pair_toi[rows] * (r_line_own[:, None] + pair_rate[rows])
+                lw = line_toi[rows] * (line_rate[rows] + r_pair_own[:, None])
+                pair_pick, ok_p = _choose(rng, np.where(own_f[:, None], pw, 1.0))
+                line_pick, ok_l = _choose(rng, np.where(~own_f[:, None], lw, 1.0))
+                line = np.where(own_f, ul, line_pick)
+                pair = np.where(own_f, pair_pick, up)
+                cand = ((tp.m_f[:, line].T > 0) | (tp.m_d[:, pair].T > 0))
+                five_rate = line_rate[rows][m, line] + pair_rate[rows][m, pair]
             elif state == PP:
-                uw = toi_w[rows] @ tp.m_pp
-                ui, ok = _choose(rng, uw)
-                cand = (tp.m_pp[:, ui].T > 0) & ok[:, None]
+                pu = tp.unit_pp[sc_i]
+                cand = tp.m_pp[:, pu].T > 0
+                five_rate = ((pres * tp.rg[:, PP]) @ tp.m_pp)[rows][m, pu]
             else:
                 cand[:] = True
-            cand &= dm[rows] > 0
-            ws = np.where(cand, gw[rows], 0.0)
-            need = ws.sum(axis=1) <= 0  # degrade to team-wide weights
-            if need.any():
-                ws[need] = gw[rows][need]
-                cand[need] = dm[rows][need] > 0
-            zero = ws.sum(axis=1) <= 0
-            if zero.any():  # nobody dressed with any scoring weight: uniform over the dressed
-                ws[zero] = (dm[rows][zero] > 0).astype(float)
-            sc_i, _ = _choose(rng, ws)
+                five_rate = np.ones(rows.size)
+            own_share = np.minimum(0.8, tp.rg[None, :, state] / np.maximum(five_rate[:, None], 1e-9))
+            squeeze = 1.0 / (1.0 - own_share)  # undo the scorer's own goals crowding out his assists
+            cand &= pres[rows] > 0
+            cand[m, sc_i] = True
+            k = np.searchsorted(a_cum, rng.random(rows.size), side="right")  # assists on the goal: 0, 1, 2
+            k = np.minimum(k, a_p.size - 1)
             np.add.at(out["goals"], (rows, sc_i), 1)
             if state == SH:
                 np.add.at(out["sh"], (rows, sc_i), 1)
-            k = np.searchsorted(a_cum, rng.random(rows.size), side="right")  # assists on the goal: 0, 1, 2
-            k = np.minimum(k, a_p.size - 1)
             taken = np.zeros((rows.size, ni), bool)
-            taken[np.arange(rows.size), sc_i] = True
+            taken[m, sc_i] = True
             assist_idx = np.full((2, rows.size), -1)
-            for a_no, aw in ((1, a1w), (2, a2w)):
+            for a_no in (1, 2):
                 sel = np.flatnonzero(k >= a_no)
                 if sel.size == 0:
                     continue
-                w = np.where(cand[sel] & ~taken[sel], aw[rows[sel]], 0.0)
-                fall = w.sum(axis=1) <= 0  # assisters degrade to team-wide weights, scorer excluded
-                if fall.any():
-                    w[fall] = np.where(~taken[sel][fall], aw[rows[sel]][fall], 0.0)
+                if state == SH:  # no on-ice group at shorthanded strength: team-wide per-game weights
+                    w = np.where(~taken[sel], team_a[a_no - 1][rows[sel]], 0.0)
+                else:
+                    w = np.where(cand[sel] & ~taken[sel], rate_a[a_no - 1][rows[sel]] * squeeze[sel], 0.0)
+                    fall = w.sum(axis=1) <= 0  # degrade to team-wide weights, scorer excluded
+                    if fall.any():
+                        w[fall] = np.where(~taken[sel][fall], team_a[a_no - 1][rows[sel]][fall], 0.0)
                 ai, ok = _choose(rng, w)
                 good = sel[ok]
                 if good.size:
                     assist_idx[a_no - 1, good] = ai[ok]
                     np.add.at(out["assists"], (rows[good], ai[ok]), 1)
+                    if "a_state" in out:
+                        np.add.at(out["a_state"], (ai[ok], state, a_no - 1), 1)
                     taken[good, ai[ok]] = True
                     if state == SH:
                         np.add.at(out["sh"], (rows[good], ai[ok]), 1)
@@ -306,8 +361,8 @@ def _allocate(rng, tp: _Team, dm: np.ndarray, counts: dict, sim_cfg: dict, out: 
                 EVENT_LOG.append((tp.code, state, rows.copy(), sc_i.copy(), assist_idx[0].copy(), assist_idx[1].copy(), dm[rows] > 0))
 
 
-def _team_skaters(rng, tp: _Team, n: int, goals_by_state: dict, pace_own: np.ndarray, pace_opp: np.ndarray,
-                  sim_cfg: dict, var: float) -> dict:
+def _presence(rng, tp: _Team, n: int, sim_cfg: dict) -> tuple[np.ndarray, np.ndarray]:
+    """Dressed flags and dm = dressed x TOI multiplier x scale, both (n, Ni)."""
     ni = tp.scale.size
     listed = np.zeros(ni, bool)
     listed[:tp.n_listed] = True
@@ -315,7 +370,39 @@ def _team_skaters(rng, tp: _Team, n: int, goals_by_state: dict, pace_own: np.nda
     dressed[:, :tp.n_listed] = rng.random((n, tp.n_listed)) < tp.p_dress[:tp.n_listed]
     cvs = tp.toi_cv[None, :] * listed[None, :]
     toi_mult = np.clip(1.0 + cvs * rng.standard_normal((n, ni)), sim_cfg["skater"]["toi_floor"], sim_cfg["skater"]["toi_cap"])
-    dm = dressed * toi_mult * tp.scale[None, :]
+    return dressed, dressed * toi_mult * tp.scale[None, :]
+
+
+def _calibrate_assists(tp: _Team, sim_cfg: dict) -> None:
+    """Scale each person's assist weights so a pilot allocation reproduces the ParamTable's expected
+    assists per person and strength. The on-ice group structure (who is out with whom) is kept; only
+    the marginal is pinned, because a scorer cannot assist his own goal and that alone pushes assists
+    from frequent scorers to their linemates. Deterministic: fixed pilot seed, common draws each round."""
+    c = sim_cfg["allocation"]
+    if not c["calibrate"]:
+        return
+    ni = tp.scale.size
+    w = tp.p_dress * tp.scale
+    lam = [float((w * tp.g[:, s]).sum()) for s in range(3)]
+    target = w[:, None, None] * np.stack([tp.a1, tp.a2], axis=2)  # (Ni, 3, 2) expected assists per game
+    n = int(c["pilot_scenarios"])
+    for _ in range(int(c["pilot_rounds"])):
+        rng = np.random.Generator(np.random.PCG64(np.random.SeedSequence([int(c["pilot_seed"]), 1])))
+        _, dm = _presence(rng, tp, n, sim_cfg)
+        counts = {s: rng.poisson(lam[s], n) for s in range(3)}
+        out = {"goals": np.zeros((n, ni), np.int32), "assists": np.zeros((n, ni), np.int32),
+               "sh": np.zeros((n, ni), np.int32), "a_state": np.zeros((ni, 3, 2))}
+        _allocate(rng, tp, dm, counts, sim_cfg, out)
+        got = out["a_state"] / n
+        eps = float(c["pilot_eps"]) * target.mean(axis=0, keepdims=True)  # per strength and assist number
+        ratio = np.clip((target + eps) / (got + eps), 0.5, 2.0)
+        tp.a_mult = np.clip(tp.a_mult * ratio ** float(c["pilot_step"]), float(c["mult_min"]), float(c["mult_max"]))
+
+
+def _team_skaters(rng, tp: _Team, n: int, goals_by_state: dict, pace_own: np.ndarray, pace_opp: np.ndarray,
+                  sim_cfg: dict, var: float) -> dict:
+    ni = tp.scale.size
+    dressed, dm = _presence(rng, tp, n, sim_cfg)
     out = {"goals": np.zeros((n, ni), np.int32), "assists": np.zeros((n, ni), np.int32), "sh": np.zeros((n, ni), np.int32)}
     _allocate(rng, tp, dm, goals_by_state, sim_cfg, out)
     saved = _nb(rng, dm * tp.saved[None, :] * pace_own[:, None], tp.phi_saved[None, :])

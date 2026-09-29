@@ -228,6 +228,72 @@ def _roots(args) -> tuple[Path, Path]:
     return runs_root, Path(args.outputs_root) if args.outputs_root else runs_root.parent / "outputs"
 
 
+def cmd_simulate(args: argparse.Namespace) -> int:
+    import json
+    import statistics
+    import time
+
+    from nhl_dfs.build.run import load_run_pool, slate_as_of
+    from nhl_dfs.build.state import latest_run, open_run
+    from nhl_dfs.contracts.statuses import Participation
+    from nhl_dfs.models import params as params_mod
+    from nhl_dfs.sim import cache, game
+    from nhl_dfs.sim.slate import build_slate, fetch_odds
+
+    runs_root = Path(args.runs_root)
+    try:
+        run = open_run(runs_root, args.run) if args.run else latest_run(runs_root)
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"no such run: {exc}")
+        return 1
+    if run is None:
+        print("simulate needs --run <id> (no runs found)")
+        return 2
+    pool, _entries, work, st = load_run_pool(run)
+    as_of = slate_as_of(pool, lambda: run_clock(run.run_id))
+    table = params_mod.projection_for(work, as_of)
+    snapshot, msgs = (None, ["odds: skipped (--offline); every game takes the model intensities"]) if args.offline else fetch_odds()
+    slate, game_lines = build_slate(work, table, snapshot)
+    out = run.path / "sim"
+    seed = int(args.seed) if args.seed is not None else int(pool.sha256[:8], 16)
+    n = int(args.n)
+    print(f"simulate: run {run.run_id} ({pool.mode.value}); {len(table.persons)} persons; MODEL_STATUS={table.source().value}; "
+          f"params as of {as_of}; {n} scenarios, seed {seed}, purpose {args.purpose}")
+    for line in msgs + game_lines:
+        print(line)
+    if snapshot is not None:
+        (out).mkdir(parents=True, exist_ok=True)
+        (out / "odds.json").write_text(json.dumps(
+            {"source": snapshot.source, "book": snapshot.book, "as_of_utc": snapshot.as_of_utc.isoformat(),
+             "as_of_basis": snapshot.as_of_basis, "games": [g.__dict__ for g in snapshot.games]}, default=str), encoding="utf-8")
+    t0 = time.perf_counter()
+    info = cache.build(out, slate, table, n, seed, args.purpose)
+    wall = time.perf_counter() - t0
+    sm = info.summary
+    keys = info.person_keys
+    print(f"wall clock: {wall:.1f} s for {n} scenarios in {info.chunks} chunk(s) of {info.chunk_size} "
+          f"({'within' if wall <= 90 else 'OVER'} the 90 s target); wrote {out} ({info.bytes / 1e6:.1f} MB)")
+    for grp in ("F", "D", "G"):
+        ratios = [sm["person_mean"]["points"][i] / 10.0 / (table.persons[k].mean_tenths / 10.0)
+                  for i, k in enumerate(keys) if table.persons[k].group == grp and table.persons[k].mean_tenths >= 20
+                  and table.persons[k].source.value != "PRIOR"]
+        if ratios:
+            print(f"scale {grp}: simulated mean / ParamTable mean, median {statistics.median(ratios):.2f} "
+                  f"over {len(ratios)} persons with history (market-fit team goals rescale the analytic means; recorded, not tuned)")
+    for i, t in enumerate(sm["team"]["keys"]):
+        print(f"team {t}: goals {sm['team']['goals'][i]:.2f}, SOG {sm['team']['sog'][i]:.1f}, empty-net {sm['team']['en'][i]:.2f}")
+    dtd = [r for r, (p, _) in st.items() if p is Participation.QUESTIONABLE]
+    print(f"note: {len(dtd)} QUESTIONABLE (DTD) rows keep their normal play probability here; C8 prices the participation risk")
+    print(f"sim spec sha256 {info.spec_sha256[:16]}")
+    return 0
+
+
+def cmd_calibrate(args: argparse.Namespace) -> int:
+    from nhl_dfs.sim import validate
+
+    return validate.run_cli(args)
+
+
 def cmd_late_swap(args: argparse.Namespace) -> int:
     from nhl_dfs.build import late_swap
 
@@ -316,6 +382,23 @@ def build_parser() -> argparse.ArgumentParser:
     field_parser.add_argument("--runs-root", type=str, default=str(RUNS_ROOT))
     field_parser.set_defaults(func=cmd_field)
 
+    sim = sub.add_parser("simulate")
+    sim.add_argument("--run", type=str, default=None)
+    sim.add_argument("--n", type=int, default=20000)
+    sim.add_argument("--seed", type=int, default=None)
+    sim.add_argument("--purpose", choices=["design", "selection", "referee"], default="selection")
+    sim.add_argument("--offline", action="store_true", help="no odds fetch: every game takes the model intensities")
+    sim.add_argument("--runs-root", type=str, default=str(RUNS_ROOT))
+    sim.set_defaults(func=cmd_simulate)
+
+    cal = sub.add_parser("calibrate")
+    cal.add_argument("--seasons", type=int, default=1)
+    cal.add_argument("--dates", type=int, default=None, help="held-out dates to sample per season (default: config)")
+    cal.add_argument("--scenarios", type=int, default=None)
+    cal.add_argument("--store-root", type=str, default=None)
+    cal.add_argument("--out-dir", type=str, default=None)
+    cal.set_defaults(func=cmd_calibrate)
+
     for name, func in (("late-swap", cmd_late_swap), ("refresh", cmd_refresh)):
         sp = sub.add_parser(name)
         sp.add_argument("--run", type=str, default=None)
@@ -375,18 +458,12 @@ def cmd_field(args: argparse.Namespace) -> int:
         source = "saved by the run's provisional pass"
     else:  # a baseline-only run: sample now from the run's own inputs, offline, family priors
         from nhl_dfs.build import provisional
-        from nhl_dfs.build.run import _person_rows, pool_without, salary_statuses
+        from nhl_dfs.build.run import load_run_pool
         from nhl_dfs.contracts.statuses import Participation
-        from nhl_dfs.intake.entries import read_entries
-        from nhl_dfs.intake.salary import read_salary
         from nhl_dfs.models import contests
         from nhl_dfs.models.projection import PriorProjection
 
-        pool = read_salary(run.inputs / "DKSalaries.csv")
-        entries = read_entries(run.inputs / "DKEntries.csv")
-        st = salary_statuses(pool)
-        out = {pool.by_role_id[r].person_key for r, (p, _) in st.items() if p is Participation.OUT}
-        work = pool_without(pool, _person_rows(pool, out))
+        pool, entries, work, st = load_run_pool(run)
         ctx = contests.resolve(entries)
         statuses = {r: p for r, (p, _) in st.items() if r in work.by_role_id}
         seed = int(pool.sha256[:8], 16)

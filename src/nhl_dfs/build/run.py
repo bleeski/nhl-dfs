@@ -223,6 +223,17 @@ def _fallback_bank(pool, objective, n_entries, runtime, why) -> SearchOutcome:
     return SearchOutcome(bank, SearchStatus.FEASIBLE, "feasible", f"{why}; {len(bank)} fallback lineup(s)")
 
 
+def load_run_pool(run: RunDir):
+    """Rebuild a run's working pool from its input copies, exactly as Phase A did: participation OUT
+    (DK OUT or IR) excluded. Returns (pool, entries, work pool, salary statuses). Shared by
+    `field --run` and `simulate --run` so both see the same people."""
+    pool = read_salary(run.inputs / "DKSalaries.csv")
+    entries = read_entries(run.inputs / "DKEntries.csv")
+    st = salary_statuses(pool)
+    out = {pool.by_role_id[r].person_key for r, (p, _) in st.items() if p is Participation.OUT}
+    return pool, entries, pool_without(pool, _person_rows(pool, out)), st
+
+
 # -- projection (C5) ----------------------------------------------------------------------
 
 def slate_as_of(pool: SalaryPool, clock) -> "date":
