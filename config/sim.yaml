@@ -63,10 +63,11 @@ skater:
   min_saved_mean: 0.02         # floor on a skater's non-goal SOG mean
 
 # Pace: team pace factor, Gamma with mean 1 and variance pace_var. It scales every skater's
-# non-goal shots and the opponent's blocks. Person dispersion is reduced so each person's marginal
-# stays at C5's mu + phi mu^2 (phi' = (phi - v) / (1 + v)).
+# non-goal shots and the opponent's blocks. Each person's conditional dispersion is reduced by the
+# pace and TOI-multiplier mixing so the marginal stays at C5's mu + phi mu^2 (game._conditional_phi).
 pace:
-  var: 0.0105                  # CALIBRATED: see docs/calibration and BUILD_STATUS C6 log line
+  var: 0.0042                  # CALIBRATED 2026-09-29: synthetic prior-rate 12 F + 6 D teams give team SOG cv 0.2198 vs
+                               # 0.2205 measured (residual sd 6.186 on mean 28.05 after removing team-season means)
 
 # Goalies
 goalie:

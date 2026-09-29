@@ -208,3 +208,24 @@ def test_model_strength_reads_the_param_table():
     assert 2.0 < s.lam_home < 3.6 and 2.0 < s.lam_away < 3.6
     thin = synthetic_params(("AAA", "BBB"), n_f=3, n_d=1)
     assert market.model_strength(thin, "AAA", "BBB", model_cfg=MODEL_CFG).notes  # league rate, and it says so
+
+
+def test_cache_writes_chunks_with_hashes_and_matches_a_direct_run(tmp_path):
+    from nhl_dfs.sim import cache
+
+    params = synthetic_params(("AAA", "BBB"), n_f=13, n_d=7)
+    slate = slate_for(params)
+    n = slate.cfg["chunk_size"] + 300  # two chunks, the second short
+    info = cache.build(tmp_path / "sim", slate, params, n, seed=21, purpose="selection")
+    meta = cache.read_meta(tmp_path / "sim")
+    assert meta["chunks"] == 2 and meta["n"] == n and meta["seed"] == 21 and meta["purpose"] == "selection"
+    assert meta["dtype"] == "int32" and meta["person_keys"] == sorted(params.persons)
+    assert info.spec_sha256 == cache.spec_hash(slate, params, 21, "selection", n)
+    assert cache.is_current(tmp_path / "sim", info.spec_sha256)
+    assert not cache.is_current(tmp_path / "sim", cache.spec_hash(slate, params, 22, "selection", n))
+    direct = score.base_tenths(game.simulate(slate, params, n, seed=21, purpose="selection"))
+    assert np.array_equal(cache.load_base(tmp_path / "sim"), direct)  # same draws, chunked or not
+    assert info.bytes < 3_000_000 and info.summary["team"]["goals"][0] > 2.0
+    # rebuilding replaces the old chunks
+    cache.build(tmp_path / "sim", slate, params, 500, seed=21)
+    assert len(list((tmp_path / "sim").glob("chunk_*.npy"))) == 1
