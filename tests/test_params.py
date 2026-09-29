@@ -145,3 +145,16 @@ def test_slate_as_of_is_the_earlier_of_today_and_first_game():
     pool = read_salary(mini_pair("classic")[0])  # first game 2026-09-29 (ET)
     assert slate_as_of(pool, lambda: datetime(2026, 9, 28, 18, tzinfo=timezone.utc)) == date(2026, 9, 28)
     assert slate_as_of(pool, lambda: datetime(2026, 10, 3, 18, tzinfo=timezone.utc)) == date(2026, 9, 29)
+
+
+def test_cli_params_writes_parquet_without_nulls(tmp_path, capsys):
+    from conftest import mini_pair
+    from nhl_dfs import cli
+
+    out = tmp_path / "params.parquet"
+    assert cli.main(["params", "--salary", str(mini_pair("showdown")[0]), "--as-of", "2026-09-28", "--out", str(out)]) == 0
+    text = capsys.readouterr().out
+    assert "PRIOR=" in text and "HISTORY=0" in text and "MODEL_STATUS=PRIOR" in text and "nulls 0" in text
+    df = pd.read_parquet(out)
+    assert len(df) and int(df.isna().sum().sum()) == 0
+    assert cli.main(["params"]) == 2

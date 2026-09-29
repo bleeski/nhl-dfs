@@ -293,6 +293,13 @@ def build_parser() -> argparse.ArgumentParser:
     hist.add_argument("--raw-root", type=str, default=None)
     hist.set_defaults(func=cmd_history)
 
+    prm = sub.add_parser("params")
+    prm.add_argument("--salary", type=str, default=None)
+    prm.add_argument("--as-of", type=str, default=None, help="YYYY-MM-DD; default: earlier of today and the first slate game (ET)")
+    prm.add_argument("--store-root", type=str, default=None)
+    prm.add_argument("--out", type=str, default=None)
+    prm.set_defaults(func=cmd_params)
+
     ident = sub.add_parser("identity")
     ident.add_argument("--seed", action="store_true")
     ident.add_argument("--salary", type=str, default=None)
@@ -437,6 +444,43 @@ def cmd_history(args: argparse.Namespace) -> int:
     n = len(store.read("skater_games", done, root=args.store_root))
     print(f"store read of {len(done)} completed seasons: {n} skater-game rows in {time.perf_counter() - t0:.2f}s")
     return 0 if not bad else 1
+
+
+def cmd_params(args: argparse.Namespace) -> int:
+    import statistics
+    from datetime import date, datetime, timezone
+
+    from nhl_dfs.build.run import slate_as_of, slate_id_for
+    from nhl_dfs.intake.salary import read_salary
+    from nhl_dfs.models import params
+    from nhl_dfs.models.priors import prior_table
+
+    if not args.salary:
+        print("params needs --salary <DKSalaries.csv> [--as-of YYYY-MM-DD]")
+        return 2
+    pool = read_salary(args.salary)
+    as_of = date.fromisoformat(args.as_of) if args.as_of else slate_as_of(pool, lambda: datetime.now(timezone.utc))
+    table = params.projection_for(pool, as_of, store_root=args.store_root)
+    df = table.to_frame()
+    out = Path(args.out) if args.out else REPO_ROOT / "data" / "features" / "params" / f"{slate_id_for(pool)}_{as_of}" / "params.parquet"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    df.to_parquet(out, index=False)
+    c = table.counts()
+    nulls = int(df.isna().sum().sum())
+    print(f"params: as_of {as_of} (games before this date only); persons {len(df)}; "
+          f"PRIOR={c['PRIOR']} HISTORY={c['HISTORY']} MIXED={c['MIXED']}; MODEL_STATUS={table.source().value}; nulls {nulls}")
+    pri = prior_table(pool)
+    first_role = {r.person_key: r.role_id for r in reversed(pool.rows)}
+    for grp in ("F", "D", "G"):
+        m = [p for p in table.persons.values() if p.group == grp and p.source.value != "PRIOR"]
+        if m:
+            print(f"scale {grp}: {len(m)} persons with history; median mean {statistics.median(p.mean_tenths for p in m) / 10:.1f} "
+                  f"pts vs salary/APPG prior {statistics.median(pri[first_role[p.person_key]].mean_tenths for p in m) / 10:.1f} pts "
+                  "(recorded, not tuned)")
+    for note in table.notes:
+        print(f"note: {note}")
+    print(f"wrote {out}")
+    return 0 if nulls == 0 else 1
 
 
 def cmd_identity(args: argparse.Namespace) -> int:

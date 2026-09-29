@@ -11,3 +11,4 @@ outputs/
 *.egg-info/
 data/features/history/
 data/identity/proposals.json
+data/features/params/
