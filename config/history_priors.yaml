@@ -1,0 +1,18 @@
+# engineering placeholders; replace from Tier A history in C5
+# League priors for columns the NHL per-game reports cannot supply (Tier B, plan section 3 and
+# card C4). A Tier B row gets these values AND <col>_missing = 1, so no model can mistake a prior
+# for an observation. By position group only: roles (PP unit, line) do not exist until C7.
+# Rates are per game quantities derived from the row's own NHL counts:
+#   a1 = assists * a1_share; a2 = assists - a1
+#   attempts = sog * attempts_per_sog
+#   ixg = sog * ixg_per_sog; hd_xg = ixg * hd_xg_share
+#   onice_xgf/onice_xga = toi_s / 3600 * per60; the _5on5 versions use toi_ev_s
+#   shared_ice = shared_ice (share of 5on5 unit time with the most-used unit)
+# Goalies: xga = shots_against * xga_per_shot_against; gsax = 0 (league average).
+skaters:
+  F: {a1_share: 0.55, attempts_per_sog: 1.9, ixg_per_sog: 0.10, hd_xg_share: 0.45, onice_xgf_per60: 2.9,
+      onice_xga_per60: 2.9, onice_xgf_per60_5on5: 2.5, onice_xga_per60_5on5: 2.5, shared_ice: 0.45}
+  D: {a1_share: 0.45, attempts_per_sog: 2.3, ixg_per_sog: 0.045, hd_xg_share: 0.15, onice_xgf_per60: 2.8,
+      onice_xga_per60: 2.8, onice_xgf_per60_5on5: 2.4, onice_xga_per60_5on5: 2.4, shared_ice: 0.60}
+goalies:
+  xga_per_shot_against: 0.095
