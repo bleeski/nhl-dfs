@@ -553,7 +553,10 @@ def swap_core(
     if so is not None:
         _scenario_report(so, m, picks, outcomes, final, contest_of, budget - (time.perf_counter() - t_sc), messages)
     if resolved is not None:
+        from nhl_dfs.build.scenario_pass import peak_mb
+
         timings.update({f"objective_{k}": v for k, v in resolved.timings.items()})
+        timings["peak_working_set_mb"] = peak_mb()  # B16: late swap must stay well under the 150-entry run's peak
 
     changes = {eid: {k: rid for k, rid in enumerate(final[eid]) if rid != befores[eid][k] and rid is not None}
                for eid in final}

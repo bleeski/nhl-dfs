@@ -165,15 +165,22 @@ class SortedField:
     """(S, F) field scores sorted per scenario once; ranks of any candidate set by binary search, in row
     blocks (a 5,000-lineup field is never re-sorted per repaired entry)."""
 
-    def __init__(self, scores: np.ndarray, weights: np.ndarray, block: int = 500):
+    def __init__(self, scores, weights: np.ndarray, block: int = 500):
+        """scores: (S, F) array or a lazy objectives.LineupScores / SampledScores, read in row blocks so
+        no (S, F) int64 intermediate ever exists (sorted scores and cumulative weights are int32: 160 MB
+        for 4,000 scenarios x 5,000 lineups)."""
         S, F = scores.shape
         self.S, self.F, self.block = S, F, block
         if F:
-            order = np.argsort(scores, axis=1, kind="stable")
-            self.fs = np.take_along_axis(scores, order, axis=1).astype(np.int32)
-            w = np.asarray(weights, np.int64)
-            self.cw = np.zeros((S, F + 1), np.int64)
-            np.cumsum(w[order], axis=1, out=self.cw[:, 1:])
+            w = np.asarray(weights, np.int32)
+            self.fs = np.empty((S, F), np.int32)
+            self.cw = np.zeros((S, F + 1), np.int32)
+            for a in range(0, S, block):
+                b = min(S, a + block)
+                sc = np.asarray(scores[a:b])
+                order = np.argsort(sc, axis=1, kind="stable")
+                self.fs[a:b] = np.take_along_axis(sc, order, axis=1)
+                np.cumsum(w[order], axis=1, out=self.cw[a:b, 1:])
             self.lo, self.hi = int(self.fs.min()), int(self.fs.max())
 
     def ranks(self, cand: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -193,7 +200,7 @@ class SortedField:
             base = rows * F
             right = np.searchsorted(flat, q, side="right").reshape(b - a, K) - base
             left = np.searchsorted(flat, q, side="left").reshape(b - a, K) - base
-            cw = self.cw[a:b]
+            cw = self.cw[a:b].astype(np.int64)
             le = np.take_along_axis(cw, right, axis=1)
             G[a:b] = cw[:, F][:, None] - le
             E[a:b] = le - np.take_along_axis(cw, left, axis=1)
@@ -325,8 +332,11 @@ class ScenarioObjective:
             rows = self.pool.persons[k]
             if (rows.classic or rows.flex or rows.cpt).team in teams:
                 base[:, col[k]] = 0
-        new = np.concatenate([score.base_tenths(o) for o in
-                              game.iter_chunks(self.slate, self.table, n, self.cache.seed, purpose, self.resim)], axis=0)
+        if getattr(self, "_prep", None) is None:  # one preparation (assist pilot included) for both streams
+            self._prep = game.prepare(self.slate, self.table, self.resim)
+            game.check_memory(self._prep, self.slate.cfg)
+        new = np.concatenate([score.base_tenths(game.simulate_chunk(self._prep, size, self.cache.seed, purpose, ci, self.resim))
+                              for ci, size in enumerate(game.chunk_bounds(n, self.slate.cfg))], axis=0)
         for j, k in enumerate(sorted(self.table.persons)):
             if k in col and self.table.persons[k].team in teams:
                 base[:, col[k]] = new[:, j]
@@ -343,15 +353,14 @@ class ScenarioObjective:
     def _field(self, cid: str, purpose: str):
         key = (cid, purpose)
         if key not in self._fields:
-            if len(self._fields) >= 2:  # bound memory: keep at most two sorted fields alive
-                self._fields.pop(next(iter(self._fields)))
+            self._fields.clear()  # bound memory (B16): one sorted field alive at a time; targets come sorted by contest
             fam = self.cache.contest_family[cid]
             lus, ks = self.cache.families[fam]
             scen = self.sets[purpose]
             spec = ob.field_spec(lus, ks, self.cache.n_opponents[cid], self.risk_cfg, n_scenarios=scen.n,
                                  seed=self.cache.seed, salt=f"{cid}|{purpose}")
             scores, weights = spec.scores(scen, self.mode)
-            self._fields[key] = (SortedField(np.asarray(scores[0:scen.n]), weights), spec)
+            self._fields[key] = (SortedField(scores, weights), spec)
         return self._fields[key]
 
     def has_contest(self, cid: str) -> bool:
@@ -405,6 +414,12 @@ class ScenarioObjective:
                 m = self.metrics(cid, [lu], others, "referee")
                 out[eid] = {**m.row(0), "measured_on": "referee scenarios"}
         return out
+
+
+def _peak():
+    from nhl_dfs.build.scenario_pass import peak_mb
+
+    return peak_mb()
 
 
 # -- resolution ------------------------------------------------------------------------------------------
@@ -472,6 +487,7 @@ def resolve(requested: str, *, pool, work, st, started_games, dk_rec, runs_root,
         except Exception as exc:  # reported; the objective steps down
             res.notes.append(f"ParamTable or role state unavailable ({type(exc).__name__}: {str(exc)[:120]})")
         res.timings["roles_s"] = round(time.perf_counter() - t, 3)
+        res.timings["roles_peak_mb"] = _peak()
     for kind in order:
         if kind == "scenario":
             got, looked = scache.find(runs_root, run_id)
@@ -500,6 +516,7 @@ def resolve(requested: str, *, pool, work, st, started_games, dk_rec, runs_root,
                 res.scenario, res.kind, res.linear = so, "scenario", so.linear
                 res.notes += notes
                 res.timings["scenario_build_s"] = round(time.perf_counter() - t, 3)
+                res.timings["scenario_build_peak_mb"] = _peak()
                 break
             except Exception as exc:
                 down("scenario", f"scenario objective failed ({type(exc).__name__}: {str(exc)[:160]})")
