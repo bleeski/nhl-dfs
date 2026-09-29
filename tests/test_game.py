@@ -258,3 +258,27 @@ def test_showdown_pool_roles_end_to_end_and_the_captain_counts_once():
     plain = score.lineup_twentieths(rb, lineup, captain_col=None)
     capt = score.lineup_twentieths(rb, lineup, captain_col=0)
     assert np.array_equal(capt - plain, rb[:, [cpt]])  # exactly one extra 1x of the captain's base
+
+
+def test_spec_hash_covers_units_dressing_and_the_model_config():
+    from nhl_dfs.sim import cache
+
+    params = synthetic_params(("AAA", "BBB"))
+    slate = slate_for(params)
+    base = cache.spec_hash(slate, params, 1, "design", 100)
+    assert base == cache.spec_hash(slate, params, 1, "design", 100)
+    # a linemate change that leaves every rounded mean alone
+    key = next(k for k in sorted(params.persons) if k.endswith("|F"))
+    params.persons[key].opportunity.unit_ev = "somewhere-else"
+    assert cache.spec_hash(slate, params, 1, "design", 100) != base
+    params.persons[key].opportunity.unit_ev = "AAA-L0"
+    key2 = next(k for k in sorted(params.persons, reverse=True) if k.endswith("|D"))
+    before = cache.spec_hash(slate, params, 1, "design", 100)
+    params.persons[key2].opportunity.p_dress *= 0.9
+    assert cache.spec_hash(slate, params, 1, "design", 100) != before
+    params.persons[key2].opportunity.p_dress /= 0.9
+    params.persons[key2].rates.phi_sog += 0.01
+    assert cache.spec_hash(slate, params, 1, "design", 100) != before
+    params.persons[key2].rates.phi_sog -= 0.01
+    slate.model_cfg = {**slate.model_cfg, "decay_half_life_games": 41}
+    assert cache.spec_hash(slate, params, 1, "design", 100) != before

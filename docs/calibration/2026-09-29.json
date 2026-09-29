@@ -12,7 +12,7 @@
   "2026-04-16"
  ],
  "n_scenarios": 1500,
- "created_utc": "2026-09-29T13:32:54.927141+00:00",
+ "created_utc": "2026-09-29T13:43:08.058480+00:00",
  "coverage": {
   "games": 79,
   "skaters_observed": 2844,
@@ -275,13 +275,14 @@
   {
    "kind": "co_ceiling",
    "what": "model-line pairs, both 2+ points",
-   "detail": "observed/expected 0.55 within model lines, 1.59 across model lines: the rank-built model lines do not identify actual linemates (a segment or line-level model would need real deployment data)",
+   "detail": "observed/expected 0.55 within model lines, 1.59 across model lines. Hypothesis, not established: the rank-built model lines do not identify actual linemates; the same ratios are also consistent with within-line correlation in the simulation being too strong",
    "value": 0.5459986920585522
   }
  ],
  "notes": [
+  "'held out' means only the per-person parameters use games strictly before each date; the league constants (config/model.yaml means, config/sim.yaml resolve values and the pace target) were measured on both seasons including these dates, which flatters the team-goal, tie-rate and goalie-win rows",
   "persons with no history use position priors (PRIOR); the calibration includes them",
   "team SOG-to-goal correlation is higher in the simulation than in history (score effects are not modeled)"
  ],
- "wall_s": 98.67309890000615
+ "wall_s": 97.99904500000412
 }

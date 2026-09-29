@@ -273,13 +273,16 @@ def cmd_simulate(args: argparse.Namespace) -> int:
     keys = info.person_keys
     print(f"wall clock: {wall:.1f} s for {n} scenarios in {info.chunks} chunk(s) of {info.chunk_size} "
           f"({'within' if wall <= 90 else 'OVER'} the 90 s target); wrote {out} ({info.bytes / 1e6:.1f} MB)")
+    any_market = any(g.rates.source == "MARKET" for g in slate.games)
+    clause = ("market-fit team goals rescale the analytic means; recorded, not tuned" if any_market
+              else "every game is MODEL, so the difference is allocation and dressing only; recorded, not tuned")
     for grp in ("F", "D", "G"):
         ratios = [sm["person_mean"]["points"][i] / 10.0 / (table.persons[k].mean_tenths / 10.0)
                   for i, k in enumerate(keys) if table.persons[k].group == grp and table.persons[k].mean_tenths >= 20
                   and table.persons[k].source.value != "PRIOR"]
         if ratios:
             print(f"scale {grp}: simulated mean / ParamTable mean, median {statistics.median(ratios):.2f} "
-                  f"over {len(ratios)} persons with history (market-fit team goals rescale the analytic means; recorded, not tuned)")
+                  f"over {len(ratios)} persons with history ({clause})")
     for i, t in enumerate(sm["team"]["keys"]):
         print(f"team {t}: goals {sm['team']['goals'][i]:.2f}, SOG {sm['team']['sog'][i]:.1f}, empty-net {sm['team']['en'][i]:.2f}")
     dtd = [r for r, (p, _) in st.items() if p is Participation.QUESTIONABLE]

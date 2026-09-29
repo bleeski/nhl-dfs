@@ -348,9 +348,10 @@ def report(as_of_dates, cfg: dict | None = None, *, store_root=None, n_scenarios
                       "control_pairs": ctl_pairs, "control_observed": ctl_obs, "control_expected": ctl_exp, "control_ratio": cratio}
     if cflag == "FLAG":
         rep.deficiencies.append({"kind": "co_ceiling", "what": "model-line pairs, both 2+ points",
-                                 "detail": f"observed/expected {ratio:.2f} within model lines, {cratio:.2f} across model lines: "
-                                           "the rank-built model lines do not identify actual linemates (a segment or "
-                                           "line-level model would need real deployment data)", "value": ratio})
+                                 "detail": f"observed/expected {ratio:.2f} within model lines, {cratio:.2f} across model lines. "
+                                           "Hypothesis, not established: the rank-built model lines do not identify actual "
+                                           "linemates; the same ratios are also consistent with within-line correlation in the "
+                                           "simulation being too strong", "value": ratio})
     if team_obs:
         chi = rep.pit.get("team_goals", {}).get("chi2_per_df", 0.0)
         rep.team = {"obs_mean": float(np.mean(team_obs)), "obs_sd": float(np.std(team_obs)), "sim_mean": float(np.mean(team_sim_mean)),
@@ -359,7 +360,10 @@ def report(as_of_dates, cfg: dict | None = None, *, store_root=None, n_scenarios
         "team totals vs market": "the store holds no historical odds; the rows above are the MODEL-source intensities only",
         "goalie win vs implied": "no historical moneylines; 'goalie win' above is graded against the simulator's own probability",
     }
-    rep.notes = notes + ["persons with no history use position priors (PRIOR); the calibration includes them",
+    rep.notes = notes + ["'held out' means only the per-person parameters use games strictly before each date; the league "
+                         "constants (config/model.yaml means, config/sim.yaml resolve values and the pace target) were measured on "
+                         "both seasons including these dates, which flatters the team-goal, tie-rate and goalie-win rows",
+                         "persons with no history use position priors (PRIOR); the calibration includes them",
                          "team SOG-to-goal correlation is higher in the simulation than in history (score effects are not modeled)"]
     rep.wall_s = time.perf_counter() - t0
     return rep

@@ -15,6 +15,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import yaml
 
 from nhl_dfs.sim import game as game_mod
@@ -24,16 +25,16 @@ VERSION = 1
 
 
 def spec_hash(slate: game_mod.SlateSpec, params, seed: int, purpose: str, n: int) -> str:
-    """Hash of everything that determines the draws: config, games and their fitted rates, the
-    person axis and each person's parameters, seed, purpose, n."""
-    persons = []
-    for k in sorted(params.persons):
-        p = params.persons[k]
-        persons.append([k, p.team, p.group, int(p.mean_tenths), int(p.sd_tenths)])
+    """Hash of everything that determines the draws: the simulator and model configs, each game's fitted
+    rates, every column of the ParamTable frame (rates, dressing, ice time, line and PP unit ids,
+    goalie parameters), seed, purpose and n. A change to any of them makes `is_current` false."""
+    frame = params.to_frame().sort_values("person_key").reset_index(drop=True)  # every column: rates, opportunity, units
+    persons_sha = hashlib.sha256(pd.util.hash_pandas_object(frame, index=False).to_numpy().tobytes()
+                                 + "|".join(frame.columns).encode()).hexdigest()
     payload = {
-        "version": VERSION, "cfg": slate.cfg, "model_cfg_skaters": slate.model_cfg["skaters"],
+        "version": VERSION, "cfg": slate.cfg, "model_cfg": slate.model_cfg,
         "games": [[g.key, g.home, g.away, g.game_type, asdict(g.rates)] for g in slate.games],
-        "persons": persons, "seed": int(seed), "purpose": purpose, "n": int(n),
+        "persons_sha256": persons_sha, "seed": int(seed), "purpose": purpose, "n": int(n),
     }
     blob = json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
     return hashlib.sha256(blob).hexdigest()
