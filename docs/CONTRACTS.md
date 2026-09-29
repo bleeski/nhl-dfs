@@ -122,3 +122,23 @@ coerced to a known value (CLAUDE.md); other vocabularies here that have no
 - `sim/validate.py` (`cli calibrate`): graded conditional on who dressed and started; historical odds
   do not exist in the store, so market comparisons print UNAVAILABLE. Machine-readable
   `deficiencies` in `docs/calibration/<date>.json` are what C13's gate reads.
+
+## Scenario portfolio (C8, `build/objectives.py`, `tiebreak.py`, `exposure.py`, `portfolio.py`, `scenario_pass.py`)
+
+- `run` without `--baseline` publishes v1 baseline, v2 provisional (C3), v3 scenario. Seed streams: design (discovery),
+  selection (the choice), referee (every reported figure). DTD (QUESTIONABLE) is priced once, as a seeded participation
+  mask on the scenario scores (0.85 play probability); the C3 ranking haircut is not reapplied; minutes are not reallocated.
+- Ties: the tied positions' prizes are pooled and split by the tied count, floored to the cent (integer cents; Decimal
+  ROUND_DOWN reference `split_tie`). DK Terms verify only the even split (docs/payouts.md); [BEN] flag 9.
+- Field: at most 5,000 distinct sampled lineups per contest. Weighted mode: integer multiplicities (largest remainder)
+  summing to field size minus own entries. Sampled mode (fewer than 1,000 opponents): each scenario draws its actual
+  opponents. GPP fields are grown to min(5,000, opponents) draws (Classic: `models/field_fast.py`; Showdown: threaded
+  MILP); ownership is read off the grown field.
+- Family objectives: large_gpp exp_payout_top1pct, small_field exp_payout, wta first_place_equity, cash p_clear_line,
+  satellite p_seat (ticket face value kept apart from cash). Own entries in a contest are copies and opponents.
+- Tie-break: anchored bands, band = max(3% x anchor, anchor Monte Carlo SE); ownership never past one band; cash and
+  satellite ignore ownership; dup = sampled count when FIELD_CALIBRATION=FITTED else the pre-fit proxy.
+- Caps: tournament entries only; plan defaults at >= 20 tournament entries with feasibility floors; below that no person
+  or goalie cap, Showdown Captain cap 1 for 2 to 3 entries. Fee-share budgets compare against max(budget, LPT floor).
+- Frontier: five kappas (risk.yaml); dominated points dropped, identical portfolios share a row; choose the highest tail
+  utility inside the budget, else the least-risk point (recorded). Budget is the [BEN] flag 2 placeholder.
