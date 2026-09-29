@@ -302,7 +302,7 @@ def _apply_team_page(rs: RoleState, tl: TeamLines, dk_team: str, pool, cfg: dict
             r.line = r.pp_unit = r.pk_unit = None
             r.df_listed = False
     if unmatched:
-        rs.reports.append(f"{dk_team}: {len(unmatched)} Daily Faceoff name(s) not in the DK pool (scratches, IR, or spelling): "
+        rs.reports.append(f"{dk_team}: {len(set(unmatched))} Daily Faceoff name(s) not in the DK pool (scratches, IR, or spelling): "
                           + ", ".join(sorted(set(unmatched))[:6]) + (" ..." if len(set(unmatched)) > 6 else ""))
 
 

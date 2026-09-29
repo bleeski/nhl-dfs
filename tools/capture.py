@@ -57,6 +57,31 @@ def _link(src: Path, dst: Path) -> str:
         return "copy"
 
 
+def _record_goalie_path(items: list[dict], snap: Path, page) -> None:
+    """C7: note which goalie data path the stored page supports (next_data or none) and keep a small
+    parsed copy. Never raises: a parse problem is recorded, and the capture goes on."""
+    try:
+        entry = next((i for i in items if i.get("name") == "df_starting_goalies"), None)
+        if entry is None or not entry.get("ok"):
+            return
+        from nhl_dfs.data.sources import dailyfaceoff as df  # lazy: an import problem must not stop a capture
+
+        reports = df.parse_goalie_page(page)
+        entry["goalie_path"] = "next_data" if reports else "none"
+        entry["goalie_reports"] = len(reports)
+        entry["goalie_confirmed"] = sum(1 for r in reports if r.state.value == "CONFIRMED")
+        entry["goalie_game_dates"] = sorted({str(r.game_date) for r in reports})
+        rows = [{"team": r.team, "goalie": r.goalie_name, "state": r.state.value, "strength": r.strength_raw,
+                 "game_utc": r.game_utc.isoformat() if r.game_utc else None, "source": r.source_name,
+                 "news_created_utc": r.news_created_utc.isoformat() if r.news_created_utc else None} for r in reports]
+        (snap / "df_starting_goalies.parsed.json").write_text(json.dumps(rows, indent=1), encoding="utf-8")
+    except Exception as exc:  # noqa: BLE001
+        for i in items:
+            if i.get("name") == "df_starting_goalies":
+                i["goalie_path"] = "none"
+                i["goalie_path_error"] = f"{type(exc).__name__}: {str(exc)[:120]}"
+
+
 def run_once(cache: HttpCache, *, now: datetime | None = None, root: Path | None = None) -> Path:
     now = now or datetime.now(timezone.utc)
     root = Path(root) if root is not None else cache.root
@@ -105,7 +130,8 @@ def run_once(cache: HttpCache, *, now: datetime | None = None, root: Path | None
                  parse_schedule)
     grab("nhl_partner_odds", urls["nhl_partner_odds"], "nhl_partner_odds", "json", parse_partner_odds)
     grab("covers_odds", urls["covers"], "covers", "html", _nonempty_html)
-    grab("df_starting_goalies", urls["df_goalies"], "dailyfaceoff", "html", _nonempty_html)
+    goalie_html = grab("df_starting_goalies", urls["df_goalies"], "dailyfaceoff", "html", _nonempty_html)
+    _record_goalie_path(items, snap, goalie_html)  # additive; the raw bytes are already stored above
     if sched is not None:
         slate = sorted({t for g in parse_schedule(sched, on_date=today) for t in (g.away, g.home)})
         for team in slate:

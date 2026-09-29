@@ -114,3 +114,26 @@ def test_a_fetched_old_confirmation_never_changes_its_game_date(make_cache):
     assert any("no game dated 2026-09-30" in n for n in got.notes)
     parsed = df.parse_goalie_page(GOALIE_HTML)
     assert {r.game_date for r in parsed} == {DAY}
+
+
+def test_capture_records_the_goalie_path_and_never_lets_a_parse_problem_stop_it(tmp_path):
+    import sys
+
+    from conftest import REPO_ROOT
+
+    sys.path.insert(0, str(REPO_ROOT / "tools"))
+    import capture
+
+    items = [{"name": "df_starting_goalies", "ok": True}]
+    capture._record_goalie_path(items, tmp_path, GOALIE_HTML)
+    e = items[0]
+    assert e["goalie_path"] == "next_data" and e["goalie_reports"] == 10 and e["goalie_confirmed"] == 1
+    assert e["goalie_game_dates"] == ["2026-09-29"]
+    rows = json.loads((tmp_path / "df_starting_goalies.parsed.json").read_text(encoding="utf-8"))
+    assert {r["goalie"] for r in rows if r["state"] == "CONFIRMED"} == {"Tristan Jarry"}
+    broken = [{"name": "df_starting_goalies", "ok": True}]
+    capture._record_goalie_path(broken, tmp_path, _without_payload(GOALIE_HTML))  # does not raise
+    assert broken[0]["goalie_path"] == "none" and "no __NEXT_DATA__" in broken[0]["goalie_path_error"]
+    failed = [{"name": "df_starting_goalies", "ok": False}]
+    capture._record_goalie_path(failed, tmp_path, None)
+    assert "goalie_path" not in failed[0]

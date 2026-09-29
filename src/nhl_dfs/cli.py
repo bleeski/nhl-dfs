@@ -297,6 +297,94 @@ def cmd_calibrate(args: argparse.Namespace) -> int:
     return validate.run_cli(args)
 
 
+def cmd_roles(args: argparse.Namespace) -> int:
+    from datetime import date, datetime, timezone
+    from zoneinfo import ZoneInfo
+
+    from nhl_dfs.build import news
+    from nhl_dfs.build.run import salary_statuses, slate_as_of
+    from nhl_dfs.contracts.statuses import Participation
+    from nhl_dfs.data.http import HttpCache, SourceSchemaError, SourceUnavailable
+    from nhl_dfs.data.sources import dailyfaceoff as df
+    from nhl_dfs.intake.salary import read_salary
+    from nhl_dfs.models import params as params_mod
+    from nhl_dfs.models import roles as roles_mod
+
+    if not args.salary:
+        print("roles needs --salary <DKSalaries.csv> [--offline]")
+        return 2
+    pool = read_salary(args.salary)
+    now = _as_of(args.as_of) or datetime.now(timezone.utc)
+    et = ZoneInfo("America/New_York")
+    days = sorted({g.start_utc.astimezone(et).date() for g in pool.games.values()})
+    cache = HttpCache(offline=bool(args.offline))
+    codes = df.team_codes()
+    slate = {c["nhl"]: (slug, c) for slug, c in codes.items() if c["dk"] and c["dk"] in pool.teams}
+    print(f"roles: {pool.mode.value} slate {', '.join(str(d) for d in days)}, teams {', '.join(sorted(pool.teams))}; now {now:%Y-%m-%d %H:%MZ}; "
+          f"{'OFFLINE: the latest stored Daily Faceoff pages' if args.offline else 'online, cache first'}")
+    lines, problems = {}, []
+    for nhl, (slug, c) in sorted(slate.items()):
+        try:
+            lines[nhl] = df.team_lines(slug, cache=cache)
+        except (SourceSchemaError, SourceUnavailable) as exc:
+            problems.append(f"{c['dk']}: team page unavailable ({type(exc).__name__}: {str(exc)[:90]})")
+    reports, path = [], "none"
+    for d in days:
+        got = df.fetch_goalies(d, cache=cache, teams=sorted(slate))
+        reports += got.reports
+        path = got.path if path == "none" else path
+        problems += [f"goalies {d}: {n}" for n in got.notes]
+    try:
+        table = params_mod.projection_for(pool, slate_as_of(pool, lambda: now))
+        rotation = roles_mod.rotation_from(table)
+    except Exception as exc:  # no history: rotation unknown, goalies fall to an even split
+        rotation = {}
+        problems.append(f"rotation unavailable ({type(exc).__name__}); goalie mixtures use an even split")
+    rs = roles_mod.merge(None, lines, reports, rotation, now, pool=pool, csv_status=salary_statuses(pool), goalie_path=path)
+    print(f"goalie data path in use: {path} (docs/sources.md); team pages read {len(lines)} of {len(slate)}")
+    by_dk = {c["dk"]: (slug, nhl) for nhl, (slug, c) in slate.items()}
+    for team in sorted(pool.teams):
+        g = next((x for x in pool.games.values() if team in (x.home, x.away)), None)
+        opp = (g.away if g and g.home == team else g.home) if g else "?"
+        page = rs.team_pages.get(team)
+        head = f"{team} {'vs' if g and g.home == team else '@'} {opp}"
+        if page is None:
+            print(f"{head}: no Daily Faceoff page" + ("" if team in by_dk else " (DK team code not verified in config/teams.yaml)"))
+        else:
+            tl = lines[by_dk[team][1]]
+            flag = "USED" if page["usable"] else "NOT USED (older than the age limit)"
+            print(f"{head}: lines updated {page['updated_utc']:%m-%d %H:%MZ} by {page['source'] or 'unattributed'}, {page['age_h']:.1f} h old, {flag}"
+                  + (", LOW CONFIDENCE" if page["low_confidence"] else ""))
+            if page["usable"]:
+                print("  F: " + " | ".join(f"L{i}: " + ", ".join(p.name for p in grp) for i, grp in enumerate(tl.f_lines, 1) if grp))
+                print("  D: " + " | ".join(f"P{i}: " + ", ".join(p.name for p in grp) for i, grp in enumerate(tl.d_pairs, 1) if grp))
+                print("  PP1: " + ", ".join(p.name for p in tl.pp1) + " | PP2: " + ", ".join(p.name for p in tl.pp2))
+                if tl.injuries:
+                    print("  tags: " + ", ".join(f"{n} ({s})" for n, s in tl.injuries))
+        gr = rs.goalies.get(team)
+        if gr:
+            mix = ", ".join(f"{k.split('|')[0].title()} {v:.2f}" for k, v in sorted(gr.p_start.items(), key=lambda kv: -kv[1]) if v > 0.005)
+            extra = ""
+            if gr.report is not None and gr.report.source_name:
+                extra = f" (source {gr.report.source_name}, {gr.report.news_created_utc:%m-%d %H:%MZ})" if gr.report.news_created_utc else ""
+            print(f"  goalie {gr.state.value}{extra}: {mix}")
+    people = list(rs.persons.values())
+    print(f"participation: OUT {sum(p.participation is Participation.OUT for p in people)}, "
+          f"QUESTIONABLE {sum(p.participation is Participation.QUESTIONABLE for p in people)}, "
+          f"conflicts {sum(p.conflict for p in people)}, UNKNOWN {sum(p.participation is Participation.UNKNOWN for p in people)}")
+    dtd = [p for p in people if p.participation is Participation.QUESTIONABLE]
+    if dtd:
+        print("monitor (QUESTIONABLE until news confirms playing or out): "
+              + ", ".join(f"{p.person_key.split('|')[0].title()} ({p.team}, DK {p.dk_status or 'None'}"
+                          + (f", DF {p.df_status}" if p.df_status else "") + f", play {p.p_play:.2f})" for p in dtd))
+    for w in rs.warnings:
+        print(f"warning: {w}")
+    for r in rs.reports + problems:
+        print(f"note: {r}")
+    print(f"NEWS_STATE={news.state(rs, pool).value}")
+    return 0
+
+
 def cmd_late_swap(args: argparse.Namespace) -> int:
     from nhl_dfs.build import late_swap
 
@@ -393,6 +481,12 @@ def build_parser() -> argparse.ArgumentParser:
     sim.add_argument("--offline", action="store_true", help="no odds fetch: every game takes the model intensities")
     sim.add_argument("--runs-root", type=str, default=str(RUNS_ROOT))
     sim.set_defaults(func=cmd_simulate)
+
+    rl = sub.add_parser("roles")
+    rl.add_argument("--salary", type=str, default=None)
+    rl.add_argument("--offline", action="store_true", help="read the latest stored Daily Faceoff pages; no network")
+    rl.add_argument("--as-of", type=str, default=None, help="UTC time to apply the age policy at, e.g. 2026-09-29T14:30:00Z")
+    rl.set_defaults(func=cmd_roles)
 
     cal = sub.add_parser("calibrate")
     cal.add_argument("--seasons", type=int, default=1)
