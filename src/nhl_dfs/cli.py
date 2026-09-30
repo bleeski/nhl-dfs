@@ -8,14 +8,22 @@ sampled opponent field (C3); since C8 it then adds the scenario version (objecti
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 NEXT_CHUNK = REPO_ROOT / "tools" / "next_chunk.py"
-RUNS_ROOT = REPO_ROOT / "runs"
+# C10: NHL_DFS_RUNS_ROOT / NHL_DFS_OUTPUTS_ROOT redirect the defaults (headless rehearsals and exit checks run
+# into scratch folders and can never replace the public file Ben uploads). Explicit --runs-root/--outputs-root win.
+RUNS_ROOT = Path(os.environ.get("NHL_DFS_RUNS_ROOT") or REPO_ROOT / "runs")
 OUTPUTS_ROOT = REPO_ROOT / "outputs"
+
+
+def _outputs_default(runs_root: Path) -> Path:
+    env = os.environ.get("NHL_DFS_OUTPUTS_ROOT")
+    return Path(env) if env else runs_root.parent / "outputs"
 
 
 def last_run_lines(runs_root: Path) -> list[str]:
@@ -191,7 +199,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         print("run needs --salary <DKSalaries.csv> and --entries <DKEntries.csv>")
         return 2
     runs_root = Path(args.runs_root)
-    outputs_root = Path(args.outputs_root) if args.outputs_root else runs_root.parent / "outputs"
+    outputs_root = Path(args.outputs_root) if args.outputs_root else _outputs_default(runs_root)
     result = run_slate(args.salary, args.entries, offline=args.offline, baseline_only=args.baseline,
                        out_root=runs_root, outputs_root=outputs_root, scenario=not args.baseline)
     return _print_result(result)
@@ -225,7 +233,7 @@ def _as_of(text: str | None):
 
 def _roots(args) -> tuple[Path, Path]:
     runs_root = Path(args.runs_root)
-    return runs_root, Path(args.outputs_root) if args.outputs_root else runs_root.parent / "outputs"
+    return runs_root, Path(args.outputs_root) if args.outputs_root else _outputs_default(runs_root)
 
 
 def cmd_simulate(args: argparse.Namespace) -> int:

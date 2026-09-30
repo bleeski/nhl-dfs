@@ -1,0 +1,26 @@
+# QA packet, research request and controller (C10; plan section 9). Code never calls a model; these are
+# the bounds the controller holds. Token counts are estimated as serialized characters / 4.
+
+packet:
+  max_tokens: 4000       # the adversary packet cap, enforced by construction (fixed list lengths, then trimming)
+  exposures: 20          # top person exposures by entries and fee dollars
+  flags: 15              # flagged conflicts with IDs
+  alternatives: 10       # ranked substitution alternatives with IDs
+  stacks: 10             # stack-family frequencies
+  sample: 5              # representative lineups: highest tail, highest duplicate risk, most contrarian,
+                         # most concentrated, most balanced (no other lineup is ever serialized)
+  alt_salary_below: 1000 # an alternative costs at most this much less ...
+  alt_salary_above: 500  # ... or this much more than the player it replaces
+
+research:
+  max_players: 25        # DTD / UNKNOWN / conflicts / unconfirmed goalies with portfolio exposure, most exposed first
+  urls:                  # candidate pages handed to the researcher (it may also search the web)
+    starting_goalies: https://www.dailyfaceoff.com/starting-goalies
+    team_lines: https://www.dailyfaceoff.com/teams/{slug}/line-combinations
+
+controller:
+  max_proposals: 5              # per round; the rest are rejected as over the limit
+  max_rounds: 3                 # rounds 2 and 3 only after a round accepted a correctness repair
+  correctness_min_confidence: 0.7
+  referee_blocks: 4             # cached referee draws split in blocks: one per round, the last kept for the final check
+  llm_stop_min: 8               # T-8: no QA round starts inside 8 minutes of the earliest open game (plan section 8)
