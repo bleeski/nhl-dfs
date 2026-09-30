@@ -77,4 +77,6 @@ history:
   max_calls_per_backfill: 400
   window_days: 21        # report date window; split when a window reaches total_cap
   total_cap: 10000       # the NHL stats REST reports total at most this; treat as possibly truncated
+  evict_raw: true        # B2: after a clean backfill, drop report bodies whose rows are in the store (see nhl_reports.evict_raw)
+  keep_unindexed_days: 7 # an unreferenced body (a schema failure kept for diagnosis) is deleted after this many days
   crosscheck_boxscores_per_season: 2

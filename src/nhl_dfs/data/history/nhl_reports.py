@@ -16,9 +16,11 @@ definition) and shifts. It does NOT provide A1/A2, shot quality or shared ice; t
 
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 
 import pandas as pd
 
@@ -44,6 +46,7 @@ class BackfillStats:
     crosscheck: dict[str, dict[str, int]] = field(default_factory=dict)  # game_id -> {"checked": n, "mismatch": n}
     elapsed_s: float = 0.0
     messages: list[str] = field(default_factory=list)
+    raw_root: str = ""  # the HTTP cache root the backfill used (B2 eviction)
 
 
 # -- windows ---------------------------------------------------------------------------------------
@@ -220,5 +223,153 @@ def backfill(seasons, *, since: date | None = None, cache: HttpCache | None = No
         stats.rows.update({f"{k}/{season}": v for k, v in res.rows.items()})
         stats.tiers[str(season)] = res.tiers
     stats.calls = cache.calls_made  # network requests actually made (cache hits excluded)
+    stats.raw_root = str(cache.root)  # B2: the cache the eviction pass cleans after a clean backfill
     stats.elapsed_s = round(time.perf_counter() - t0, 1)
     return stats
+
+
+# -- raw cache eviction (backlog B2) --------------------------------------------------------------------------------
+
+REPORT_SOURCES = {"nhl_report": ("skater", ("timeonice", "realtime", "summary"), "nhl_skater_games"),
+                  "nhl_goalie_report": ("goalie", ("summary",), "nhl_goalie_games")}
+
+
+@dataclass
+class EvictStats:
+    """Per report source: bytes before and after, index entries dropped, body files deleted, and what was kept."""
+    sources: dict[str, dict] = field(default_factory=dict)
+    moneypuck_tmp_deleted: int = 0
+    dry_run: bool = False
+
+    def lines(self) -> list[str]:
+        out = []
+        for src, v in sorted(self.sources.items()):
+            out.append(f"raw {src}: {v['bytes_before'] / 1e6:.1f} MB -> {v['bytes_after'] / 1e6:.1f} MB"
+                       f"{' (dry run: would be)' if self.dry_run else ''}; index entries dropped {v['entries_dropped']}, "
+                       f"files deleted {v['files_deleted']}; kept {v['kept_canonical']} completed-season window(s), "
+                       f"{v['kept_fresh']} within TTL, {v['kept_unstored']} not yet in the store")
+        if self.moneypuck_tmp_deleted:
+            out.append(f"raw moneypuck: {self.moneypuck_tmp_deleted} partial download(s) (.tmp) deleted")
+        return out
+
+
+def _split_tree(d0: date, d1: date):
+    """Every window fetch_window can request for (d0, d1): the window and each half it may split into."""
+    yield d0, d1
+    if d0 < d1:
+        mid = d0 + (d1 - d0) // 2
+        yield from _split_tree(d0, mid)
+        yield from _split_tree(mid + timedelta(days=1), d1)
+
+
+def canonical_urls(season: int, cfg: dict) -> dict[str, set[str]]:
+    """source -> the report URLs a full backfill of a COMPLETED season can request (full-season windows and all their
+    splits). That set never changes once the season is over, so its bodies rebuild the season's store offline."""
+    days = int(cfg["history"]["window_days"])
+    out: dict[str, set[str]] = {}
+    for src, (entity, reports, _) in REPORT_SOURCES.items():
+        urls = out.setdefault(src, set())
+        for w0, w1 in windows_for(season, days=days):
+            for d0, d1 in _split_tree(w0, w1):
+                for rep in reports:
+                    urls.add(nhl._report_url(cfg, entity, rep, d0, d1, 0, -1))
+    return out
+
+
+def _url_start(url: str) -> date | None:
+    import re
+    from urllib.parse import unquote
+
+    m = re.search(r'gameDate>="(\d{4}-\d{2}-\d{2})"', unquote(url))
+    return date.fromisoformat(m.group(1)) if m else None
+
+
+def _tree_bytes(root: Path) -> int:
+    return sum(f.stat().st_size for f in root.rglob("*") if f.is_file()) if root.is_dir() else 0
+
+
+def evict_raw(cache_root, *, cfg: dict | None = None, store_root=None, today: date | None = None,
+              now: datetime | None = None, dry_run: bool = False, mp_root=None) -> EvictStats:
+    """After a clean backfill: drop report index entries that are past their TTL, are not a completed season's
+    canonical window, and whose season's Parquet store was written after the body was fetched (the rows are in the
+    store); then delete every body no index entry of that source references (a body shared by several entries goes
+    with its last reference; an unreferenced body younger than history.keep_unindexed_days is kept for diagnosis).
+    MoneyPuck keeps one file per season by design: only stray .tmp partial downloads are deleted. Never touches any
+    other source (DK contest bodies, capture/, observations/)."""
+    import os
+
+    from nhl_dfs.data.history import season_bounds, season_of
+
+    cfg = cfg if cfg is not None else load_sources_config()
+    today = today or datetime.now(timezone.utc).date()
+    now = now or datetime.now(timezone.utc)
+    keep_days = float(cfg["history"].get("keep_unindexed_days", 7))
+    root = Path(cache_root)
+    st = EvictStats(dry_run=dry_run)
+    canon_by_season: dict[int, dict[str, set[str]]] = {}
+    for src, (_, _, kind) in REPORT_SOURCES.items():
+        sdir = root / src
+        rec = {"bytes_before": _tree_bytes(sdir), "bytes_after": 0, "entries_dropped": 0, "files_deleted": 0,
+               "kept_canonical": 0, "kept_fresh": 0, "kept_unstored": 0}
+        st.sources[src] = rec
+        ip = sdir / "index.json"
+        if not ip.exists():
+            rec["bytes_after"] = rec["bytes_before"]
+            continue
+        index = json.loads(ip.read_text(encoding="utf-8"))
+        ttl = float(cfg["ttl_s"][src])
+        keep: dict = {}
+        for url, e in index.items():
+            fetched = datetime.fromisoformat(e["fetched_at"].replace("Z", "+00:00"))
+            d0 = _url_start(url)
+            season = season_of(d0) if d0 else None
+            if season is not None and season_bounds(season)[1] < today:  # a completed season: canonical windows stay
+                canon = canon_by_season.setdefault(season, canonical_urls(season, cfg))
+                if url in canon[src]:
+                    keep[url] = e
+                    rec["kept_canonical"] += 1
+                    continue
+            if (now - fetched).total_seconds() <= ttl:
+                keep[url] = e
+                rec["kept_fresh"] += 1
+                continue
+            sp = store_mod.path_for(kind, season, root=store_root) if season is not None else None
+            if sp is None or not sp.exists() or datetime.fromtimestamp(sp.stat().st_mtime, timezone.utc) <= fetched:
+                keep[url] = e
+                rec["kept_unstored"] += 1
+                continue
+            rec["entries_dropped"] += 1
+        refs = {e["raw_path"] for e in keep.values()}
+        dropped_refs = {e["raw_path"] for u, e in index.items() if u not in keep}
+        victims = []
+        for f in sdir.rglob("*"):
+            if not f.is_file() or f.name == "index.json" or f.suffix == ".tmp":
+                continue
+            rel = f.relative_to(root).as_posix()
+            if rel in refs:
+                continue
+            age_d = (now.timestamp() - f.stat().st_mtime) / 86400.0
+            if rel in dropped_refs or age_d > keep_days:
+                victims.append(f)
+        rec["files_deleted"] = len(victims)
+        if dry_run:
+            rec["bytes_after"] = rec["bytes_before"] - sum(f.stat().st_size for f in victims)
+            continue
+        tmp = ip.with_suffix(".json.tmp")
+        with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
+            json.dump(keep, fh, indent=1, sort_keys=True)
+        os.replace(tmp, ip)  # the index first: a crash after this leaves orphans, never a dangling entry
+        for f in victims:
+            f.unlink()
+        for d in sorted((x for x in sdir.iterdir() if x.is_dir()), reverse=True):
+            if not any(d.iterdir()):
+                d.rmdir()
+        rec["bytes_after"] = _tree_bytes(sdir)
+    mp_dir = Path(mp_root) if mp_root is not None else None
+    if mp_dir is not None and mp_dir.is_dir():
+        for f in mp_dir.rglob("*.tmp"):
+            if (now.timestamp() - f.stat().st_mtime) > 86400:
+                st.moneypuck_tmp_deleted += 1
+                if not dry_run:
+                    f.unlink()
+    return st
