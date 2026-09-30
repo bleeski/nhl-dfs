@@ -9,7 +9,8 @@ labeled and carry their Monte Carlo error), FIELD_CALIBRATION (PRIOR until the f
 its gate). Odds: none are usable today (backlog B5), so each game's source is printed; MODEL is
 never presented as MARKET. DTD (QUESTIONABLE) is priced once, as a participation mask in the
 scenarios (objectives.scenario_set); the C3 0.85 ranking haircut is not applied again and the
-simulator's dressing is untouched. The C7 role state is not wired in here (backlog B9: C9, C10).
+simulator's dressing is untouched. C10 (backlog B9): run passes the role state's play probabilities and
+confirmation times when it built one; the configured 0.85 is then replaced, never stacked.
 C9: the unmasked selection and referee draws, the contests and the fields are also written to
 runs/<id>/scenario/ (build/scenario_cache.py) for late swap and refresh.
 """
@@ -101,7 +102,10 @@ def prior_persons(by_entry: dict, pool, proj) -> int:
 
 def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, runtime, seed, slate_id, outputs_root,
                       cache, m: dict, messages: list[str], prov: dict | None, v1_assignment, expect_sha: str, clock,
-                      publish_fn, set_fields_fn, scenario_n: dict | None = None) -> None:
+                      publish_fn, set_fields_fn, scenario_n: dict | None = None, play_prob: dict | None = None,
+                      confirmed_at: dict | None = None) -> None:
+    """play_prob, confirmed_at (C10, backlog B9): from the run's role state when it was built; play_prob then
+    replaces the configured DTD probability (priced once, see build/swap_objective.play_probs)."""
     from nhl_dfs.models import contests as contests_mod
     from nhl_dfs.sim import cache as cache_mod
     from nhl_dfs.sim.slate import build_slate, fetch_odds
@@ -123,7 +127,7 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
         snapshot, odds_msgs = None, ["odds: skipped (offline); every game takes the model intensities"]
     else:
         snapshot, odds_msgs = fetch_odds(cache=cache, now=clock())
-    slate, game_lines = build_slate(work, proj, snapshot, now=clock())
+    slate, game_lines = build_slate(work, proj, snapshot, now=clock(), confirmed_at=confirmed_at)
     sec["odds"] = odds_msgs
     sec["games"] = game_lines
     sec["game_sources"] = {g.key: g.rates.source + (" STALE" if g.rates.stale else "") for g in slate.games}
@@ -132,6 +136,8 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
     q = float(fam_cfg["selection"]["questionable_play_prob"])
     play = {pool.by_role_id[r].person_key: q for r, (p, _) in st.items()
             if p is Participation.QUESTIONABLE and r in work.by_role_id}
+    if play_prob is not None:
+        play = {k: v for k, v in play_prob.items() if k in work.persons}
     n = dict(risk_cfg["scenarios"])
     n.update(scenario_n or {})
     sets: dict[str, ob.ScenarioSet] = {}
@@ -153,7 +159,8 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
         timings[f"sim_{purpose}_s"] = round(time.perf_counter() - t, 3)
         timings[f"sim_{purpose}_peak_mb"] = peak_mb()
     sec["scenarios"] = {p: {"n": sets[p].n, "seed": seed, "spec_sha256": hashes[p]} for p in sets}
-    sec["participation"] = {"questionable_play_prob": q, "persons": sorted(play), "notes": sets["selection"].notes}
+    sec["participation"] = {"questionable_play_prob": q, "source": "role state" if play_prob is not None else "DK status (0.85)",
+                            "persons": sorted(play), "notes": sets["selection"].notes}
 
     # contests, payout curves, fields
     if prov is not None:

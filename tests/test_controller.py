@@ -272,3 +272,10 @@ def test_env_vars_redirect_the_default_roots(monkeypatch, tmp_path):
         monkeypatch.delenv("NHL_DFS_RUNS_ROOT")
         monkeypatch.delenv("NHL_DFS_OUTPUTS_ROOT")
         importlib.reload(cli)
+
+
+def test_run_applies_the_role_state_once_before_the_provisional_and_scenario_passes(full_classic):  # noqa: F811
+    tmp, r = full_classic
+    assert r.manifest["news"]["roles_news_state"] in ("NONE", "PARTIAL", "FULL")  # hermetic: no stored pages, NONE
+    assert r.manifest["scenario"]["participation"]["source"] == "role state"  # B9: v3 prices DTD from the role state
+    assert r.manifest["phase_timings"]["roles_s"] >= 0

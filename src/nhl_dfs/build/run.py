@@ -458,12 +458,17 @@ def run_slate(
     if baseline_only:
         return finish()
 
+    # Role state (C7), once, before the provisional and scenario passes (backlog B9, C10) ------------
+    t = time.perf_counter()
+    rm = _role_model(pool, after_b, st, offline, cache, clock, runtime, m, messages)
+    timings["roles_s"] = round(time.perf_counter() - t, 3)
+
     # Provisional pass (C3) -------------------------------------------------------------------
     t = time.perf_counter()
     prov = None
     try:
         prov = _provisional_pass(run, entries, pool, after_b, st, starts, offline, runtime, caps, seed, slate_id,
-                                 outputs_root, cache, m, messages, out_root)
+                                 outputs_root, cache, m, messages, out_root, rm=rm)
     except Exception as exc:  # the current version stays; never raised out of the run
         m["failed"].append(f"provisional pass: {type(exc).__name__}: {str(exc)[:160]}")
         messages.append(f"provisional pass failed ({type(exc).__name__}); the previous version stays current")
@@ -480,7 +485,9 @@ def run_slate(
                           starts=starts, offline=offline, runtime=runtime, seed=seed, slate_id=slate_id,
                           outputs_root=outputs_root, cache=cache, m=m, messages=messages, prov=prov, v1_assignment=a,
                           expect_sha=m["versions"][-1]["sha256"], clock=clock, publish_fn=_export_and_publish,
-                          set_fields_fn=_set_assignment_fields, scenario_n=scenario_n)
+                          set_fields_fn=_set_assignment_fields, scenario_n=scenario_n,
+                          play_prob=rm.play_prob if rm is not None else None,
+                          confirmed_at=rm.roles.confirmed_at() if rm is not None else None)
     except Exception as exc:  # the current version stays; never raised out of the run
         import traceback
 
@@ -651,8 +658,32 @@ def _fetch_contest_details(contest_ids, cache, budget_s: float) -> tuple[dict, l
     return dict(box["details"]), errors
 
 
+def _role_model(pool, after_b, st, offline, cache, clock, runtime, m, messages):
+    """roles.merge then roles.apply_state exactly once on the run's ParamTable (backlog B9, B11): Daily Faceoff
+    pages cache-first online, stored pages offline. The applied table replaces after_b["proj"] for the provisional
+    and scenario passes; v1 (Phase A) keeps the plain C5 table because it never waits on anything. Returns the
+    RoleModel, or None when there is no ParamTable (priors only) or the role state could not be built (reported)."""
+    from nhl_dfs.build import swap_objective
+
+    proj = after_b.get("proj")
+    if not hasattr(proj, "persons"):
+        return None
+    try:
+        rm = swap_objective.build_role_model(pool, after_b["work"], st, dk_rec=None, now=clock(), clock=clock,
+                                             offline=offline, cache=cache,
+                                             budget_s=float(runtime["network_pass_budget_s"]), table0=proj)
+    except Exception as exc:  # the run continues on the C5 table, and says so
+        messages.append(f"role state unavailable ({type(exc).__name__}: {str(exc)[:120]}); v2 and v3 use the C5 table")
+        return None
+    after_b["proj"] = rm.table
+    m["news"]["roles_news_state"] = rm.news_state
+    m["news"]["roles_warnings"] = rm.warnings[:20]
+    m["news"]["roles_notes"] = rm.notes[:8]
+    return rm
+
+
 def _provisional_pass(run, entries, pool, after_b, st, starts, offline, runtime, caps, seed, slate_id,
-                      outputs_root, cache, m, messages, out_root) -> dict:
+                      outputs_root, cache, m, messages, out_root, rm=None) -> dict:
     """Returns what the scenario pass (C8) builds on: contexts, fields, FIELD_CALIBRATION, the
     provisional assignment and the candidate bank (also when its own publish failed)."""
     import json
@@ -701,8 +732,15 @@ def _provisional_pass(run, entries, pool, after_b, st, starts, offline, runtime,
                           seed=seed + 2).bank
     if not bank:
         raise RuntimeError("no candidate bank for the provisional pass")
+    sel_statuses = statuses
+    if rm is not None:  # price participation once: the ranking haircut only where roles did not already price the absence
+        from nhl_dfs.build.swap_objective import _absence_priced
+
+        priced = {k for k, r in rm.roles.persons.items() if r.p_play < 1.0 and _absence_priced(k, r, rm.roles)}
+        sel_statuses = {rid: (Participation.PLAYING if p is Participation.QUESTIONABLE and work.by_role_id[rid].person_key in priced
+                              else p) for rid, p in statuses.items()}
     a_p, scored = prov.select(bank, proj, fb.marginals, contexts, entries, caps, fam_cfg, seed=seed, pool=work,
-                              statuses=statuses, later_start_utc=starts, own_cfg=own_cfg)
+                              statuses=sel_statuses, later_start_utc=starts, own_cfg=own_cfg)
 
     evidence = {
         "MODEL_STATUS": proj.source().value,

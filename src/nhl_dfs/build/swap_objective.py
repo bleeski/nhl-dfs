@@ -143,7 +143,7 @@ def _avail(pp) -> float:
 
 
 def build_role_model(pool, work, st, *, dk_rec, now: datetime, clock, offline: bool, cache, budget_s: float,
-                     apply_state: Callable | None = None, overrides: list | None = None) -> RoleModel:
+                     apply_state: Callable | None = None, overrides: list | None = None, table0=None) -> RoleModel:
     """ParamTable (C5), then roles.merge and roles.apply_state exactly once (B11). Raises when the
     ParamTable cannot be built (the caller falls back and says so)."""
     from nhl_dfs.build import news
@@ -153,7 +153,7 @@ def build_role_model(pool, work, st, *, dk_rec, now: datetime, clock, offline: b
     from nhl_dfs.models import roles as roles_mod
 
     apply_state = apply_state or roles_mod.apply_state
-    table0 = params_mod.projection_for(work, slate_as_of(pool, clock))
+    table0 = table0 if table0 is not None else params_mod.projection_for(work, slate_as_of(pool, clock))
     notes = []
     http = cache if cache is not None else HttpCache(offline=offline)
     try:
