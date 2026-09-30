@@ -129,18 +129,22 @@ class Loaded:
     def n(self, purpose: str) -> int:
         return int(self.meta["purposes"].get(purpose, {}).get("n", 0))
 
-    def base(self, purpose: str, n: int) -> np.ndarray:
-        """The first n scenarios of a stream, (n, P) int32 on meta person_keys."""
+    def base(self, purpose: str, n: int, start: int = 0) -> np.ndarray:
+        """Scenarios start..start+n of a stream, (n, P) int32 on meta person_keys (QA rounds read their own
+        referee block, C10)."""
         d = self.root / purpose
-        parts, have = [], 0
+        parts, pos, end = [], 0, start + n
         for ci in range(int(self.meta["purposes"][purpose]["chunks"])):
-            if have >= n:
+            if pos >= end:
                 break
             a = np.load(d / f"chunk_{ci:04d}.npy")
-            parts.append(a[: n - have])
-            have += len(parts[-1])
+            lo, hi = max(start, pos), min(end, pos + len(a))
+            if hi > lo:
+                parts.append(a[lo - pos: hi - pos])
+            pos += len(a)
+        have = sum(len(p) for p in parts)
         if have < n:
-            raise ValueError(f"scenario cache holds {have} {purpose} scenarios, {n} requested")
+            raise ValueError(f"scenario cache holds {pos} {purpose} scenarios, rows {start}..{end} requested")
         return np.concatenate(parts, axis=0)
 
 

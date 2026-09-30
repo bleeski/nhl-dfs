@@ -239,7 +239,9 @@ class ScenarioObjective:
 
     def __init__(self, cache: scache.Loaded, *, pool, work, rm: RoleModel | None, st, started_games, n_use: int,
                  now: datetime, odds_snapshot, live=None, risk_cfg=None, fam_cfg=None, notes: list[str],
-                 persist_to=None):
+                 persist_to=None, referee_rows: tuple[int, int] | None = None):
+        """referee_rows: read that block of the cached referee stream instead of its first rows (QA rounds, C10;
+        only without re-simulation, rm=None)."""
         from nhl_dfs.models import contests as contests_mod
         from nhl_dfs.sim.score import role_map_for
 
@@ -262,6 +264,11 @@ class ScenarioObjective:
             elif use < have:
                 use = have if have <= chunk else chunk
             n[purpose] = use
+        start = {"selection": 0, "referee": 0}
+        if referee_rows is not None:
+            if rm is not None:
+                raise ValueError("referee_rows reads cached draws only (rm=None)")
+            start["referee"], n["referee"] = int(referee_rows[0]), int(referee_rows[1]) - int(referee_rows[0])
         self.n = n
         changed, self.resim = self._changed_games(rm, work, started_games, now, odds_snapshot)
         self.record: dict[str, Any] = {"cache_run": cache.run_id, "n": n, "games_resimulated": sorted(self.resim),
@@ -277,7 +284,7 @@ class ScenarioObjective:
         kept: dict[str, dict] = {}
         for purpose in scache.PURPOSES:
             base = np.zeros((n[purpose], len(keys_all)), np.int32)
-            cached = cache.base(purpose, n[purpose])
+            cached = cache.base(purpose, n[purpose], start[purpose])
             src = [(i, col[k]) for i, k in enumerate(cache.person_keys) if k in col]
             if src:
                 a, b = zip(*src)
@@ -396,6 +403,16 @@ class ScenarioObjective:
         G, E = sf.ranks(cand)
         g2, e2 = own_terms(cand, oth)
         return ob.metrics_from_ranks(G + g2, E + e2, self.cache.contests[cid], self.risk_cfg)
+
+    def joint(self, cid: str, lineups: list, purpose: str) -> ob.Metrics:
+        """All of the user's entries in one contest ranked together (each entry's finish counts the field and
+        every other own entry), one field sort per contest: column j is lineups[j] (C10 controller)."""
+        scen = self.sets[purpose]
+        sf, _ = self._field(cid, purpose)
+        own = scen.scores(lineups, self.mode).full()
+        G, E = sf.ranks(own)
+        pg, pe = ob.own_pairwise(own)
+        return ob.metrics_from_ranks(G + pg, E + pe, self.cache.contests[cid], self.risk_cfg)
 
     def choose(self, entry_id: str, cid: str, cands: list[list[str]], others: list[list[str]]) -> Pick:
         m = self.metrics(cid, cands, others, "selection")
