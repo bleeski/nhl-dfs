@@ -320,7 +320,7 @@ def test_every_skill_exists_is_manual_and_runs_the_engine_first(name):
     fm, text = _front(REPO / ".claude" / "skills" / name / "SKILL.md")
     assert fm["name"] == name and fm["disable-model-invocation"] == "true" and fm["shell"] == "powershell"
     if name != "nhl-settle":
-        assert "!`" in text  # preprocessing: the engine runs before the model reads anything
+        assert "!`" in text or "```!" in text  # preprocessing: the engine runs before the model reads anything
     assert "—" not in text
 
 
@@ -349,3 +349,16 @@ def test_rehearsal_prepare_builds_a_throwaway_run_outside_outputs(tmp_path):
     assert (tmp_path / "_rehearsal" / "runs" / st["run_id"]).is_dir()
     assert not (tmp_path.parent / "outputs").exists() or not any((tmp_path.parent / "outputs").iterdir())
     assert st["reply_path"].endswith("reply.json")
+
+
+def test_skill_entry_points_take_positional_paths(full_classic, tmp_path, capsys):  # noqa: F811
+    from nhl_dfs import cli
+
+    assert cli.main(["slate", "only-one.csv"]) == 2
+    assert "two files" in capsys.readouterr().out
+    run, runs, outs = _copy(full_classic, tmp_path)
+    current = run.version_file(run.current_version())
+    code = cli.main(["late-swap", "latest", str(current), "--fast", "--offline", "--runs-root", str(runs),
+                     "--outputs-root", str(outs), "--as-of", "2026-10-15T12:00:00Z"])
+    out = capsys.readouterr().out
+    assert code == 0 and "FILE_VALID=TRUE" in out and "OBJECTIVE=" in out

@@ -401,9 +401,16 @@ def cmd_roles(args: argparse.Namespace) -> int:
 def cmd_late_swap(args: argparse.Namespace) -> int:
     from nhl_dfs.build import late_swap
 
+    pos = list(getattr(args, "positional", None) or [])
+    if not args.run and pos:
+        args.run = pos.pop(0)
+    if not args.entries and pos:
+        args.entries = pos.pop(0)
     if not (args.run and args.entries):
         print("late-swap needs --run <id> and --entries <current DKEntries.csv downloaded from DK>")
         return 2
+    if args.run == "latest":
+        args.run = _qa_run(args)[0].run_id
     runs_root, outputs_root = _roots(args)
     print(f"mode: {'fast repair (only entries that need it)' if args.fast else 'full re-optimize of open cells'}")
     result = late_swap.run(args.run, args.entries, offline=args.offline, fast=args.fast, runs_root=runs_root,
@@ -443,6 +450,49 @@ def _qa_run(args):
             raise SystemExit(f"no run under {runs_root}")
         return open_run(runs_root, best[1]), runs_root, outputs_root
     return open_run(runs_root, args.run), runs_root, outputs_root
+
+
+def cmd_slate(args: argparse.Namespace) -> int:
+    """C10 /nhl-run preprocessing in ONE command (a skill's permission rule matches a single `.\\nhl.ps1 ...`
+    call): run the slate; only if the run published, write and print the research request and the round-1 QA
+    packet for THAT run (never "latest")."""
+    import json
+    from datetime import datetime, timezone
+
+    from nhl_dfs.build import controller, packet
+    from nhl_dfs.build.run import run_slate
+    from nhl_dfs.build.state import open_run
+
+    if len(args.files) != 2:
+        print('slate needs two files: <DKSalaries.csv> <DKEntries.csv> (quote paths with spaces)')
+        return 2
+    runs_root, outputs_root = _roots(args)
+    result = run_slate(args.files[0], args.files[1], offline=args.offline, out_root=runs_root, outputs_root=outputs_root,
+                       baseline_only=False, scenario=True)
+    code = _print_result(result)
+    if code != 0:
+        print("RUN FAILED: no research request and no QA packet")
+        return code
+    run = open_run(runs_root, result.run.run_id)
+    now = datetime.now(timezone.utc)
+    req = packet.research_request(run, now=now, runs_root=runs_root)
+    rpath = run.path / "news" / "research_request.json"
+    rpath.parent.mkdir(exist_ok=True)
+    rpath.write_text(json.dumps(req, indent=1, ensure_ascii=False), encoding="utf-8")
+    print(f"RESEARCH_PLAYERS={len(req['players'])}")
+    print("----- REQUEST JSON (pass inline, verbatim) -----")
+    print(packet.serialize(req))
+    cfg = packet.load_qa_config()
+    ok, why = controller.permitted(run, 1, cfg, now, runs_root)
+    if not ok:
+        print(f"QA_PERMITTED=NO: {why}")
+        return 0
+    p = packet.build(run, 1, cfg, now=now, runs_root=runs_root)
+    (controller.qa_dir(run) / "packet_1.json").write_text(json.dumps(p, indent=1, ensure_ascii=False), encoding="utf-8")
+    print(f"QA_PERMITTED=YES: {why} (packet_id {p['packet_id']}, about {p['size']['est_tokens']} tokens)")
+    print("----- PACKET JSON (pass inline, verbatim) -----")
+    print(packet.serialize(p))
+    return 0
 
 
 def cmd_qa_rehearse(args: argparse.Namespace) -> int:
@@ -653,6 +703,13 @@ def build_parser() -> argparse.ArgumentParser:
     cal.add_argument("--out-dir", type=str, default=None)
     cal.set_defaults(func=cmd_calibrate)
 
+    sl = sub.add_parser("slate")
+    sl.add_argument("files", nargs="*")
+    sl.add_argument("--offline", action="store_true")
+    sl.add_argument("--runs-root", type=str, default=str(RUNS_ROOT))
+    sl.add_argument("--outputs-root", type=str, default=None)
+    sl.set_defaults(func=cmd_slate)
+
     reh = sub.add_parser("qa-rehearse")
     reh.add_argument("--prepare", action="store_true")
     reh.add_argument("--check", action="store_true")
@@ -683,6 +740,7 @@ def build_parser() -> argparse.ArgumentParser:
         if name == "late-swap":
             sp.add_argument("--entries", type=str, default=None)
             sp.add_argument("--fast", action="store_true")
+            sp.add_argument("positional", nargs="*", help="C10 skills: <run-id|latest> <current DKEntries.csv>")
         sp.add_argument("--offline", action="store_true")
         sp.add_argument("--salary", type=str, default=None, help="a fresh DKSalaries.csv of the same slate (status update)")
         sp.add_argument("--as-of", type=str, default=None, help="REHEARSAL clock in UTC, e.g. 2026-10-15T23:10:00Z")

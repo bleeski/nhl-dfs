@@ -9,7 +9,7 @@ allowed-tools: PowerShell(.\nhl.ps1 *)
 
 ## Engine output (already run; do not rerun it)
 
-!`.\nhl.ps1 late-swap --run $0 --entries "$1" --fast`
+!`.\nhl.ps1 late-swap $ARGUMENTS --fast`
 
 ## What to do
 
