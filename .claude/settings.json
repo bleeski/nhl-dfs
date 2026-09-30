@@ -3,6 +3,9 @@
     "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "1"
   },
   "permissions": {
+    "allow": [
+      "PowerShell(.\\nhl.ps1 scheduled-refresh)"
+    ],
     "deny": [
       "Write(outputs/**)",
       "Edit(outputs/**)",

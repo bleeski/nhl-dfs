@@ -92,3 +92,10 @@ def test_rehearsal_children_and_undelivered_runs_are_not_candidates(tmp_path, mo
     got = scheduled.candidates(tmp_path / "runs", G1 - timedelta(minutes=30), 18)
     assert [c.run_id for c in got] == [b.run.run_id]  # the rehearsal child is skipped
     assert scheduled.candidates(tmp_path / "runs", G1 + timedelta(minutes=1), 18) == []  # the lock has passed
+
+
+def test_the_cli_command_prints_one_plain_status_line(tmp_path, capsys):
+    from nhl_dfs.build.scheduled import main
+
+    assert main(["--once", "--no-toast", "--runs-root", str(tmp_path / "runs")]) == 0
+    assert capsys.readouterr().out.startswith("SCHEDULED_REFRESH=NOTHING_DUE at ")

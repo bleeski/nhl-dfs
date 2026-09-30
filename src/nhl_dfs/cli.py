@@ -686,6 +686,14 @@ def _usd(c) -> str:
     return "unknown" if c is None else (f"-${-c / 100:.2f}" if c < 0 else f"${c / 100:.2f}")
 
 
+def cmd_scheduled_refresh(args: argparse.Namespace) -> int:
+    """B23: the dispatcher in one `.\nhl.ps1` call (a Claude Code scheduled task runs exactly this)."""
+    from nhl_dfs.build.scheduled import main as dispatch_main
+
+    argv = ["--once"] + (["--dry-run"] if args.dry_run else []) + (["--no-toast"] if args.no_toast else [])
+    return dispatch_main(argv + (["--as-of", args.as_of] if args.as_of else []))
+
+
 def cmd_settle(args: argparse.Namespace) -> int:
     """C11: one call does everything (the /nhl-settle skill preprocesses exactly this)."""
     from nhl_dfs.learn import settle
@@ -879,6 +887,12 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--objective", choices=("auto", "scenario", "provisional", "baseline"), default="auto",
                         help="auto: scenario, then provisional, then baseline (each fallback reported)")
         sp.set_defaults(func=func)
+
+    sp = sub.add_parser("scheduled-refresh", help="B23: refresh the newest delivered run of each slate at T-60 and T-20")
+    sp.add_argument("--dry-run", action="store_true", help="list what is due; refresh and notify nothing")
+    sp.add_argument("--no-toast", action="store_true", help="no Windows toast (a Claude scheduled task relays NOTIFY)")
+    sp.add_argument("--as-of", type=str, default=None, help="REHEARSAL clock in UTC (nothing is refreshed)")
+    sp.set_defaults(func=cmd_scheduled_refresh)
 
     sp = sub.add_parser("settle", help="C11: settle a run from DraftKings standings (money, grades, notes, backlog)")
     sp.add_argument("--run", type=str, default=None)

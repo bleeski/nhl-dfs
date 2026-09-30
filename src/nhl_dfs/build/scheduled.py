@@ -172,6 +172,7 @@ def dispatch(*, now: datetime, runs_root: Path, outputs_root: Path | None = None
             ev.update({"result": "failed", "detail": f"{type(exc).__name__}: {str(exc)[:200]}"})
         msg = _message(c, window, ev)
         if msg is not None:
+            ev["message"] = f"{msg[0]}: {msg[1]}"
             ev["notified"] = notify_fn(*msg)
             _append(state_dir / "notifications.log", f"{_iso(now)} {msg[0]}: {msg[1]}")
         elif (cfg.get("notify") or {}).get("on_no_change"):
@@ -200,15 +201,27 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--runs-root", default=os.environ.get("NHL_DFS_RUNS_ROOT") or str(REPO_ROOT / "runs"))
     ap.add_argument("--outputs-root", default=os.environ.get("NHL_DFS_OUTPUTS_ROOT") or None)
     ap.add_argument("--as-of", default=None, help="a labeled rehearsal clock (UTC); with it nothing is refreshed")
+    ap.add_argument("--no-toast", action="store_true", help="no Windows toast (a Claude scheduled task relays NOTIFY)")
     args = ap.parse_args(argv)
     now = _dt(args.as_of) if args.as_of else datetime.now(timezone.utc)
     runs_root = Path(args.runs_root)
     outputs_root = Path(args.outputs_root) if args.outputs_root else runs_root.parent / "outputs"
-    events = dispatch(now=now, runs_root=runs_root, outputs_root=outputs_root, dry_run=args.dry_run or bool(args.as_of))
+    cfg = load_config()
+    if args.no_toast:
+        cfg.setdefault("notify", {})["toast"] = False
+    events = dispatch(now=now, runs_root=runs_root, outputs_root=outputs_root, cfg=cfg,
+                      dry_run=args.dry_run or bool(args.as_of))
+    # Plain lines first (what a Claude scheduled task relays), then the full events.
+    if not events:
+        print(f"SCHEDULED_REFRESH=NOTHING_DUE at {_iso(now)}")
+    for ev in events:
+        print(f"SCHEDULED_REFRESH={ev.get('result', '?').upper().replace(' ', '_')} {ev['mode']} {ev['slate_id']} "
+              f"{ev['window']} (first lock {ev['first_lock_utc']}): {ev.get('changed_cells', 0)} cell(s) changed; "
+              f"GOALIE_GATE={ev.get('goalie_gate')}")
+        if ev.get("message"):
+            print(f"NOTIFY: {ev['message']}")
     for ev in events:
         print(json.dumps(ev, default=str))
-    if not events:
-        print(f"{_iso(now)}: nothing due")
     return 0
 
 
