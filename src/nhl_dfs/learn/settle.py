@@ -82,11 +82,15 @@ def evidence_counts(idx: dict, mode: str):
     mine = [e for e in frozen if e["mode"] == mode]
     groups: dict[str, set] = {}
     all_groups = set()
+    labels: dict[str, tuple[str, int]] = {}  # B31: a contest's labels count once (newest settle), not once per run
     for e in mine:
         gs = {e["slate_id"]} if mode == Mode.CLASSIC.value else {f"{e['slate_date']}|{g}" for g in e["games"]}
         all_groups |= gs
-        for c in e["contests"].values():
+        for cid, c in e["contests"].items():
             groups.setdefault(c["family"], set()).update(gs)
+            when, key = str(e.get("settled_utc") or ""), f"{e['slate_date']}|{cid}"
+            if key not in labels or when >= labels[key][0]:
+                labels[key] = (when, int(c["labels"]))
     outcomes = {(p[0], p[1], p[2], p[3]) for e in frozen for p in e.get("played", [])}
     by_date: dict[str, bool] = {}
     for e in frozen:
@@ -96,7 +100,7 @@ def evidence_counts(idx: dict, mode: str):
         skater_games=sum(1 for o in outcomes if o[3] != "G"),
         goalie_starts=sum(1 for o in outcomes if o[3] == "G"),
         slate_groups=len(all_groups),
-        ownership_labels=sum(int(c["labels"]) for e in mine for c in e["contests"].values()),
+        ownership_labels=sum(n for _, n in labels.values()),
         groups_by_family={k: len(v) for k, v in groups.items()},
         complete_payout_dates=sum(1 for v in by_date.values() if v))
 
@@ -201,6 +205,9 @@ def run(run_id: str, standings_path, *, runs_root, prize_paths=(), winnings_path
     final = final_lineups(run, pool)
     sl = ledger_mod.settle(run, mine, tables, reported=reported, pool=pool, final_lineups=final, now=now)
     notes += sl.notes
+    for rid, n in sorted(ledger_mod.replaced_by(sl, ledger_root).items()):
+        notes.append(f"ledger: this settle replaces {n} row(s) of run {rid} for the same DraftKings entries (each entry is "
+                     "booked once, from the newest settle)")
     lpath = ledger_mod.append(sl, ledger_root)
     dd = ledger_mod.drawdown(ledger_root)
     template = None

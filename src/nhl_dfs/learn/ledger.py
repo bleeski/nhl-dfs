@@ -369,8 +369,28 @@ def _path(root: Path) -> Path:
     return Path(root) / "ledger.parquet"
 
 
+def _same_entries(old, sl: SlateLedger):
+    """Rows of `old` for the same DK entries as this settle: same slate date and entry id (compared as text)."""
+    ids = {str(e.entry_id) for e in sl.entries}
+    return (old["slate_date"].astype(str) == str(sl.slate_date)) & old["entry_id"].astype(str).isin(ids)
+
+
+def replaced_by(sl: SlateLedger, root: Path | None = None) -> dict[str, int]:
+    """Other runs whose ledger rows this settle replaces (backlog B31): run id -> rows for the same DK entries. A DK
+    entry is booked once, from the newest settle (its payout comes from its rank and the prize table, not the run)."""
+    import pandas as pd
+
+    p = _path(Path(root) if root is not None else default_root())
+    if not p.exists():
+        return {}
+    old = pd.read_parquet(p)
+    hit = old[(old["run_id"].astype(str) != sl.run_id) & _same_entries(old, sl)]
+    return {str(k): int(v) for k, v in hit.groupby("run_id").size().items()}
+
+
 def append(sl: SlateLedger, root: Path | None = None) -> Path:
-    """Write the slate's rows, replacing any earlier settle of the same run."""
+    """Write the slate's rows, replacing any earlier settle of the same run and any other run's rows for the same DK
+    entries (B31: settling a run and its refresh or late-swap child books each entry once)."""
     import pandas as pd
 
     root = Path(root) if root is not None else default_root()
@@ -380,7 +400,7 @@ def append(sl: SlateLedger, root: Path | None = None) -> Path:
                          "settled_utc": sl.settled_utc, **{k: v for k, v in asdict(e).items()}} for e in sl.entries])
     if p.exists():
         old = pd.read_parquet(p)
-        old = old[old["run_id"] != sl.run_id]
+        old = old[(old["run_id"].astype(str) != sl.run_id) & ~_same_entries(old, sl)]
         new = pd.concat([old, new], ignore_index=True)
     for col in ("payout_cents", "table_cents", "rank", "tied"):
         new[col] = new[col].astype("Int64")
