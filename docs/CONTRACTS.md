@@ -178,3 +178,32 @@ coerced to a known value (CLAUDE.md); other vocabularies here that have no
 - `live.condition(scenarios, snapshot)`: without a reliable snapshot (declared source, at most 15 min old, covering
   every entry) a no-op with `LIVE_STATUS=NO_SNAPSHOT` or `UNRELIABLE`, and no chase pivot. With one: observed points
   plus the draw scaled by time left; TRAILING entries use `dup_first` inside the band, AHEAD ones `mean`.
+
+## Settlement and learning loop (C11, `learn/`)
+
+- `settle --run <id> --standings <csv|zip|folder>` (one call; the `/nhl-settle` skill preprocesses exactly it).
+  Writes only `runs/<id>/settle/` (grades.json, settlement.md) and the Settlement section of RUN_NOTES.md (kept last
+  by every later `write_run_notes`); FREEZE_CHECK hashes manifest, field.json, inputs, versions and scenario before
+  and after. Ledger `data/ledger/ledger.parquet` (NHL_DFS_LEDGER_ROOT), backlog `BACKLOG.md` (NHL_DFS_BACKLOG).
+- Forecast: PRE_LOCK only if the manifest's `created_utc` AND the forecast files' write times are before the
+  slate's first game; otherwise POST_LOCK, graded as a plumbing check and never counted as evidence. Only frozen
+  files are graded: `scenario/fields.json` `own_by`/`dup_by`, `scenario/selection` draws. Nothing is rebuilt.
+- Standings: entry block and ownership block share rows but are unrelated. Lineups parse against the slot sequence
+  (Classic `C C D D G UTIL W W W`, Showdown `CPT` + 5 `FLEX`). Actual ownership is reconstructed from the lineup
+  rows (DK's listed block omitted position rows on 2026-09-29; the listing is the cross-check); blank lineups stay
+  in the denominator. Classic ownership per person (position + UTIL rows); Showdown per CPT and FLEX role (CPT FPTS
+  = 1.5 x FLEX). Joins: normalized name + roster token; two candidates = CONFLICTED, never guessed; own entries by
+  Entry ID. Names outside the salary file are reported (DK added them after the download).
+- Money per own entry: REPORTED (Ben's `winnings.csv` from DK My Contests) > EXACT (a final prize table: filled or
+  guaranteed; DK tie rule `objectives.split_tie`) > UNKNOWN (null, never $0). Tables: browser-saved
+  `dk_contest_<id>.json` beside the standings, `--prize-table`, or the raw DK cache; each labeled. An UNKNOWN entry
+  gets a row in a pre-filled `winnings.csv` (appended, Ben's lines kept). Net and drawdown over known payouts;
+  incomplete when any payout is unknown. A re-settle replaces the run's ledger rows.
+- Grades: ownership (MAE all/active/top-20, weighted, bands, top-10 recall, CPT share, team totals, zero-observed
+  mass, Pearson/Spearman, duplicate counts rescaled from the forecast's field size); forecasts (FPTS for points; NHL
+  box scores through the accepted crosswalk for participation only; goalies on nonzero draws; MAE, bias, CRPS,
+  p10-p90 coverage; goalie decisions from the draws' implied start probability; bonus rates NOT_AVAILABLE).
+- Evidence: `data/ledger/graded.json`; `gates.tier` per mode from PRE_LOCK runs only (Showdown contests of one game
+  = one group; a (date, game, person) outcome counts once across modes). Reported, never acted on.
+- Backlog: `learn/backlog.add` appends keyed rows only for deterministic defects and missing frozen artifacts;
+  hand-written rows are mapped (B17, B20, B21, B22, B24). Strategy hypotheses stay in the grades and notes.
