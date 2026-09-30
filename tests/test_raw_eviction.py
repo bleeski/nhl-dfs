@@ -145,3 +145,48 @@ def test_bodies_not_yet_in_the_store_other_sources_and_dry_runs_are_kept(tmp_pat
     ev = evict(tmp_path, now=later, today=date(2025, 10, 21))
     assert all(v["entries_dropped"] == 0 and v["kept_unstored"] > 0 for v in ev.sources.values())
     assert _bytes(tmp_path) == before and dk.exists()  # nothing deleted; DK contest bodies are never touched
+
+
+def test_a_changed_window_size_keeps_the_completed_seasons_and_warns(tmp_path):
+    backfill(tmp_path, at=T0, today=date(2025, 10, 20))
+    canon = nhl_reports.canonical_urls(DONE, _cfg())
+    ip = tmp_path / "raw" / "nhl_report" / "index.json"
+    done_before = {u for u in json.loads(ip.read_text(encoding="utf-8")) if u in canon["nhl_report"]}
+    cfg = _cfg()
+    cfg = {**cfg, "history": {**cfg["history"], "window_days": 14}}  # a later session changed the window size
+    ev = nhl_reports.evict_raw(tmp_path / "raw", cfg=cfg, store_root=tmp_path / "store", today=date(2025, 10, 21),
+                               now=T0 + timedelta(days=1))
+    after = json.loads(ip.read_text(encoding="utf-8"))
+    assert done_before and done_before <= set(after)  # every completed-season entry kept
+    assert ev.sources["nhl_report"]["entries_dropped"] > 0  # the current season's stale windows still go
+    assert any("match the canonical windows" in w for w in ev.warnings) and any("WARNING" in x for x in ev.lines())
+
+
+@pytest.mark.parametrize("case", ["mismatch", "keep_raw", "clean"])
+def test_history_evicts_only_after_a_clean_backfill(tmp_path, monkeypatch, capsys, case):
+    from nhl_dfs.cli import main
+
+    calls = []
+
+    def fake_backfill(seasons, **kw):
+        st = nhl_reports.BackfillStats(seasons=list(seasons), raw_root=str(tmp_path / "raw"))
+        st.crosscheck = {"1": {"checked": 5, "mismatch": 1 if case == "mismatch" else 0}}
+        return st
+
+    def fake_evict(root, **kw):
+        calls.append((root, kw))
+        return nhl_reports.EvictStats(dry_run=kw.get("dry_run", False))
+
+    monkeypatch.setattr(nhl_reports, "backfill", fake_backfill)
+    monkeypatch.setattr(nhl_reports, "evict_raw", fake_evict)
+    args = ["history", "--backfill", "2", "--no-moneypuck", "--store-root", str(tmp_path / "store")]
+    code = main(args + (["--keep-raw"] if case == "keep_raw" else []))
+    out = capsys.readouterr().out
+    assert len(calls) == 1 and calls[0][0] == str(tmp_path / "raw")
+    assert str(calls[0][1]["store_root"]) == str(tmp_path / "store")
+    if case == "clean":
+        assert code == 0 and calls[0][1]["dry_run"] is False and "not evicted" not in out
+    else:
+        assert calls[0][1]["dry_run"] is True  # sizes only: nothing deleted
+        assert ("not evicted (cross-check mismatches)" if case == "mismatch" else "not evicted (--keep-raw)") in out
+        assert code == (1 if case == "mismatch" else 0)

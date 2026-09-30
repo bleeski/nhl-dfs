@@ -240,6 +240,7 @@ class EvictStats:
     sources: dict[str, dict] = field(default_factory=dict)
     moneypuck_tmp_deleted: int = 0
     dry_run: bool = False
+    warnings: list[str] = field(default_factory=list)
 
     def lines(self) -> list[str]:
         out = []
@@ -250,6 +251,7 @@ class EvictStats:
                        f"{v['kept_fresh']} within TTL, {v['kept_unstored']} not yet in the store")
         if self.moneypuck_tmp_deleted:
             out.append(f"raw moneypuck: {self.moneypuck_tmp_deleted} partial download(s) (.tmp) deleted")
+        out += [f"raw WARNING: {w}" for w in self.warnings]
         return out
 
 
@@ -319,13 +321,23 @@ def evict_raw(cache_root, *, cfg: dict | None = None, store_root=None, today: da
         index = json.loads(ip.read_text(encoding="utf-8"))
         ttl = float(cfg["ttl_s"][src])
         keep: dict = {}
+        # Guard: a completed season whose cached windows match none of today's canonical URLs (window_days or the URL
+        # template changed since they were fetched) keeps every entry, with a warning, rather than losing them all.
+        seasons_of = {url: (season_of(d) if (d := _url_start(url)) else None) for url in index}
+        orphaned = set()
+        for season in {s for s in seasons_of.values() if s is not None and season_bounds(s)[1] < today}:
+            canon = canon_by_season.setdefault(season, canonical_urls(season, cfg))
+            urls = [u for u, s in seasons_of.items() if s == season]
+            if urls and not any(u in canon[src] for u in urls):
+                orphaned.add(season)
+                st.warnings.append(f"{src} {season}: none of {len(urls)} cached window(s) match the canonical windows "
+                                   "(history.window_days or the report URL changed?): all kept")
         for url, e in index.items():
             fetched = datetime.fromisoformat(e["fetched_at"].replace("Z", "+00:00"))
-            d0 = _url_start(url)
-            season = season_of(d0) if d0 else None
+            season = seasons_of[url]
             if season is not None and season_bounds(season)[1] < today:  # a completed season: canonical windows stay
-                canon = canon_by_season.setdefault(season, canonical_urls(season, cfg))
-                if url in canon[src]:
+                canon = canon_by_season[season]
+                if url in canon[src] or season in orphaned:
                     keep[url] = e
                     rec["kept_canonical"] += 1
                     continue

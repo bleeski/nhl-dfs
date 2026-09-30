@@ -1044,18 +1044,19 @@ def cmd_history(args: argparse.Namespace) -> int:
     n = len(store.read("skater_games", done, root=args.store_root))
     print(f"store read of {len(done)} completed seasons: {n} skater-game rows in {time.perf_counter() - t0:.2f}s")
     # B2: the raw report cache is cleaned only after a clean backfill (no exception, no cross-check mismatch)
-    if bad or args.keep_raw or not cfg["history"].get("evict_raw", True):
+    from pathlib import Path
+
+    from nhl_dfs.data.history import moneypuck as mp_mod
+
+    mp_root = Path(args.raw_root) if args.raw_root else mp_mod.REPO_ROOT / cfg["moneypuck"]["raw_root"]
+    evict = not (bad or args.keep_raw or not cfg["history"].get("evict_raw", True))
+    if not evict:
         why = "cross-check mismatches" if bad else ("--keep-raw" if args.keep_raw else "history.evict_raw is false")
-        print(f"raw cache: not evicted ({why})")
-    else:
-        from pathlib import Path
-
-        from nhl_dfs.data.history import moneypuck as mp_mod
-
-        ev = nhl_reports.evict_raw(stats.raw_root, cfg=cfg, store_root=args.store_root, today=today,
-                                   mp_root=Path(args.raw_root) if args.raw_root else mp_mod.REPO_ROOT / cfg["moneypuck"]["raw_root"])
-        for line in ev.lines():
-            print(line)
+        print(f"raw cache: not evicted ({why}); sizes and what a clean run would evict:")
+    ev = nhl_reports.evict_raw(stats.raw_root, cfg=cfg, store_root=args.store_root, today=today, mp_root=mp_root,
+                               dry_run=not evict)
+    for line in ev.lines():
+        print(line)
     return 0 if not bad else 1
 
 

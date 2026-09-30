@@ -247,3 +247,7 @@ coerced to a known value (CLAUDE.md); other vocabularies here that have no
   written after the fetch, then delete bodies no index entry references (unreferenced diagnosis bodies after
   `history.keep_unindexed_days`) and MoneyPuck `.tmp` files over a day old. Completed seasons rebuild offline row for
   row from the kept bodies. No other source is touched (DK contest bodies, capture/, observations/).
+- Guard: a completed season whose cached windows match none of today's canonical URLs (window_days or the URL
+  template changed) keeps all of them, with a WARNING line. A season that completes while only incremental windows
+  are cached has no canonical bodies until a full backfill runs after July 31. Not evicted (mismatches, `--keep-raw`,
+  `history.evict_raw: false`): a dry run prints the sizes.
