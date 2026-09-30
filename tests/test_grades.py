@@ -221,3 +221,41 @@ def test_a_rehearsal_clocked_run_written_after_the_first_game_is_not_pre_lock(tm
     assert forecast_status(run, m, pool)[0] == "PRE_LOCK"
     os.utime(meta, (datetime(2026, 9, 30, 17, 0, tzinfo=timezone.utc).timestamp(),) * 2)  # written the next day
     assert forecast_status(run, m, pool)[0] == "POST_LOCK"
+
+
+def test_a_resettle_without_the_prize_table_flag_keeps_the_table_saved_in_the_run(tmp_path, capsys):
+    import json
+    from datetime import datetime, timezone
+
+    from conftest import TESTS
+    from nhl_dfs.build.run import run_slate
+    from nhl_dfs.cli import main
+
+    ls = TESTS / "fixtures" / "late_swap" / "classic"
+    r = run_slate(ls / "DKSalaries.csv", ls / "DKEntries.template.csv", offline=True, out_root=tmp_path / "runs",
+                  clock=lambda: datetime(2026, 10, 15, 12, 0, tzinfo=timezone.utc))
+    sdir = tmp_path / "standings"
+    sdir.mkdir()
+    hdr = "Rank,EntryId,EntryName,TimeRemaining,Points,Lineup,,Player,Roster Position,%Drafted,FPTS\r\n"
+    body = "".join(f"{i + 1},{e},bleeski,0,{50 - i},,,,,,\r\n" for i, e in enumerate(
+        ["7100000001", "7100000002", "7100000003", "7100000004", "7100000005"]))
+    (sdir / "contest-standings-297000001.csv").write_bytes(("﻿" + hdr + body).encode("utf-8"))
+    table = tmp_path / "elsewhere" / "table.json"
+    table.parent.mkdir()
+    table.write_text(json.dumps({"contestDetail": {
+        "contestKey": "297000001", "name": "NHL Synthetic Classic", "maximumEntries": 5, "maximumEntriesPerUser": 5,
+        "entryFee": 1.0, "entries": 5, "draftGroupId": 1, "contestStartTime": "2026-10-15T23:00:00.0000000Z",
+        "isGuaranteed": True, "payoutSummary": [{"minPosition": 1, "maxPosition": 1, "tierPayoutDescriptions":
+                                                 {"Cash": "$4.00"}}]}}), encoding="utf-8")
+    bl = tmp_path / "BACKLOG.md"
+    bl.write_bytes(b"# Backlog\r\n\r\n| ID | a | b | c | d | e | f | g | h | i |\r\n|---|---|---|---|---|---|---|---|---|---|\r\n")
+    base = ["settle", r.run.run_id, str(sdir), "--runs-root", str(tmp_path / "runs"), "--ledger-root",
+            str(tmp_path / "ledger"), "--backlog", str(bl), "--no-boxscores"]
+    assert main(base + ["--prize-table", str(table)]) == 0
+    assert "PAYOUT_SOURCE=EXACT" in capsys.readouterr().out
+    table.unlink()
+    assert main(base) == 0  # no flag, and the original file is gone
+    out = capsys.readouterr().out
+    assert "PAYOUT_SOURCE=EXACT" in out and "SLATE_NET=-$1.00" in out
+    g = json.loads((r.run.path / "settle" / "grades.json").read_text(encoding="utf-8"))
+    assert g["prize_tables"]["297000001"]["source"].startswith("saved in the run at an earlier settle (from: prize table file")

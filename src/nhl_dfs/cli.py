@@ -735,7 +735,8 @@ def cmd_settle(args: argparse.Namespace) -> int:
     fg = rec["forecasts"]
     if fg:
         o, d = fg["overall"], fg["goalie_decisions"]
-        print(f"FORECASTS (PARTICIPATION={fg['participation_status']}): n {o.get('n')}, MAE {o.get('mae')}, bias "
+        print(f"FORECASTS (PARTICIPATION={fg['participation_status']}; skaters unconditional on dressing): n {o.get('n')}, "
+              f"MAE {o.get('mae')}, bias "
               f"{o.get('bias')}, CRPS {o.get('crps')}, p10-p90 coverage {o.get('cover_p10_p90')}; goalie starts "
               + (f"{d.get('accuracy')} of {d.get('teams')} teams" if d.get("teams") else d.get("status")))
     for mode, gt in rec["gates"].items():

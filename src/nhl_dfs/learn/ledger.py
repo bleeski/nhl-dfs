@@ -76,9 +76,11 @@ def _cached(contest_id: int, cache_root: Path) -> tuple[ContestDetail, str] | No
     return None
 
 
-def prize_tables(contest_ids, *, entries_n: dict[int, int], search_dirs=(), paths=(), cache_root: Path | None = None
-                 ) -> tuple[dict[int, PrizeTable], list[str]]:
-    """contest id -> the final prize table from the first source that has one (see the module docstring)."""
+def prize_tables(contest_ids, *, entries_n: dict[int, int], search_dirs=(), paths=(), cache_root: Path | None = None,
+                 saved_dir: Path | None = None) -> tuple[dict[int, PrizeTable], list[str]]:
+    """contest id -> the final prize table from the first source that has one: an explicit path, a browser-saved
+    file beside the standings, the copy an earlier settle saved in the run (saved_dir, with its original source),
+    then the raw DK cache."""
     cache_root = cache_root if cache_root is not None else REPO_ROOT / "data" / "raw"
     found: dict[int, tuple[ContestDetail, str]] = {}
     notes: list[str] = []
@@ -93,6 +95,18 @@ def prize_tables(contest_ids, *, entries_n: dict[int, int], search_dirs=(), path
             try:
                 d = _load_json(p)
                 found.setdefault(d.contest_id, (d, f"saved from the browser: {p.name}"))
+            except Exception as exc:
+                notes.append(f"{p.name}: unreadable ({type(exc).__name__})")
+    if saved_dir is not None and Path(saved_dir).is_dir():
+        labels = {}
+        lp = Path(saved_dir) / "sources.json"
+        if lp.exists():
+            labels = json.loads(lp.read_text(encoding="utf-8"))
+        for p in sorted(Path(saved_dir).glob("dk_contest_*.json")):
+            try:
+                d = _load_json(p)
+                found.setdefault(d.contest_id, (d, f"saved in the run at an earlier settle (from: "
+                                                   f"{labels.get(str(d.contest_id), 'unknown source')})"))
             except Exception as exc:
                 notes.append(f"{p.name}: unreadable ({type(exc).__name__})")
     out: dict[int, PrizeTable] = {}
@@ -113,6 +127,21 @@ def prize_tables(contest_ids, *, entries_n: dict[int, int], search_dirs=(), path
             note = f"not guaranteed and not filled ({n} of {d.maximum_entries}): the table may not be final"
         out[int(cid)] = PrizeTable(int(cid), d, src, final, note.strip("; "))
     return out, notes
+
+
+def save_tables(tables: dict[int, PrizeTable], saved_dir: Path) -> None:
+    """Keep the bytes of every table a settle used (with its original source label), so a later settle of the same
+    run does not depend on a flag, the inbox or the raw cache (backlog B2 eviction)."""
+    saved_dir = Path(saved_dir)
+    saved_dir.mkdir(parents=True, exist_ok=True)
+    lp = saved_dir / "sources.json"
+    labels = json.loads(lp.read_text(encoding="utf-8")) if lp.exists() else {}
+    for cid, t in tables.items():
+        p = saved_dir / f"dk_contest_{cid}.json"
+        if not p.exists():
+            p.write_text(json.dumps(t.detail.raw, ensure_ascii=False), encoding="utf-8")
+            labels[str(cid)] = t.source
+    lp.write_text(json.dumps(labels, indent=1, sort_keys=True), encoding="utf-8")
 
 
 def payout_from_table(t: PrizeTable, rank: int, tied: int) -> tuple[int | None, str]:

@@ -2,8 +2,11 @@
 
 Forecast: the run's own scenario cache, `runs/<id>/scenario/selection/` (the first 8,000 draws per person, DK
 points in tenths, FLEX scale in Showdown), saved by the C8 pass before lock. The draws are UNMASKED for
-QUESTIONABLE players (the run's participation mask is separate), and a goalie's column already mixes starts: a
-draw is 0 when he does not start. Nothing is re-simulated or rebuilt.
+QUESTIONABLE players (the run's participation mask is separate), but the simulator draws dressing per scenario
+(sim/game.py: Bernoulli p_dress), so a skater's column includes his not-dressed zeros, and a goalie's column
+includes his not-started zeros. The cache holds points only, so "not dressed" cannot be told from "dressed, 0
+points": skater grades are UNCONDITIONAL on dressing (labeled; a per-draw dressed indicator would fix it, backlog).
+Nothing is re-simulated or rebuilt.
 
 Actual points: the standings' FPTS (every drafted player; Showdown FLEX scale). FPTS cannot tell "did not play"
 from "played and scored 0" and has nothing for undrafted players, so participation comes from NHL box scores
@@ -156,10 +159,11 @@ class ForecastGrade:
     by_group: dict
     goalie_decisions: dict
     bonus_rate_calibration: str
-    played: list[tuple[str, str, str]]  # (game key, person_key, group) of graded persons who played
+    played: list[tuple[str, str, str]]  # (game key, person_key, group) of GRADED persons who played
     excluded: dict
     worst: list[dict] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    skater_conditioning: str = ""
 
     def record(self) -> dict:
         return asdict(self)
@@ -246,10 +250,14 @@ def grade(run, boxscores: list | None = None, *, actual_points: dict[str, int], 
         dec = {"status": "implied from the frozen draws (share of nonzero draws)", "teams": teams,
                "accuracy": round(correct / teams, 3) if teams else None,
                "brier": round(float(np.mean(brier)), 4) if brier else None, "misses": misses}
-    played = sorted({(games[k], k, group.get(k, "F")) for k, v in part.items() if v and k in games and k in keys})
+    graded = {r["person_key"] for r in rows}
+    played = sorted({(games[k], k, group.get(k, "F")) for k, v in part.items() if v and k in games and k in graded})
     worst = sorted(rows, key=lambda r: -abs(r["mean"] - r["actual"]))[:8]
     return ForecastGrade(run.run_id, m["mode"], status, _summ(rows), by_group, dec,
                          "NOT_AVAILABLE: the scenario cache holds DK points, not event counts (5+ SOG, 3+ blocks, "
                          "3+ points, 35+ saves)", played, excluded,
                          [{"person": r["person_key"].split("|")[0], "team": r["person_key"].split("|")[1],
-                           "mean": round(r["mean"], 2), "actual": r["actual"]} for r in worst], notes)
+                           "mean": round(r["mean"], 2), "actual": r["actual"]} for r in worst], notes,
+                         "UNCONDITIONAL on dressing: skater draws include the simulator's not-dressed zeros (a per-draw "
+                         "dressed indicator is not cached), which pulls means and quantiles down for players who played; "
+                         "goalies are graded on their nonzero draws (conditional on starting)")

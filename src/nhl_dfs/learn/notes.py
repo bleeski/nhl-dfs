@@ -49,7 +49,8 @@ def render(rec: dict) -> str:
     if fg:
         o = fg["overall"]
         d = fg["goalie_decisions"]
-        lines.append(f"- Forecasts (PARTICIPATION={fg['participation_status']}): {o.get('n', 0)} players, MAE "
+        lines.append(f"- Forecasts (PARTICIPATION={fg['participation_status']}; {fg.get('skater_conditioning', '')[:48]}): "
+                     f"{o.get('n', 0)} players, MAE "
                      f"{o.get('mae', float('nan')):.2f}, bias {o.get('bias', float('nan')):+.2f}, CRPS {o.get('crps', float('nan')):.2f}, "
                      f"p10-p90 coverage {o.get('cover_p10_p90', float('nan')):.2f} (target 0.80); goalie starts "
                      + (f"{d.get('accuracy')} of {d.get('teams')} teams right" if d.get("teams") else d.get("status", ""))

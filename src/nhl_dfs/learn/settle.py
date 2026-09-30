@@ -132,6 +132,15 @@ def _backlog_rows(rec: dict, sl, joins, fg) -> list[backlog_mod.Row]:
             "scenario/meta.json at build", "High: read the code",
             "Settle grades the saved start probabilities and they match the draws' nonzero share within Monte Carlo "
             "error", "Low"))
+    if fg is not None and fg.skater_conditioning.startswith("UNCONDITIONAL"):
+        rows.append(backlog_mod.Row(
+            "cache_dressed_indicator_missing", ev,
+            "Gap: the scenario cache stores points only, so a skater's not-dressed zeros (the simulator's Bernoulli "
+            "p_dress) cannot be told from dressed zero-point games; settle grades skaters unconditional on dressing",
+            "Forecast bias, CRPS and coverage for skaters who played",
+            "Cache a per-draw dressed indicator (one bit per person and draw) with the selection draws; grade skaters "
+            "on their dressed draws", "High: read the code (sim/game.py step 3)",
+            "Settle reports skater grades conditional on dressing from the run's own frozen files", "Medium"))
     missing = sorted({u.split(" (")[0] for j in joins.values() for u in j.unmatched})
     if missing:
         rows.append(backlog_mod.Row(
@@ -181,9 +190,11 @@ def run(run_id: str, standings_path, *, runs_root, prize_paths=(), winnings_path
             notes.append(f"contest {s.contest_id}: {n}")
     # money
     sdir = Path(standings_path) if Path(standings_path).is_dir() else Path(standings_path).parent
+    saved = run.path / "settle" / "prize_tables"
     tables, t_notes = ledger_mod.prize_tables([s.contest_id for s in mine], entries_n={s.contest_id: len(s.entries) for s in mine},
-                                              search_dirs=[sdir], paths=prize_paths)
+                                              search_dirs=[sdir], paths=prize_paths, saved_dir=saved)
     notes += t_notes
+    ledger_mod.save_tables(tables, saved)
     wpath = Path(winnings_path) if winnings_path else sdir / "winnings.csv"
     reported = ledger_mod.read_winnings(wpath)
     final = final_lineups(run, pool)
