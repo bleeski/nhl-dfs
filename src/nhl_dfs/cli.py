@@ -69,8 +69,9 @@ def verify_run(runs_root: Path, run_id: str) -> tuple[bool, list[str]]:
     if n is None:
         return False, [f"run {run_id} has no published version"]
     out = run.version_file(n)
-    report = check_file(out, run.inputs / "DKSalaries.csv", run.inputs / "DKEntries.csv")
     m = read_manifest(run)
+    report = check_file(out, run.inputs / "DKSalaries.csv", run.inputs / "DKEntries.csv",
+                        added_ids=frozenset(m.get("salary_added_ids") or ()))
     why = list(report.reasons)
     rec = next((v for v in m["versions"] if v["version"] == n), None)
     if rec is None:
@@ -438,6 +439,11 @@ def cmd_late_swap(args: argparse.Namespace) -> int:
         args.run = pos.pop(0)
     if not args.entries and pos:
         args.entries = pos.pop(0)
+    if not args.salary and pos:  # B1: an optional re-downloaded DKSalaries.csv of the same slate
+        args.salary = pos.pop(0)
+    if pos:
+        print(f"late-swap: unexpected extra argument(s): {' '.join(pos)}")
+        return 2
     if not (args.run and args.entries):
         print("late-swap needs --run <id> and --entries <current DKEntries.csv downloaded from DK>")
         return 2
@@ -667,6 +673,14 @@ def cmd_overrides_apply(args: argparse.Namespace) -> int:
 def cmd_refresh(args: argparse.Namespace) -> int:
     from nhl_dfs.build import refresh
 
+    pos = list(getattr(args, "positional", None) or [])
+    if not args.run and pos:
+        args.run = pos.pop(0)
+    if not args.salary and pos:  # B1: an optional re-downloaded DKSalaries.csv of the same slate
+        args.salary = pos.pop(0)
+    if pos:
+        print(f"refresh: unexpected extra argument(s): {' '.join(pos)}")
+        return 2
     if not args.run:
         print("refresh needs --run <id>")
         return 2
@@ -888,7 +902,10 @@ def build_parser() -> argparse.ArgumentParser:
         if name == "late-swap":
             sp.add_argument("--entries", type=str, default=None)
             sp.add_argument("--fast", action="store_true")
-            sp.add_argument("positional", nargs="*", help="C10 skills: <run-id|latest> <current DKEntries.csv>")
+            sp.add_argument("positional", nargs="*",
+                            help="skills: <run-id|latest> <current DKEntries.csv> [<fresh DKSalaries.csv>]")
+        else:
+            sp.add_argument("positional", nargs="*", help="skills: <run-id> [<fresh DKSalaries.csv>]")
         sp.add_argument("--offline", action="store_true")
         sp.add_argument("--salary", type=str, default=None, help="a fresh DKSalaries.csv of the same slate (status update)")
         sp.add_argument("--as-of", type=str, default=None, help="REHEARSAL clock in UTC, e.g. 2026-10-15T23:10:00Z")

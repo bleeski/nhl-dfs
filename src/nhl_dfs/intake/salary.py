@@ -265,3 +265,54 @@ def _same_name_reports(persons: dict[str, PersonRows]) -> list[Conflict]:
             )
             out.append(Conflict("SAME_NAME", ids, f"{name}: distinct persons {sorted(keys)}", False))
     return out
+
+
+# -- a re-downloaded salary file of the same slate (backlog B1, B27) -------------------------------------------------
+
+_KEPT_FIELDS = ("name", "team", "position", "roster_positions", "salary", "game_info")
+
+
+@dataclass
+class SalaryDiff:
+    """A fresh salary file against the run's: accepted only when it differs by ADDED rows (DraftKings adds a late
+    player to a draft group); every original row keeps its ID, name, team, positions, salary and game. Status,
+    Starting and AvgPointsPerGame may change (that is why Ben re-downloads)."""
+    added: list[PoolRow]
+    removed: list[str]
+    changed: list[str]
+    appg_changed: int
+    refusal: str | None
+
+    @property
+    def ok(self) -> bool:
+        return self.refusal is None
+
+
+def added_rows_diff(old: SalaryPool, new: SalaryPool) -> SalaryDiff:
+    removed = [f"{r.name} ({r.role_id})" for r in old.rows if r.role_id not in new.by_role_id]
+    changed, appg = [], 0
+    for r in old.rows:
+        n = new.by_role_id.get(r.role_id)
+        if n is None:
+            continue
+        for f in _KEPT_FIELDS:
+            a, b = getattr(r, f), getattr(n, f)
+            if a != b:
+                show = (lambda v: "/".join(sorted(v))) if f == "roster_positions" else str
+                changed.append(f"{r.name} ({r.role_id}) {f}: {show(a)} -> {show(b)}")
+        appg += int(r.appg_raw != n.appg_raw)
+    added = [r for r in new.rows if r.role_id not in old.by_role_id]
+    new_games = sorted(set(new.games) - set(old.games))
+    why = None
+    if new.mode is not old.mode:
+        why = f"the fresh file is {new.mode.value}, the run's is {old.mode.value}"
+    elif not set(old.by_role_id) & set(new.by_role_id):
+        why = "a different slate (no role ID in common with the run's salary file)"
+    elif removed:
+        why = f"{len(removed)} original row(s) are missing from the fresh file: {', '.join(removed[:5])}"
+    elif changed:
+        why = f"{len(changed)} original row field(s) changed (IDs, salaries, positions and games must be kept): " + \
+              "; ".join(changed[:5])
+    elif new_games:
+        why = f"the fresh file adds game(s) {', '.join(new_games)}: a different slate"
+    return SalaryDiff(added, removed, changed, appg, why)

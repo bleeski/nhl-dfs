@@ -125,19 +125,27 @@ def test_edit_stop_cells_are_pinned_and_reported_as_edit_stop(tmp_path):
 
 
 def test_expensive_goalie_replacement_forces_a_two_player_repair(tmp_path):
-    b = base(tmp_path)
+    # B1: a re-download may not change an original row's salary, so the expensive goalies are priced in the run's own
+    # salary file and the fresh file differs from it only by Echo G1's Status (a valid re-download)
     src = LS / "classic" / "DKSalaries.csv"
     text = src.read_bytes().decode("utf-8-sig")
-    rows = list(csv.reader(io.StringIO(text, newline="")))
-    for rec in rows[1:]:
-        if rec and rec[2] == "Echo G1":
-            rec[9] = "OUT"
-        elif rec and rec[2] in ("Echo G2", "Foxtrot G1", "Foxtrot G2"):
-            rec[5] = "9900"
-    buf = io.StringIO(newline="")
-    csv.writer(buf, lineterminator="\r\n").writerows(rows)
-    fresh = tmp_path / "DKSalaries.fresh.csv"
-    fresh.write_bytes(b"\xef\xbb\xbf" + buf.getvalue().encode("utf-8"))
+
+    def priced(out: bool, dst):
+        rows = list(csv.reader(io.StringIO(text, newline="")))
+        for rec in rows[1:]:
+            if rec and rec[2] == "Echo G1" and out:
+                rec[9] = "OUT"
+            elif rec and rec[2] in ("Echo G2", "Foxtrot G1", "Foxtrot G2"):
+                rec[5] = "9900"
+        buf = io.StringIO(newline="")
+        csv.writer(buf, lineterminator="\r\n").writerows(rows)
+        dst.write_bytes(b"\xef\xbb\xbf" + buf.getvalue().encode("utf-8"))
+        return dst
+
+    b = run_slate(priced(False, tmp_path / "DKSalaries.priced.csv"), LS / "classic" / "DKEntries.template.csv",
+                  offline=True, out_root=tmp_path / "runs", clock=lambda: BEFORE)
+    assert b.statuses["FILE_VALID"] == "TRUE"
+    fresh = priced(True, tmp_path / "DKSalaries.fresh.csv")
     cur = without_entry(LS / "classic" / "DKEntries.current.csv", tmp_path / "cur.csv", "7100000005")
     r = swap(tmp_path, b, cur, as_of=G2 + timedelta(minutes=10), salary_path=fresh)
     assert r.statuses["FILE_VALID"] == "TRUE", r.messages

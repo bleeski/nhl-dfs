@@ -87,9 +87,12 @@ def check_file(
     *,
     parent_path=None,
     locked: dict[tuple[str, int], str] | None = None,
+    added_ids=frozenset(),
 ) -> RefereeReport:
     """locked maps (Entry ID, roster column index in template order, 0-based)
-    to the exact cell text that must still be in the output."""
+    to the exact cell text that must still be in the output. added_ids: role IDs a re-downloaded salary file
+    ADDED to the draft group after the entries export (backlog B1, declared in the run's manifest); an embedded
+    player list missing exactly some of those still binds to this salary file."""
     salary = read_salary_min(salary_path)
     entries = read_entries_min(entries_path)
     out = read_entries_min(out_path)
@@ -109,10 +112,14 @@ def check_file(
 
     if entries.embedded_ids is not None and entries.embedded_ids != set(salary.rows):
         only_e = len(entries.embedded_ids - set(salary.rows))
-        only_s = len(set(salary.rows) - entries.embedded_ids)
-        reasons.append(
-            f"draft group mismatch: {only_e} IDs only in the entries player list, {only_s} only in the salary file"
-        )
+        extra = set(salary.rows) - entries.embedded_ids
+        if only_e == 0 and extra <= set(added_ids):
+            notes.append(f"{len(extra)} ID(s) in the salary file were added by DraftKings after the entries export "
+                         "(declared by the run)")
+        else:
+            reasons.append(
+                f"draft group mismatch: {only_e} IDs only in the entries player list, {len(extra)} only in the salary file"
+            )
 
     if salary.mode == out_mode and out.labels == entries.labels:
         for eid in out.entry_ids:

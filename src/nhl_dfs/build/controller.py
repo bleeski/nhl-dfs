@@ -523,7 +523,8 @@ def apply_round(run, round_no: int, proposals, cfg: dict | None = None, *, now: 
         perm = template_permutation(v.entries.roster_labels, mode)
         col_of = {k: col for col, k in enumerate(perm)}
         locked_text = {(e.entry_id, col_of[k]): e.cells[col_of[k]] for e in v.entries.entries for k in pins[e.entry_id]}
-        report = check_file(staging, run.inputs / "DKSalaries.csv", run.inputs / "DKEntries.csv", locked=locked_text)
+        report = check_file(staging, run.inputs / "DKSalaries.csv", run.inputs / "DKEntries.csv", locked=locked_text,
+                            added_ids=frozenset(read_manifest(run).get("salary_added_ids") or ()))
         if not report.ok:
             res.stop_reason = "referee rejected the QA file (" + "; ".join(report.reasons[:3]) + "): the checked file stands"
             return record()

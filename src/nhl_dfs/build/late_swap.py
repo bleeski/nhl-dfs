@@ -49,7 +49,6 @@ from nhl_dfs.build.run import (
     load_runtime_config,
     pool_without,
     salary_statuses,
-    slate_id_for,
 )
 from nhl_dfs.build.state import LockTimeout, PublishRefused, RunDir, new_run, open_run, publish, sha256
 from nhl_dfs.contracts.geometry import CLASSIC_SLOTS, SHOWDOWN_SLOTS, Mode, check_lineup, lineup_key, slot_accepts
@@ -70,7 +69,7 @@ from nhl_dfs.contracts.statuses import (
 from nhl_dfs.data.sources import dk_public
 from nhl_dfs.export.writer import field_spans, format_cell
 from nhl_dfs.intake.entries import EntriesFile, cell_role_id, physical_lines, read_entries, template_permutation
-from nhl_dfs.intake.salary import SalaryPool, read_salary
+from nhl_dfs.intake.salary import SalaryPool, added_rows_diff, read_salary
 from nhl_dfs.referee.check_file import check_file
 
 KEEP_BONUS = 1000.0  # points; larger than any lineup's objective, so fewer changes always win
@@ -415,10 +414,39 @@ def swap_core(
         m["recommendation"] = "fix the named problem, then rerun; the previous file stands"
         return finish()
 
-    if slate_id_for(pool) != slate_id:
-        return fail(f"salary file is a different slate ({slate_id_for(pool)}) from run {parent.run_id} ({slate_id})")
+    # B1: a re-downloaded salary file of the same slate is accepted when it only ADDS rows (every original row keeps
+    # its ID and salary); checked against the parent's own copy, so a child built from a fresh file stays swappable.
+    parent_pool = read_salary(parent.inputs / "DKSalaries.csv") if salary_path else pool
+    diff = added_rows_diff(parent_pool, pool)
+    if not diff.ok:
+        return fail(f"salary file refused against run {parent.run_id}'s: {diff.refusal}")
+    m["salary_added_ids"] = sorted(set(parent_m.get("salary_added_ids") or ()) | {r.role_id for r in diff.added})
+    if salary_path:
+        old_st, new_st = salary_statuses(parent_pool), salary_statuses(pool)
+        m["salary_diff"] = {"added": [{"role_id": r.role_id, "name": r.name, "team": r.team, "position": r.position,
+                                       "salary": r.salary} for r in diff.added],
+                            "status_updates": sum(1 for rid, v in old_st.items() if new_st.get(rid, v)[1] != v[1]),
+                            "appg_updates": diff.appg_changed, "original_rows": len(parent_pool.rows)}
+        if diff.added:
+            messages.append(f"SALARY_DIFF: DraftKings added {len(diff.added)} row(s) since run {parent.run_id}'s salary "
+                            "file: " + ", ".join(f"{r.name} ({r.team} {r.position} ${r.salary}, {r.role_id})"
+                                                 for r in diff.added[:10])
+                            + f"; all {len(parent_pool.rows)} original rows kept (IDs and salaries unchanged)")
+        else:
+            messages.append(f"SALARY_DIFF: no rows added; {m['salary_diff']['status_updates']} status update(s)")
     if current.mode is not pool.mode:
         return fail(f"entries export is {current.mode.value} but the salary file is {pool.mode.value}")
+    try:  # the reverse case: the export already lists players this salary file lacks (every row, excluded included)
+        from nhl_dfs.referee.reader import read_entries_min, read_salary_min
+
+        emb = read_entries_min(current_path).embedded_ids
+        in_file = set(read_salary_min(salary_file).rows)
+    except (OSError, ValueError):
+        emb, in_file = None, set()
+    if emb and emb - in_file:
+        return fail(f"the entries export lists {len(emb - in_file)} player ID(s) the salary file lacks: "
+                    "DraftKings added players after that salary file was downloaded; re-download DKSalaries.csv and "
+                    "pass it (late swap: as the third file; refresh: after the run id)")
 
     # Statuses and locks.
     draftables = None
@@ -662,7 +690,8 @@ def swap_core(
     col_of = {k: col for col, k in enumerate(perm)}
     locked_text = {(e.entry_id, col_of[k]): e.cells[col_of[k]]
                    for e in current.entries for k in range(size) if ls.cells[(e.entry_id, k)].pinned}
-    report = check_file(staging, run.inputs / "DKSalaries.csv", run.inputs / "DKEntries.csv", locked=locked_text)
+    report = check_file(staging, run.inputs / "DKSalaries.csv", run.inputs / "DKEntries.csv", locked=locked_text,
+                        added_ids=frozenset(m.get("salary_added_ids") or ()))
     if not report.ok:
         return fail("referee rejected the late-swap file: " + "; ".join(report.reasons[:5]))
     # A rehearsal clock can call a started game open, so its file never reaches outputs/.
