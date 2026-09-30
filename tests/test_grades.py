@@ -113,3 +113,25 @@ def test_forecast_grade_uses_box_scores_for_participation_and_implied_goalie_sta
     assert g.bonus_rate_calibration.startswith("NOT_AVAILABLE")
     g0 = gf.grade(run, None, actual_points=pts, pool=pool, accepted=acc)
     assert g0.participation_status == "UNKNOWN" and g0.by_group["F"]["n"] == 2 and g0.played == []
+
+
+# -- backlog -----------------------------------------------------------------------------------------------------------
+
+def test_backlog_add_appends_without_duplicates_and_never_rewrites_rows(tmp_path):
+    from nhl_dfs.learn import backlog
+
+    p = tmp_path / "BACKLOG.md"
+    head = ("# Backlog\r\n\r\n| ID | Date / evidence | Problem | Metric | Change | Confidence | Acceptance | Priority | Status "
+            "| Result |\r\n|---|---|---|---|---|---|---|---|---|---|\r\n| B1 | old | x | y | z | c | a | Low | NEW | |\r\n"
+            "| B7 | old | x | y | z | c | a | Low | NEW | |\r\n")
+    p.write_bytes(head.encode("utf-8"))
+    r = backlog.Row("cache_event_counts_missing", "2026-09-29 settle", "Gap: no event counts | in the cache", "bonus rates",
+                    "store them", "High", "a test", "Medium")
+    assert backlog.add(r, p) == ("B8", True)
+    assert backlog.add(r, p) == ("B8", False)  # deduplicated by key
+    assert backlog.add(backlog.Row("ownership_prior_error", "e", "p", "m", "c", "c", "a", "High"), p) == ("B20", False)
+    raw = p.read_bytes()
+    assert raw.startswith(head.encode("utf-8")) and raw.count(b"[key: cache_event_counts_missing]") == 1
+    line = raw.decode("utf-8").splitlines()[-1]
+    assert line.startswith("| B8 | 2026-09-29 settle [key: cache_event_counts_missing] |") and "no event counts / in" in line
+    assert raw.endswith(b"\r\n")
