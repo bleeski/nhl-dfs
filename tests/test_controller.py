@@ -287,14 +287,17 @@ REPO = TESTS.parent
 
 
 def _front(path):
+    """Frontmatter parsed as real YAML: an invalid line (for example a value that starts with a quoted string and
+    continues) makes Claude Code drop the whole frontmatter silently, including shell and allowed-tools (seen in C10)."""
+    import yaml
+
     text = path.read_text(encoding="utf-8")
     assert text.startswith("---\n") or text.startswith("---\r\n"), path
     head = text.split("---", 2)[1]
-    out = {}
-    for line in head.strip().splitlines():
-        k, _, v = line.partition(":")
-        out[k.strip()] = v.strip()
-    return out, text
+    doc = yaml.safe_load(head)
+    assert isinstance(doc, dict), path
+    return {k: ("true" if v is True else v if isinstance(v, str) else ", ".join(v) if isinstance(v, list) else str(v))
+            for k, v in doc.items()}, text
 
 
 def test_agents_have_only_their_allowed_tools_and_omit_claude_md():

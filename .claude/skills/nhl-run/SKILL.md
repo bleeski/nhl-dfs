@@ -1,7 +1,7 @@
 ---
 name: nhl-run
 description: Build tonight's NHL DraftKings lineups. Runs the engine (checked baseline, provisional, scenario versions), then at most one research call and one adversary QA round, applied by the deterministic controller. Usage /nhl-run "<DKSalaries.csv>" "<DKEntries.csv>"
-argument-hint: "<DKSalaries.csv path>" "<DKEntries.csv path>"
+argument-hint: '"<DKSalaries.csv path>" "<DKEntries.csv path>"'
 disable-model-invocation: true
 shell: powershell
 allowed-tools: PowerShell(.\nhl.ps1 *) Agent(nhl-researcher) Agent(nhl-adversary) Write

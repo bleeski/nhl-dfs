@@ -1,6 +1,6 @@
 ---
 name: nhl-dev-next
-description: Development session: find the one eligible build chunk (reruns every DONE chunk's checks) and work it per CLAUDE.md.
+description: "Development session: find the one eligible build chunk (reruns every DONE chunk's checks) and work it per CLAUDE.md."
 disable-model-invocation: true
 shell: powershell
 allowed-tools: PowerShell(.venv\Scripts\python.exe tools\next_chunk.py*)
