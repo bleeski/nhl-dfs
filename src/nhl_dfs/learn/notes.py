@@ -36,8 +36,9 @@ def render(rec: dict) -> str:
                      + ("" if e["entered_matches"] is not False else f"; {e['entered_detail']}"))
     dd = rec.get("drawdown") or {}
     lines.append(f"- Ledger: cumulative net on known payouts {_usd(dd.get('cum_net_known_cents'))}, drawdown "
-                 f"{_usd(dd.get('drawdown_cents'))}, max {_usd(dd.get('max_drawdown_cents'))} over {dd.get('slates', 0)} "
-                 f"slate(s){'' if dd.get('complete', True) else ' (incomplete: some payouts unknown)'}")
+                 f"{_usd(dd.get('drawdown_cents'))}, max {_usd(dd.get('max_drawdown_cents'))} over {dd.get('runs', 0)} run(s) on "
+                 f"{dd.get('slate_dates', 0)} slate date(s)"
+                 f"{'' if dd.get('complete', True) else ' (incomplete: some payouts unknown)'}")
     for g in rec.get("ownership", []):
         lines.append(f"- Ownership {g['contest_id']} ({g['family']}): MAE {g['mae_all']:.2f} pts (active {g['mae_active']:.2f}, "
                      f"top-20 actual {g['mae_popular']:.2f}), Pearson {g['pearson']:.2f}, Spearman {g['spearman']:.2f}, "

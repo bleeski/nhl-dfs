@@ -726,7 +726,7 @@ def cmd_settle(args: argparse.Namespace) -> int:
     print(f"NET_KNOWN={_usd(t['net_known_cents'])} on {_usd(t['fees_known_cents'])} of fees; UNKNOWN_FEES="
           f"{_usd(t['fees_unknown_cents'])}; SLATE_NET={_usd(t['net_cents'])}")
     dd = rec["drawdown"]
-    print(f"LEDGER: {dd['slates']} slate(s), cumulative net known {_usd(dd['cum_net_known_cents'])}, drawdown "
+    print(f"LEDGER: {dd['runs']} run(s) on {dd['slate_dates']} slate date(s), cumulative net known {_usd(dd['cum_net_known_cents'])}, drawdown "
           f"{_usd(dd['drawdown_cents'])} (max {_usd(dd['max_drawdown_cents'])}){'' if dd['complete'] else ', INCOMPLETE'}")
     for g in rec["ownership"]:
         print(f"OWNERSHIP {g['contest_id']} {g['family']}: MAE {g['mae_all']:.2f} (active {g['mae_active']:.2f}), "

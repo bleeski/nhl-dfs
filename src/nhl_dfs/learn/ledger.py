@@ -147,18 +147,28 @@ def read_winnings(path) -> dict[tuple[str, str], tuple[int | None, str]]:
     return out
 
 
-def write_winnings_template(path: Path, rows: list[dict]) -> bool:
-    """A pre-filled CSV for Ben to complete from DraftKings My Contests; never overwrites an existing file."""
+def write_winnings_template(path: Path, rows: list[dict]) -> int:
+    """A pre-filled CSV for Ben to complete from DraftKings My Contests. An existing file is never rewritten: rows
+    for entries it does not list yet are appended (Ben's typed lines stay as they are). Returns rows added."""
+    have = set()
     if path.exists():
-        return False
+        for r in csv.DictReader(io.StringIO(path.read_bytes().decode("utf-8-sig"))):
+            have.add(((r.get("contest_id") or "").strip(), (r.get("entry_id") or "").strip()))
+    todo = [r for r in rows if (str(r.get("contest_id", "")), str(r.get("entry_id", ""))) not in have]
+    if not todo:
+        return 0
     path.parent.mkdir(parents=True, exist_ok=True)
     buf = io.StringIO()
     w = csv.DictWriter(buf, fieldnames=WINNINGS_FIELDS, lineterminator="\r\n")
-    w.writeheader()
-    for r in rows:
+    if not path.exists():
+        w.writeheader()
+    for r in todo:
         w.writerow({k: r.get(k, "") for k in WINNINGS_FIELDS})
-    path.write_bytes(buf.getvalue().encode("utf-8"))
-    return True
+    raw = path.read_bytes() if path.exists() else b""
+    if raw and not raw.endswith(b"\n"):
+        raw += b"\r\n"
+    path.write_bytes(raw + buf.getvalue().encode("utf-8"))
+    return len(todo)
 
 
 # -- settlement ----------------------------------------------------------------------------------------------------
@@ -349,7 +359,7 @@ def drawdown(root: Path | None = None) -> dict:
     so far has an UNKNOWN payout (its net is then a lower bound on nothing: the figure is partial)."""
     df = read(root)
     if df.empty:
-        return {"slates": 0, "cum_net_known_cents": 0, "peak_cents": 0, "drawdown_cents": 0, "max_drawdown_cents": 0,
+        return {"runs": 0, "slate_dates": 0, "cum_net_known_cents": 0, "peak_cents": 0, "drawdown_cents": 0, "max_drawdown_cents": 0,
                 "complete": True, "series": []}
     rows = []
     for (date, run_id), g in df.sort_values(["slate_date", "run_id"]).groupby(["slate_date", "run_id"], sort=True):
@@ -365,5 +375,5 @@ def drawdown(root: Path | None = None) -> dict:
         mdd = max(mdd, peak - cum)
         complete = complete and r["complete"]
         r.update({"cum_net_known_cents": cum, "drawdown_cents": peak - cum, "complete_so_far": complete})
-    return {"slates": len(rows), "cum_net_known_cents": cum, "peak_cents": peak, "drawdown_cents": peak - cum,
+    return {"runs": len(rows), "slate_dates": len({r["slate_date"] for r in rows}), "cum_net_known_cents": cum, "peak_cents": peak, "drawdown_cents": peak - cum,
             "max_drawdown_cents": mdd, "complete": complete, "series": rows}

@@ -113,8 +113,15 @@ def test_ledger_rows_replace_a_resettle_and_drawdown_updates_across_two_slates(r
     assert dd["complete"] is True
 
 
-def test_the_winnings_template_never_overwrites(tmp_path):
+def test_the_winnings_template_keeps_bens_lines_and_appends_only_missing_entries(tmp_path):
     p = tmp_path / "winnings.csv"
-    assert lg.write_winnings_template(p, [{"contest_id": "1", "entry_id": "2", "source": "DraftKings My Contests"}])
-    p.write_text("edited by Ben", encoding="utf-8")
-    assert not lg.write_winnings_template(p, [{"contest_id": "1"}]) and p.read_text(encoding="utf-8") == "edited by Ben"
+    assert lg.write_winnings_template(p, [{"contest_id": "1", "entry_id": "2", "source": "DraftKings My Contests"}]) == 1
+    typed = p.read_text(encoding="utf-8").replace("1,,2,,,,DraftKings", "1,,2,,,3.50,DraftKings")
+    assert "3.50" in typed
+    p.write_text(typed, encoding="utf-8", newline="")
+    assert lg.write_winnings_template(p, [{"contest_id": "1", "entry_id": "2"}]) == 0  # already listed
+    assert lg.write_winnings_template(p, [{"contest_id": "7", "entry_id": "8"}]) == 1  # another run's unknown entry
+    text = p.read_text(encoding="utf-8")
+    assert text.startswith(typed) and text.count("contest_id") == 1
+    got = lg.read_winnings(p)
+    assert got[("1", "2")][0] == 350 and got[("7", "8")][0] is None

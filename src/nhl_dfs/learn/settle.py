@@ -200,8 +200,8 @@ def run(run_id: str, standings_path, *, runs_root, prize_paths=(), winnings_path
             {"contest_id": e.contest_id, "contest_name": e.contest_name, "entry_id": e.entry_id, "rank": e.rank or "",
              "fee": f"{e.fee_cents / 100:.2f}", "winnings_usd": "", "source": "DraftKings My Contests", "noted_utc": ""}
             for e in unknown])
-        notes.append(f"winnings template {'written' if wrote else 'already present'}: {template} (fill winnings_usd "
-                     "from DraftKings My Contests, save, and settle again)")
+        notes.append(f"winnings template {template}: {wrote} row(s) added (fill winnings_usd from DraftKings My "
+                     "Contests, save, and settle again)")
     # grades (frozen files only)
     own_grades = []
     for s in mine:
