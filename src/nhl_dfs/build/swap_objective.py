@@ -54,9 +54,11 @@ class RoleModel:
     warnings: list[str] = field(default_factory=list)
 
 
-def gather_role_inputs(pool, cache) -> tuple[dict, list, str, list[str]]:
+def gather_role_inputs(pool, cache, goalies: tuple | None = None) -> tuple[dict, list, str, list[str]]:
     """Daily Faceoff team pages and goalie reports through the cache (offline: stored pages only).
-    Returns (lines by NHL code, goalie reports, goalie path, problems). Never raises."""
+    Returns (lines by NHL code, goalie reports, goalie path, problems). Never raises.
+    goalies: (reports, path, problems) the goalie gate already gathered (build.goalies); then the goalie
+    page is not fetched again."""
     from zoneinfo import ZoneInfo
 
     from nhl_dfs.data.http import SourceSchemaError, SourceUnavailable
@@ -74,6 +76,9 @@ def gather_role_inputs(pool, cache) -> tuple[dict, list, str, list[str]]:
             problems.append(f"{c['dk']}: team page unavailable ({type(exc).__name__})")
         except Exception as exc:  # a network error must never strand a late swap
             problems.append(f"{c['dk']}: team page error ({type(exc).__name__})")
+    if goalies is not None:
+        reports, path, gprob = goalies
+        return lines, list(reports), path, problems + list(gprob)
     reports, path = [], "none"
     for d in days:
         try:
@@ -143,7 +148,8 @@ def _avail(pp) -> float:
 
 
 def build_role_model(pool, work, st, *, dk_rec, now: datetime, clock, offline: bool, cache, budget_s: float,
-                     apply_state: Callable | None = None, overrides: list | None = None, table0=None) -> RoleModel:
+                     apply_state: Callable | None = None, overrides: list | None = None, table0=None,
+                     goalie_inputs: tuple | None = None) -> RoleModel:
     """ParamTable (C5), then roles.merge and roles.apply_state exactly once (B11). Raises when the
     ParamTable cannot be built (the caller falls back and says so)."""
     from nhl_dfs.build import news
@@ -157,7 +163,8 @@ def build_role_model(pool, work, st, *, dk_rec, now: datetime, clock, offline: b
     notes = []
     http = cache if cache is not None else HttpCache(offline=offline)
     try:
-        lines, reports, path, problems = _bounded(lambda: gather_role_inputs(pool, http), budget_s, "nhl-roles-fetch")
+        lines, reports, path, problems = _bounded(lambda: gather_role_inputs(pool, http, goalie_inputs), budget_s,
+                                                     "nhl-roles-fetch")
     except TimeoutError as exc:
         lines, reports, path, problems = {}, [], "none", [str(exc)]
     notes.append(f"roles: {'stored' if offline else 'cache-first'} Daily Faceoff pages, {len(lines)} team page(s) read, "
@@ -496,7 +503,7 @@ def provisional_linear(pool, rm: RoleModel) -> dict[str, float]:
 def resolve(requested: str, *, pool, work, st, started_games, dk_rec, runs_root, run_id: str, offline: bool, cache,
             clock, now: datetime, runtime: dict, fast: bool, optional_ok: tuple[bool, str], live=None,
             entry_ids=(), odds_snapshot=None, apply_state: Callable | None = None, persist_to=None,
-            overrides: list | None = None) -> Resolved:
+            overrides: list | None = None, goalie_inputs: tuple | None = None) -> Resolved:
     """Try the objectives in the documented order from `requested`; never raises."""
     if requested not in ORDER:
         raise ValueError(f"objective must be one of auto, scenario, provisional, baseline (got {requested!r})")
@@ -520,7 +527,7 @@ def resolve(requested: str, *, pool, work, st, started_games, dk_rec, runs_root,
         try:
             rm = build_role_model(pool, work, st, dk_rec=dk_rec, now=now, clock=clock, offline=offline, cache=cache,
                                   budget_s=float(runtime.get("network_pass_budget_s", 25)), apply_state=apply_state,
-                                  overrides=overrides)
+                                  overrides=overrides, goalie_inputs=goalie_inputs)
             res.role_model = rm
             res.notes += rm.notes
         except Exception as exc:  # reported; the objective steps down

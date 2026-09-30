@@ -1,0 +1,17 @@
+# Scheduled pre-lock refresh (backlog B23; build/scheduled.py, tools/scheduled_refresh.py,
+# tools/register_refresh_task.ps1). One Task Scheduler job, registered once by Ben, wakes every
+# `poll_minutes` during the poll window and runs the dispatcher. The dispatcher refreshes the newest
+# delivered run of each slate whose first lock is ahead, once per window, and notifies Ben.
+task_name: nhl-dfs-refresh
+timezone: America/Chicago
+poll_start: "09:00"          # wall clock in `timezone`; converted to local time at registration
+poll_hours: 15               # until 00:00
+poll_minutes: 5
+task_time_limit_minutes: 15
+windows_min: [60, 20]        # refresh at T-60 and T-20 before the slate's first lock (earliest game start)
+late_cutoff_min: 5           # inside T-5 the dispatcher does nothing (near lock the terminal late swap is the path)
+horizon_h: 18                # a slate is "today's" when its first lock is within this many hours
+notify:
+  toast: true                # a Windows toast (tools/notify.ps1, WinRT, no module); the task runs as Ben, interactive
+  on_no_change: false        # "nothing changed" goes to the log only
+  # Phone push (for example ntfy) would send text to an outside service: not implemented, [BEN] flag 10.

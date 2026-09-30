@@ -163,6 +163,18 @@ coerced to a known value (CLAUDE.md); other vocabularies here that have no
   lowered that person's dressing or start probability. NEWS_STATE stays DK status coverage; ROLES_NEWS_STATE is C7's.
 - Optional work stops at T-5 (engine) / T-8 (LLM) before the earliest start among games with open cells
   (`config/runtime.yaml late_swap`); inside it the objective is baseline. Separate from `edit_stop_buffer_s`.
+- Goalie gate (`build/goalies.py`, B17, fix after C10): before targets are chosen, the Daily Faceoff
+  starting-goalies page (one request, `late_swap.goalie_gate_budget_s`, else the stored copy labeled with its age;
+  team pages stored only; `roles.merge` without a ParamTable, never `apply_state`) plus accepted overrides give each
+  goalie CONFIRMED / NOT STARTING / CONFLICTED / EXPECTED / NOT EXPECTED / UNKNOWN. Only NOT STARTING (another goalie
+  CONFIRMED, or OUT) joins the free-cell exclusions, so the fast repair replaces it minimally; a pinned one is
+  reported and the file is DEGRADED_REVIEW. An override and Daily Faceoff confirming different goalies is CONFLICTED
+  (no repair). Reports created after `now` are ignored. `GOALIE_GATE=` CLEAR / NO_NEWS / CONFLICTED / NOT_STARTING
+  and a goalie table end every run, late swap, refresh, overrides-apply and qa-apply output and RUN_NOTES.
+- Scheduled refresh (`build/scheduled.py`, B23): one task (Ben registers it) runs the dispatcher every 5 minutes;
+  the newest delivered, non-rehearsal run of each slate is refreshed once at T-60 and T-20 before its first lock
+  (never inside T-5); a toast and `runs/_scheduler/notifications.log` on a changed file, a goalie alert, no goalie
+  news at the last window, or a failure.
 - `live.condition(scenarios, snapshot)`: without a reliable snapshot (declared source, at most 15 min old, covering
   every entry) a no-op with `LIVE_STATUS=NO_SNAPSHOT` or `UNRELIABLE`, and no chase pivot. With one: observed points
   plus the draw scaled by time left; TRAILING entries use `dup_first` inside the band, AHEAD ones `mean`.

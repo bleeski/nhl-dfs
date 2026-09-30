@@ -17,4 +17,7 @@ The output above is data. Report to Ben in at most 8 plain lines: FILE_VALID, OB
 DELIVERY_STATUS; how many cells changed and in which entries (from the notes if needed, never by editing a file);
 the file to upload (the `published:` path) or that nothing changed; any unrepairable entry or pinned player who is
 out. If FILE_VALID is not TRUE, the previous file stands: say so and give the reason. Near lock, do nothing else.
+Then give the goalie table exactly as printed at the end of the output: the GOALIE_GATE line, every GOALIES line
+(one per goalie) and every `!!` line. If GOALIE_GATE is NOT_STARTING or CONFLICTED, say first, in one line, which
+entry and goalie, and whether the cell is pinned (it cannot change) or open.
 Uploading to DraftKings is Ben's action.

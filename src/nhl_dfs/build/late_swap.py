@@ -37,7 +37,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from nhl_dfs.build import feasible, milp
+from nhl_dfs.build import feasible, goalies, milp
 from nhl_dfs.build import live as live_mod
 from nhl_dfs.build import swap_objective
 from nhl_dfs.build import locks as locks_mod
@@ -441,6 +441,25 @@ def swap_core(
                        if s.participation is Participation.OUT or s.eligibility is Eligibility.DISABLED}
     # C10: overrides accepted on the parent run (overrides-apply or a QA correctness repair) and still valid now
     overrides, ovr_out = accepted_overrides(parent, pool, clock())
+    # Goalie gate (B17): an open-cell goalie whose team has another CONFIRMED starter is a repair target. Cheap:
+    # the starting-goalies page only, bounded; a team where an override and Daily Faceoff disagree is CONFLICTED
+    # (the override's exclusion for that team is withdrawn: nothing is repaired automatically, Ben is told).
+    t_g = time.perf_counter()
+    ls_cfg0 = runtime.get("late_swap", {})
+    board = goalies.build(pool, dk_rec=rec, csv_status=st, now=clock(), cache=cache, offline=offline,
+                          budget_s=float(ls_cfg0.get("goalie_gate_budget_s", 8.0)), overrides=overrides)
+    timings["goalie_gate_s"] = round(time.perf_counter() - t_g, 3)
+    team_of = {r.person_key: r.team for r in pool.rows}
+    for pk in [k for k, why in ovr_out.items() if team_of.get(k) in board.conflicted_teams and why.startswith("not the confirmed")]:
+        del ovr_out[pk]
+    gate_out = {k: why for k, why in board.not_starting().items() if k not in out_people}
+    if gate_out:
+        out_people |= set(gate_out)
+        m["news"]["goalie_gate_exclusions"] = {board.persons[k].name: why for k, why in sorted(gate_out.items())}
+        messages.append(f"goalie gate: {len(gate_out)} goalie(s) not starting (another goalie CONFIRMED): open cells "
+                        "holding them are repaired, pinned ones are reported")
+    for p_ in board.problems[:3]:
+        messages.append(f"goalie gate: {p_}")
     if ovr_out:
         out_people |= set(ovr_out)
         m["news"]["override_exclusions"] = {pool.persons[k].classic.name if pool.persons[k].classic else k: why
@@ -493,6 +512,13 @@ def swap_core(
             continue
         if not fast or needs_repair(e.entry_id):
             targets.append(e.entry_id)
+    pinned_ns = [(eid, k, rid) for eid, p in pins.items() for k, rid in sorted(p.items())
+                 if rid in pool.by_role_id and pool.by_role_id[rid].is_goalie
+                 and (board.persons.get(pool.by_role_id[rid].person_key) or goalies.GoalieLine("", "", "", "")).status
+                 == goalies.NOT_STARTING]
+    for eid, k, rid in pinned_ns:
+        messages.append(f"PINNED GOALIE NOT STARTING: entry {eid} {pool.by_role_id[rid].name} "
+                        f"({board.persons[pool.by_role_id[rid].person_key].source}); the cell is locked and cannot change")
     # Objective (C9): resolved only when an entry needs solving (refresh resolves eagerly), so a
     # zero-change late swap stays byte-identical to C2c and spends nothing on models.
     ls_cfg = runtime.get("late_swap", {})
@@ -518,7 +544,8 @@ def swap_core(
             objective, pool=pool, work=pool_without(pool, excluded_rows), st=st, started_games=ls.started_games,
             dk_rec=rec, runs_root=runs_root, run_id=parent.run_id, offline=offline, cache=cache, clock=clock, now=clock(),
             runtime=runtime, fast=fast, optional_ok=ok, live=standings, entry_ids=entry_ids, apply_state=apply_state,
-            persist_to=run.path if eager_objective else None, odds_snapshot=odds_snapshot, overrides=overrides)
+            persist_to=run.path if eager_objective else None, odds_snapshot=odds_snapshot, overrides=overrides,
+            goalie_inputs=board.inputs)
         linear = resolved.linear
         m["objective"] = resolved.record()
         for f in resolved.fallbacks:
@@ -668,6 +695,11 @@ def swap_core(
         overlap_max=0,
     )
     m["exposures_top20"] = exposures_top20(assignment, pool)
+    m["goalies"] = goalies.record(board, goalies.table(board, pool, final, pins))
+    if m["goalies"]["GOALIE_GATE"] == "NOT_STARTING":
+        m["statuses"]["DELIVERY_STATUS"] = DeliveryStatus.DEGRADED_REVIEW.value
+        messages.append("GOALIE_GATE=NOT_STARTING: the file still holds a goalie known not to start (pinned or "
+                        "unrepairable); see the goalie table")
     n_changed = len(m["changed_cells"])
     m["worked"].append(f"{kind}: {n_changed} cell(s) changed in {len(changes)} entr{'y' if len(changes) == 1 else 'ies'}; "
                        f"{ls.counts().get('LOCKED', 0)} locked and {ls.counts().get('EDIT_STOP', 0)} edit-stop cells pinned")

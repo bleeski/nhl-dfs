@@ -28,5 +28,8 @@ value. Do all of step 1 in ONE turn, step 2 in ONE turn, step 3 in ONE turn:
    OUTCOME_CALIBRATION, FIELD_CALIBRATION; which version is current and the public file path; overrides accepted;
    QA changes accepted or rejected (one line each); any DTD player still unresolved. Say "checked" only for what
    the referee checked. If ANOTHER_ROUND=YES, say that a second QA round is allowed and ask Ben whether to run it.
+   Then give the goalie table exactly as last printed (by step 3 if it ran, else by the engine output above): the
+   GOALIE_GATE line, every GOALIES line and every `!!` line. If GOALIE_GATE is NOT_STARTING or CONFLICTED, say that
+   first, naming the entry and goalie.
 
 DraftKings upload, entry and money actions are Ben's. Never run another command than the ones above.

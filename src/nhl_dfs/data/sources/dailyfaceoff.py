@@ -98,6 +98,7 @@ class GoalieFetch:
     reports: list[GoalieReport]
     path: str  # next_data | team_pages | none
     notes: list[str] = field(default_factory=list)
+    fetched_utc: datetime | None = None  # when the goalie page was fetched (next_data path; from the cache index)
 
 
 def team_codes(path: Path = TEAMS_YAML) -> dict[str, dict]:
@@ -225,15 +226,19 @@ def parse_goalie_page(html: str) -> list[GoalieReport]:
     return out
 
 
-def fetch_goalies(day: date | str, *, cache: HttpCache | None = None, teams: list[str] | None = None) -> GoalieFetch:
-    """Reports for games on `day` (a game's own date decides; nothing is re-dated), with the path used."""
+def fetch_goalies(day: date | str, *, cache: HttpCache | None = None, teams: list[str] | None = None,
+                  team_page_fallback: bool = True) -> GoalieFetch:
+    """Reports for games on `day` (a game's own date decides; nothing is re-dated), with the path used.
+    team_page_fallback=False: the starting-goalies page only (one request; the goalie gate near lock)."""
     cache = cache or default_cache()
     cfg = cache.config
     day = day if isinstance(day, date) else date.fromisoformat(str(day))
     notes: list[str] = []
+    fetched = None
     try:
         f = cache.get_text(cfg["urls"]["df_goalies"], source="dailyfaceoff", ttl_s=cfg["ttl_s"]["dailyfaceoff"],
                            schema=parse_goalie_page)
+        fetched = f.fetched_at_utc
         reports = parse_goalie_page(f.data)
         mine = [r for r in reports if r.game_date == day]
         other = sorted({str(r.game_date) for r in reports if r.game_date != day})
@@ -241,10 +246,12 @@ def fetch_goalies(day: date | str, *, cache: HttpCache | None = None, teams: lis
             notes.append(f"goalie page also holds games dated {', '.join(other)}: not used for {day}")
         if mine:
             log.info("daily faceoff goalies: path next_data, %d reports for %s", len(mine), day)
-            return GoalieFetch(mine, "next_data", notes)
+            return GoalieFetch(mine, "next_data", notes, fetched)
         notes.append(f"goalie page parsed but holds no game dated {day}")
     except (SourceSchemaError, SourceUnavailable) as exc:
         notes.append(f"goalie page unusable ({type(exc).__name__}: {str(exc)[:100]})")
+    if not team_page_fallback:
+        return GoalieFetch([], "none", notes, fetched)
     # path 2: each team page's goalie group (depth order: EXPECTED at most)
     slugs = [s for s, t in team_codes().items() if teams is None or t["nhl"] in teams]
     reports = []

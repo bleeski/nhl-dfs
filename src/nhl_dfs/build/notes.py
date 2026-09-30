@@ -67,6 +67,10 @@ def render(m: dict[str, Any]) -> str:
         lines += _scenario_lines(m["scenario"])
     if m.get("objective"):
         lines += _objective_lines(m)
+    if m.get("goalies"):
+        from nhl_dfs.build.goalies import notes_lines
+
+        lines += notes_lines(m["goalies"])
     if m.get("messages"):
         lines += ["", "## Messages", ""] + [f"- {x}" for x in m["messages"]]
     return "\n".join(lines) + "\n"

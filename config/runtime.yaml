@@ -35,6 +35,9 @@ late_swap:
   full_scenarios: 8000          # without --fast
   candidates_per_entry: 8       # repair candidates the scenario objective chooses among
   scenario_budget_s: 12.0       # scoring time across all repaired entries; past it the surrogate's best is kept
+  # Goalie gate (build/goalies.py, backlog B17): the starting-goalies page only, fetched cache first (10 min TTL)
+  # within this budget; past it the stored copy is used and labeled with its age. Keeps the fast path near 30 s.
+  goalie_gate_budget_s: 8.0
 
 # Live standings (build/live.py). A snapshot is reliable only with a declared source, no older than
 # this, covering every entry being re-solved; none exists yet (C11), so LIVE_STATUS=NO_SNAPSHOT.

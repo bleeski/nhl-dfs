@@ -216,7 +216,16 @@ def _print_result(result) -> int:
     for msg in result.messages:
         print(f"note: {msg}")
     print(f"notes: {result.notes_path}")
+    _print_goalies((result.manifest or {}).get("goalies"))
     return 0 if result.ok else 1
+
+
+def _print_goalies(rec) -> None:
+    """B17: the goalie table ends every run, late swap and refresh output (and qa-apply, overrides-apply)."""
+    from nhl_dfs.build.goalies import cli_lines
+
+    for line in cli_lines(rec):
+        print(line)
 
 
 def _as_of(text: str | None):
@@ -598,7 +607,20 @@ def cmd_qa_apply(args: argparse.Namespace) -> int:
                                  runs_root=runs_root, outputs_root=outputs_root)
     for line in res.lines():
         print(line)
+    _print_goalies(_goalie_refresh(run))
     return 0
+
+
+def _goalie_refresh(run):
+    from datetime import datetime, timezone
+
+    from nhl_dfs.build import goalies
+
+    try:
+        return goalies.refresh_run_record(run, now=datetime.now(timezone.utc), offline=True)
+    except Exception as exc:  # the table is a report; a failure here never changes the file
+        print(f"goalie table unavailable ({type(exc).__name__}: {str(exc)[:100]})")
+        return None
 
 
 def cmd_research_request(args: argparse.Namespace) -> int:
@@ -638,6 +660,7 @@ def cmd_overrides_apply(args: argparse.Namespace) -> int:
     for line in res.lines()[:-1]:
         print(line.replace("QA round", "overrides file"))
     print(f"OVERRIDES_ACCEPTED={res.accepted_correctness}")
+    _print_goalies(_goalie_refresh(run))
     return 0
 
 

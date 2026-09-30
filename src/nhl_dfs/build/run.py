@@ -364,6 +364,20 @@ def run_slate(
     }
 
     def finish() -> RunResult:
+        if m["versions"]:  # B17: the goalie table of the file handed over (a report; it never changes the file)
+            from nhl_dfs.build import goalies
+
+            t_g = time.perf_counter()
+            try:
+                m["goalies"] = goalies.for_run(run, m, now=clock(), offline=offline, cache=cache, budget_s=float(
+                    runtime.get("late_swap", {}).get("goalie_gate_budget_s", 8.0)))
+            except Exception as exc:
+                messages.append(f"goalie table unavailable ({type(exc).__name__}: {str(exc)[:100]})")
+            timings["goalie_table_s"] = round(time.perf_counter() - t_g, 3)
+            if (m.get("goalies") or {}).get("GOALIE_GATE") == "NOT_STARTING":
+                m["statuses"]["DELIVERY_STATUS"] = DeliveryStatus.DEGRADED_REVIEW.value
+                messages.append("GOALIE_GATE=NOT_STARTING: the current file holds a goalie known not to start; run "
+                                "refresh (or late swap with the current export) before lock")
         timings["total_s"] = round(time.perf_counter() - t_start, 3)
         mp = write_manifest(run, m)
         np_ = write_run_notes(run, m)
