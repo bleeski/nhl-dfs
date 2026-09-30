@@ -682,6 +682,75 @@ def cmd_refresh(args: argparse.Namespace) -> int:
     return _print_result(result)
 
 
+def _usd(c) -> str:
+    return "unknown" if c is None else (f"-${-c / 100:.2f}" if c < 0 else f"${c / 100:.2f}")
+
+
+def cmd_settle(args: argparse.Namespace) -> int:
+    """C11: one call does everything (the /nhl-settle skill preprocesses exactly this)."""
+    from nhl_dfs.learn import settle
+
+    pos = list(args.positional or [])
+    if not args.run and pos:
+        args.run = pos.pop(0)
+    if not args.standings and pos:
+        args.standings = pos.pop(0)
+    if not (args.run and args.standings):
+        print('settle needs <run-id> "<standings file, zip or folder>"')
+        return 2
+    try:
+        rec = settle.run(args.run, args.standings, runs_root=Path(args.runs_root), prize_paths=args.prize_table,
+                         winnings_path=args.winnings, boxscores=not args.no_boxscores, offline=args.offline,
+                         ledger_root=args.ledger_root, backlog_path=args.backlog)
+    except (FileNotFoundError, ValueError) as exc:
+        print("SETTLE=FAILED")
+        print(f"reason: {exc}")
+        return 1
+    led = rec["ledger"]
+    t = led["totals"]
+    fz = rec["freeze_check"]
+    print(f"SETTLE={'OK' if fz['ok'] else 'FREEZE_CHECK_FAILED'} run={rec['run_id']} mode={rec['mode']} "
+          f"slate_date={led['slate_date']}")
+    print(f"FORECAST={rec['forecast']['status']} ({rec['forecast']['detail']})")
+    print(f"FREEZE_CHECK={'OK' if fz['ok'] else 'CHANGED: ' + ', '.join(fz['changed'][:5])} ({fz['files']} frozen files)")
+    for k, v in rec["statuses"].items():
+        print(f"{k}={v}")
+    for cid, c in led["by_contest"].items():
+        print(f"contest {cid} {c['contest_name']}: {c['entries']} entr{'y' if c['entries'] == 1 else 'ies'}, fees "
+              f"{_usd(c['fees_cents'])}, gross {_usd(c['gross_cents'])}, net {_usd(c['net_cents'])} "
+              f"({'/'.join(c['sources'])})")
+    for e in led["entries"]:
+        print(f"  entry {e['entry_id']}: rank {e['rank']}{' tied ' + str(e['tied']) if (e['tied'] or 1) > 1 else ''}, "
+              f"{e['points']} pts, payout {_usd(e['payout_cents'])} ({e['payout_source']})"
+              + ("" if e["entered_matches"] is not False else " ENTERED LINEUP DIFFERS from the run's final version"))
+    print(f"NET_KNOWN={_usd(t['net_known_cents'])} on {_usd(t['fees_known_cents'])} of fees; UNKNOWN_FEES="
+          f"{_usd(t['fees_unknown_cents'])}; SLATE_NET={_usd(t['net_cents'])}")
+    dd = rec["drawdown"]
+    print(f"LEDGER: {dd['slates']} slate(s), cumulative net known {_usd(dd['cum_net_known_cents'])}, drawdown "
+          f"{_usd(dd['drawdown_cents'])} (max {_usd(dd['max_drawdown_cents'])}){'' if dd['complete'] else ', INCOMPLETE'}")
+    for g in rec["ownership"]:
+        print(f"OWNERSHIP {g['contest_id']} {g['family']}: MAE {g['mae_all']:.2f} (active {g['mae_active']:.2f}), "
+              f"Pearson {g['pearson']:.2f}, Spearman {g['spearman']:.2f}, top-10 recall {g['top_chalk_recall']:.1f}"
+              + (f", CPT MAE {g['cpt_share_err']:.2f}" if g.get("cpt_share_err") is not None else ""))
+    fg = rec["forecasts"]
+    if fg:
+        o, d = fg["overall"], fg["goalie_decisions"]
+        print(f"FORECASTS (PARTICIPATION={fg['participation_status']}): n {o.get('n')}, MAE {o.get('mae')}, bias "
+              f"{o.get('bias')}, CRPS {o.get('crps')}, p10-p90 coverage {o.get('cover_p10_p90')}; goalie starts "
+              + (f"{d.get('accuracy')} of {d.get('teams')} teams" if d.get("teams") else d.get("status")))
+    for mode, gt in rec["gates"].items():
+        print(f"GATE {mode}: tier {gt['tier']}; allowed: {', '.join(k for k, v in gt['allowed'].items() if v) or 'none'}")
+    for b in rec["backlog"]:
+        print(f"BACKLOG {b['id']}: {'added' if b['added'] else 'already holds'} {b['key']}")
+    if rec["winnings_template"]:
+        print(f"WINNINGS_TEMPLATE={rec['winnings_template']}")
+    for n in rec["notes"][:10]:
+        print(f"note: {n}")
+    print(f"grades: {Path(args.runs_root) / rec['run_id'] / 'settle' / 'grades.json'}")
+    print(f"ledger: {rec['ledger_path']}")
+    return 0 if fz["ok"] else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="nhl_dfs")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -809,6 +878,19 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--objective", choices=("auto", "scenario", "provisional", "baseline"), default="auto",
                         help="auto: scenario, then provisional, then baseline (each fallback reported)")
         sp.set_defaults(func=func)
+
+    sp = sub.add_parser("settle", help="C11: settle a run from DraftKings standings (money, grades, notes, backlog)")
+    sp.add_argument("--run", type=str, default=None)
+    sp.add_argument("--standings", type=str, default=None, help="a standings CSV, a .zip, or a folder of them")
+    sp.add_argument("positional", nargs="*", help="skills: <run-id> <standings path>")
+    sp.add_argument("--prize-table", action="append", default=[], help="a DK contest detail JSON (repeatable)")
+    sp.add_argument("--winnings", type=str, default=None, help="winnings.csv from DraftKings My Contests")
+    sp.add_argument("--no-boxscores", action="store_true", help="do not fetch NHL box scores (participation UNKNOWN)")
+    sp.add_argument("--offline", action="store_true", help="box scores from the local cache only")
+    sp.add_argument("--runs-root", type=str, default=str(RUNS_ROOT))
+    sp.add_argument("--ledger-root", type=str, default=None, help="default data/ledger (NHL_DFS_LEDGER_ROOT)")
+    sp.add_argument("--backlog", type=str, default=None, help="default BACKLOG.md (NHL_DFS_BACKLOG)")
+    sp.set_defaults(func=cmd_settle)
 
     return parser
 

@@ -247,6 +247,11 @@ def _objective_lines(m: dict[str, Any]) -> list[str]:
 
 
 def write_run_notes(run: RunDir, manifest: dict[str, Any]) -> Path:
+    """RUN_NOTES.md from the manifest; a settled run's Settlement section (settle/settlement.md, C11) stays last."""
     path = run.path / "RUN_NOTES.md"
-    atomic_write(path, render(manifest).encode("utf-8"))
+    text = render(manifest)
+    settled = run.path / "settle" / "settlement.md"
+    if settled.exists():
+        text = text.rstrip("\n") + "\n" + settled.read_text(encoding="utf-8")
+    atomic_write(path, text.encode("utf-8"))
     return path

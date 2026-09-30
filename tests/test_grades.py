@@ -135,3 +135,67 @@ def test_backlog_add_appends_without_duplicates_and_never_rewrites_rows(tmp_path
     line = raw.decode("utf-8").splitlines()[-1]
     assert line.startswith("| B8 | 2026-09-29 settle [key: cache_event_counts_missing] |") and "no event counts / in" in line
     assert raw.endswith(b"\r\n")
+
+
+# -- gates and the settle command ----------------------------------------------------------------------------------------
+
+def test_gate_report_shows_the_tier_for_planted_counts():
+    from nhl_dfs.learn.settle import evidence_counts, gate_report
+
+    idx = {}
+    for i in range(25):  # 25 Classic slate dates, 6,250 skater-games and 400 goalie starts, 250 labels per slate
+        played = [[f"2026-10-{i:02d}", "A@B", f"s{j}|A|F", "F"] for j in range(250)]
+        played += [[f"2026-10-{i:02d}", "A@B", f"g{j}|A|G", "G"] for j in range(16)]
+        idx[f"r{i}"] = {"run_id": f"r{i}", "mode": "classic", "slate_date": f"2026-10-{i:02d}", "slate_id": f"s{i}",
+                        "games": ["A@B"], "frozen": True, "complete_payout": i % 2 == 0,
+                        "contests": {"1": {"family": "large_gpp", "labels": 250}}, "played": played}
+    idx["late"] = dict(idx["r0"], run_id="late", frozen=False, slate_date="2027-01-01")  # a POST_LOCK run never counts
+    c = evidence_counts(idx, "classic")
+    assert (c.slate_dates, c.slate_groups, c.skater_games, c.goalie_starts, c.ownership_labels) == (25, 25, 6250, 400, 6250)
+    assert c.complete_payout_dates == 13 and c.groups_by_family == {"large_gpp": 25}
+    g = gate_report(idx, "classic")
+    assert g["tier"] == "rate_correction" and g["allowed"]["rate_correction"] and not g["allowed"]["field_fit"]
+    assert any("slate_groups 25 < 30" in s for s in g["shortfalls"]["ownership_fit"])
+    s = gate_report(idx, "showdown")
+    assert s["tier"] == "every_run" and s["counts"]["slate_groups"] == 0
+
+
+def test_settle_command_writes_grades_ledger_notes_and_backlog_and_keeps_the_frozen_files(tmp_path, capsys):
+    from datetime import datetime, timezone
+
+    from conftest import TESTS
+    from nhl_dfs.build.notes import write_run_notes
+    from nhl_dfs.build.manifest import read_manifest
+    from nhl_dfs.build.run import run_slate
+    from nhl_dfs.cli import main
+
+    ls = TESTS / "fixtures" / "late_swap" / "classic"
+    r = run_slate(ls / "DKSalaries.csv", ls / "DKEntries.template.csv", offline=True, out_root=tmp_path / "runs",
+                  clock=lambda: datetime(2026, 10, 15, 12, 0, tzinfo=timezone.utc))
+    sdir = tmp_path / "standings"
+    sdir.mkdir()
+    hdr = "Rank,EntryId,EntryName,TimeRemaining,Points,Lineup,,Player,Roster Position,%Drafted,FPTS\r\n"
+    body = "".join(f"{i + 1},{e},bleeski,0,{50 - i},,,,,,\r\n" for i, e in enumerate(
+        ["7100000001", "7100000002", "7100000003", "7100000004", "7100000005"]))
+    (sdir / "contest-standings-297000001.csv").write_bytes(("﻿" + hdr + body).encode("utf-8"))
+    bl = tmp_path / "BACKLOG.md"
+    bl.write_bytes(b"# Backlog\r\n\r\n| ID | a | b | c | d | e | f | g | h | i |\r\n|---|---|---|---|---|---|---|---|---|---|\r\n"
+                   b"| B1 | x | x | x | x | x | x | x | x | |\r\n")
+    args = ["settle", r.run.run_id, str(sdir), "--runs-root", str(tmp_path / "runs"), "--ledger-root",
+            str(tmp_path / "ledger"), "--backlog", str(bl), "--no-boxscores"]
+    assert main(args) == 0
+    out = capsys.readouterr().out
+    assert "SETTLE=OK" in out and "FREEZE_CHECK=OK" in out and "FORECAST=PRE_LOCK" in out
+    assert "PAYOUT_SOURCE=UNKNOWN" in out and "UNKNOWN_FEES=$5.00" in out and "BACKLOG B24: already holds" in out
+    assert (r.run.path / "settle" / "grades.json").exists() and (tmp_path / "ledger" / "ledger.parquet").exists()
+    assert (tmp_path / "ledger" / "winnings_needed" / f"{r.run.run_id}.csv").exists()  # not in a fixture folder
+    notes = (r.run.path / "RUN_NOTES.md").read_text(encoding="utf-8")
+    assert notes.count("## Settlement") == 1 and "Forecasts: not graded" in notes
+    write_run_notes(r.run, read_manifest(r.run))  # a later rewrite keeps the Settlement section
+    assert (r.run.path / "RUN_NOTES.md").read_text(encoding="utf-8").count("## Settlement") == 1
+    assert main(args) == 0  # a second settle: one ledger copy, one notes section, no duplicate backlog rows
+    from nhl_dfs.learn import ledger as lg
+
+    assert len(lg.read(tmp_path / "ledger")) == 5
+    assert (r.run.path / "RUN_NOTES.md").read_text(encoding="utf-8").count("## Settlement") == 1
+    assert bl.read_bytes().count(b"| B") == 1
