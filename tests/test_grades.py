@@ -199,3 +199,25 @@ def test_settle_command_writes_grades_ledger_notes_and_backlog_and_keeps_the_fro
     assert len(lg.read(tmp_path / "ledger")) == 5
     assert (r.run.path / "RUN_NOTES.md").read_text(encoding="utf-8").count("## Settlement") == 1
     assert bl.read_bytes().count(b"| B") == 1
+
+
+def test_a_rehearsal_clocked_run_written_after_the_first_game_is_not_pre_lock(tmp_path):
+    import json
+    import os
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+
+    from nhl_dfs.intake.salary import GameInfo
+    from nhl_dfs.learn.settle import forecast_status
+
+    first = datetime(2026, 9, 29, 23, 0, tzinfo=timezone.utc)
+    pool = SimpleNamespace(games={"A@B": GameInfo("B", "A", "", first)})
+    (tmp_path / "scenario").mkdir()
+    meta = tmp_path / "scenario" / "meta.json"
+    meta.write_text(json.dumps({}), encoding="utf-8")
+    run = SimpleNamespace(path=tmp_path)
+    m = {"created_utc": "2026-09-29T20:00:00Z"}  # a pinned clock, before the first game
+    os.utime(meta, (datetime(2026, 9, 29, 22, 0, tzinfo=timezone.utc).timestamp(),) * 2)
+    assert forecast_status(run, m, pool)[0] == "PRE_LOCK"
+    os.utime(meta, (datetime(2026, 9, 30, 17, 0, tzinfo=timezone.utc).timestamp(),) * 2)  # written the next day
+    assert forecast_status(run, m, pool)[0] == "POST_LOCK"

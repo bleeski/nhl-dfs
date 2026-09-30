@@ -42,13 +42,19 @@ def frozen_hashes(run) -> dict[str, str]:
     return out
 
 
-def forecast_status(m: dict, pool) -> tuple[str, str]:
+def forecast_status(run, m: dict, pool) -> tuple[str, str]:
+    """PRE_LOCK only when the manifest's creation time AND the forecast files' write times (the file system's
+    clock, which a rehearsal clock cannot set back) are all before the slate's first game."""
     first = min(g.start_utc for g in pool.games.values())
     created = datetime.fromisoformat(m["created_utc"].replace("Z", "+00:00"))
-    if created < first:
-        return "PRE_LOCK", f"run created {_iso(created)}, first game {_iso(first)}"
-    return "POST_LOCK", (f"run created {_iso(created)} after the first game {_iso(first)}: graded as a plumbing check, "
-                         "never counted as evidence")
+    files = [run.path / "field.json", run.path / "scenario" / "meta.json", run.path / "scenario" / "fields.json"]
+    written = [datetime.fromtimestamp(p.stat().st_mtime, timezone.utc) for p in files if p.exists()]
+    last = max(written) if written else None
+    if created < first and (last is None or last < first):
+        return "PRE_LOCK", (f"run created {_iso(created)}, forecast files written by {_iso(last) if last else 'n/a'}, "
+                            f"first game {_iso(first)}")
+    return "POST_LOCK", (f"run created {_iso(created)}, forecast files written {_iso(last) if last else 'n/a'}, first game "
+                         f"{_iso(first)}: not a pre-lock forecast; graded as a plumbing check, never counted as evidence")
 
 
 # -- evidence index and gates ------------------------------------------------------------------------------------------
@@ -161,7 +167,7 @@ def run(run_id: str, standings_path, *, runs_root, prize_paths=(), winnings_path
     before = frozen_hashes(run)
     m = read_manifest(run)
     pool = read_salary(run.inputs / "DKSalaries.csv")
-    status, detail = forecast_status(m, pool)
+    status, detail = forecast_status(run, m, pool)
     notes: list[str] = []
     all_st, st_notes = standings_mod.read_all(standings_path)
     notes += st_notes
