@@ -362,3 +362,40 @@ def test_skill_entry_points_take_positional_paths(full_classic, tmp_path, capsys
                      "--outputs-root", str(outs), "--as-of", "2026-10-15T12:00:00Z"])
     out = capsys.readouterr().out
     assert code == 0 and "FILE_VALID=TRUE" in out and "OBJECTIVE=" in out
+
+
+def test_latest_resolves_to_a_run_of_the_exports_mode_and_entries(full_classic, tmp_path):  # noqa: F811
+    from nhl_dfs import cli
+    from conftest import mini_pair
+
+    run, runs, outs = _copy(full_classic, tmp_path)
+    sd = run_slate(*mini_pair("showdown"), offline=True, baseline_only=True, out_root=runs, outputs_root=outs,
+                   clock=lambda: datetime(2026, 9, 28, 18, 0, tzinfo=timezone.utc))  # newer, but Showdown
+    assert sd.ok
+    export = run.version_file(run.current_version())
+    assert cli._latest_for_entries(runs, export) == run.run_id
+    assert cli._latest_for_entries(runs, sd.run.version_file(1)) == sd.run.run_id
+
+
+def test_a_packet_over_the_cap_ends_qa_without_a_crash(full_classic, tmp_path, capsys, monkeypatch):  # noqa: F811
+    from nhl_dfs import cli
+    from nhl_dfs.build import packet
+
+    run, runs, outs = _copy(full_classic, tmp_path)
+    real = packet.load_qa_config
+
+    def tiny():
+        cfg = real()
+        cfg["packet"]["max_tokens"] = 100
+        return cfg
+
+    monkeypatch.setattr(packet, "load_qa_config", tiny)
+    code = cli.main(["qa-packet", "--run", run.run_id, "--runs-root", str(runs), "--outputs-root", str(outs), "--round", "1",
+                     "--as-of", "2026-10-15T12:00:00Z"])
+    assert code == 1 and "QA_PERMITTED=NO: packet could not be built" in capsys.readouterr().out
+
+
+def test_project_settings_deny_model_writes_to_public_files():
+    s = json.loads((REPO / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    deny = set(s["permissions"]["deny"])
+    assert {"Write(outputs/**)", "Edit(outputs/**)", "Write(**/DKEntries*.csv)", "Edit(**/DKEntries*.csv)"} <= deny

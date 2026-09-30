@@ -1,5 +1,13 @@
 {
   "env": {
     "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "1"
+  },
+  "permissions": {
+    "deny": [
+      "Write(outputs/**)",
+      "Edit(outputs/**)",
+      "Write(**/DKEntries*.csv)",
+      "Edit(**/DKEntries*.csv)"
+    ]
   }
 }

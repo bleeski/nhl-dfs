@@ -1,7 +1,7 @@
 ---
 name: nhl-refresh
-description: Refresh a run's roles, goalie news and odds, re-simulate changed games and repair entries that need it (engine only). Usage /nhl-refresh <run-id|latest>
-argument-hint: <run-id or latest>
+description: Refresh a run's roles, goalie news and odds, re-simulate changed games and repair entries that need it (engine only). Usage /nhl-refresh <run-id>
+argument-hint: <run-id (the run= value /nhl-run printed)>
 disable-model-invocation: true
 shell: powershell
 allowed-tools: PowerShell(.\nhl.ps1 *)

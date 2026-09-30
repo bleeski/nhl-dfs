@@ -398,6 +398,29 @@ def cmd_roles(args: argparse.Namespace) -> int:
     return 0
 
 
+def _latest_for_entries(runs_root: Path, entries_path) -> str | None:
+    """The newest run (by manifest creation time) of the export's mode whose input entries include every entry id in
+    the export: a Classic export never resolves to tonight's Showdown run."""
+    import json
+
+    from nhl_dfs.intake.entries import read_entries
+
+    cur = read_entries(entries_path)
+    want = {e.entry_id for e in cur.entries}
+    best = None
+    for d in runs_root.iterdir() if runs_root.is_dir() else []:
+        try:
+            m = json.loads((d / "manifest.json").read_text(encoding="utf-8"))
+            if m.get("mode") != cur.mode.value:
+                continue
+            have = {e.entry_id for e in read_entries(d / "inputs" / "DKEntries.csv").entries}
+        except (OSError, ValueError):
+            continue
+        if want <= have and (best is None or (m.get("created_utc") or "") > best[0]):
+            best = (m.get("created_utc") or "", d.name)
+    return best[1] if best else None
+
+
 def cmd_late_swap(args: argparse.Namespace) -> int:
     from nhl_dfs.build import late_swap
 
@@ -410,7 +433,13 @@ def cmd_late_swap(args: argparse.Namespace) -> int:
         print("late-swap needs --run <id> and --entries <current DKEntries.csv downloaded from DK>")
         return 2
     if args.run == "latest":
-        args.run = _qa_run(args)[0].run_id
+        found = _latest_for_entries(_roots(args)[0], args.entries)
+        if found is None:
+            print("FILE_VALID=FALSE")
+            print(f"reason: no run under {_roots(args)[0]} matches this export's mode and entry ids; pass --run <id>")
+            return 1
+        args.run = found
+        print(f"latest matching run: {found}")
     runs_root, outputs_root = _roots(args)
     print(f"mode: {'fast repair (only entries that need it)' if args.fast else 'full re-optimize of open cells'}")
     result = late_swap.run(args.run, args.entries, offline=args.offline, fast=args.fast, runs_root=runs_root,
@@ -487,7 +516,11 @@ def cmd_slate(args: argparse.Namespace) -> int:
     if not ok:
         print(f"QA_PERMITTED=NO: {why}")
         return 0
-    p = packet.build(run, 1, cfg, now=now, runs_root=runs_root)
+    try:
+        p = packet.build(run, 1, cfg, now=now, runs_root=runs_root)
+    except ValueError as exc:  # over the cap even after trimming: QA ends, the published file stands
+        print(f"QA_PERMITTED=NO: packet could not be built ({exc}); the checked file stands")
+        return 0
     (controller.qa_dir(run) / "packet_1.json").write_text(json.dumps(p, indent=1, ensure_ascii=False), encoding="utf-8")
     print(f"QA_PERMITTED=YES: {why} (packet_id {p['packet_id']}, about {p['size']['est_tokens']} tokens)")
     print("----- PACKET JSON (pass inline, verbatim) -----")
@@ -538,7 +571,11 @@ def cmd_qa_packet(args: argparse.Namespace) -> int:
     if not ok:
         print(f"QA_PERMITTED=NO: {why}")
         return 1
-    p = packet.build(run, int(args.round), cfg, now=now, canary=args.canary, runs_root=runs_root)
+    try:
+        p = packet.build(run, int(args.round), cfg, now=now, canary=args.canary, runs_root=runs_root)
+    except ValueError as exc:
+        print(f"QA_PERMITTED=NO: packet could not be built ({exc}); the checked file stands")
+        return 1
     path = controller.qa_dir(run) / f"packet_{int(args.round)}.json"
     path.write_text(json.dumps(p, indent=1, ensure_ascii=False), encoding="utf-8")
     print(f"QA_PERMITTED=YES: {why}")

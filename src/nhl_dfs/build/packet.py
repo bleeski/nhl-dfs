@@ -240,6 +240,11 @@ def _flags(v: RunView, n_by: Counter, k: int) -> list[dict]:
     return out[:k]
 
 
+def _top(d: dict, n: int) -> dict:
+    """The n largest shares (a 150-entry Showdown can use dozens of Captains)."""
+    return dict(sorted(d.items(), key=lambda kv: (-float(kv[1]), kv[0]))[:n])
+
+
 def acceptance(risk_cfg: dict, qa_cfg: dict, fam_cfg: dict) -> dict:
     """The metrics and rules a proposal is judged by, declared before any proposal exists."""
     from nhl_dfs.build.objectives import FAMILY_OBJECTIVE
@@ -293,8 +298,8 @@ def build(run, round_no: int, cfg: dict | None = None, *, now: datetime | None =
                       "exp_payout": (sc.get("portfolio") or {}).get("exp_payout")},
         "locks": {"counts": ls.counts(), "started_games": sorted(ls.started_games)},
         "exposures": [_person_line(v, pk, n_by[pk], fee_by[pk], total_fee) for pk in top[: int(pc["exposures"])]],
-        "goalie_share": conc.get("goalie") or {},
-        "captain_share": conc.get("captain") or {},
+        "goalie_share": _top(conc.get("goalie") or {}, 10),
+        "captain_share": _top(conc.get("captain") or {}, 10),
         "game_share": conc.get("game") or {},
         "shared_failure": conc.get("shared_failure"),
         "stacks": [{"family": s, "lineups": n} for s, n in stacks.most_common(int(pc["stacks"]))],
