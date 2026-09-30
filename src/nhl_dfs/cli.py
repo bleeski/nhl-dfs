@@ -769,7 +769,7 @@ def cmd_settle(args: argparse.Namespace) -> int:
             print(f"BONUS_CALIBRATION: {bonus_summary(fg['bonus_rate_calibration'])}")
         sc = fg.get("start_probability_check") or {}
         if sc.get("goalies"):
-            print(f"P_START: saved at build, {d.get('status', '')[:5]}; max |z| {sc['max_abs_z']} vs the frozen draws "
+            print(f"P_START: saved at build; max |z| {sc['max_abs_z']} vs the frozen draws "
                   f"({'within' if sc['within_3_se'] else 'OUTSIDE'} 3 SE); Brier {d.get('brier')}")
     for mode, gt in rec["gates"].items():
         print(f"GATE {mode}: tier {gt['tier']}; allowed: {', '.join(k for k, v in gt['allowed'].items() if v) or 'none'}")

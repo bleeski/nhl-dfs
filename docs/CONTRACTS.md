@@ -142,6 +142,16 @@ coerced to a known value (CLAUDE.md); other vocabularies here that have no
   or goalie cap, Showdown Captain cap 1 for 2 to 3 entries. Fee-share budgets compare against max(budget, LPT floor).
 - Frontier: five kappas (risk.yaml); dominated points dropped, identical portfolios share a row; choose the highest tail
   utility inside the budget, else the least-risk point (recorded). Budget is the [BEN] flag 2 placeholder.
+- Frozen record (backlog B25, B26, B28): beside each kept selection and referee chunk, `flags_XXXX.npy` holds per-draw
+  indicators `sim/score.FLAG_NAMES` (dressed, started, hat trick, 5+ SOG, 3+ blocks, 3+ points, any SH point, shutout,
+  35+ saves), `(F, P, ceil(size/8))` uint8 packed along the draws (`np.packbits`, little bit order), same whole-chunk
+  truncation as the points; `meta.json` names them (`flags`) and adds `participation`: per person `p_sim` (the
+  simulator's dress or start probability), `mask`, `p_play`, per goalie `p_start` and its source (rotation, Daily
+  Faceoff state, team page, override). Cache format stays 1: older caches load and settle as before. `Outcomes.started`
+  marks a goalie who started in net (a relief goalie is dressed, not started); it consumes no draws. Real 2026-09-29
+  Classic: +2.6 MB per stream (cache 21.2 to 26.4 MB), peak 657 to 675 MB, draws byte-identical.
+- Contest details (B24): every DK contest detail that answers during `run` (Phase B, provisional pass) is saved to
+  `runs/<id>/contests/dk_contest_<id>.json` with `sources.json`, before lock.
 
 ## Late swap and refresh objective (C9, `build/swap_objective.py`, `scenario_cache.py`, `live.py`)
 
@@ -171,6 +181,14 @@ coerced to a known value (CLAUDE.md); other vocabularies here that have no
   reported and the file is DEGRADED_REVIEW. An override and Daily Faceoff confirming different goalies is CONFLICTED
   (no repair). Reports created after `now` are ignored. `GOALIE_GATE=` CLEAR / NO_NEWS / CONFLICTED / NOT_STARTING
   and a goalie table end every run, late swap, refresh, overrides-apply and qa-apply output and RUN_NOTES.
+- Fresh salary file (B1, B27): `--salary` (late-swap: optional third positional; refresh: `<run-id> [salary]`) is checked
+  against the PARENT's own copy (`intake/salary.added_rows_diff`): accepted when it only adds rows (Status, Starting,
+  APPG may change); a removed or changed original row (ID, name, team, positions, salary, game info) or a new game is
+  refused with the field named. The child keeps the parent's slate id, stores the fresh file and cumulative
+  `salary_added_ids`; `SALARY_DIFF:` lists added players. The referee (`check_file(..., added_ids=)`, used by late
+  swap, QA and verify) accepts an older export's embedded list only when it lacks exactly declared added IDs. An export
+  listing IDs the salary file lacks is refused up front (re-download DKSalaries.csv). Refresh's child cache carries
+  the indicators and participation forward (re-simulated games from new outcomes, OUT persons cleared).
 - Scheduled refresh (`build/scheduled.py`, B23): one task (Ben registers it) runs the dispatcher every 5 minutes;
   the newest delivered, non-rehearsal run of each slate is refreshed once at T-60 and T-20 before its first lock
   (never inside T-5); a toast and `runs/_scheduler/notifications.log` on a changed file, a goalie alert, no goalie
@@ -184,7 +202,8 @@ coerced to a known value (CLAUDE.md); other vocabularies here that have no
 - `settle --run <id> --standings <csv|zip|folder>` (one call; the `/nhl-settle` skill preprocesses exactly it).
   Writes only `runs/<id>/settle/` (grades.json, settlement.md) and the Settlement section of RUN_NOTES.md (kept last
   by every later `write_run_notes`); FREEZE_CHECK hashes manifest, field.json, inputs, versions and scenario before
-  and after. Ledger `data/ledger/ledger.parquet` (NHL_DFS_LEDGER_ROOT), backlog `BACKLOG.md` (NHL_DFS_BACKLOG).
+  and after (plus `contests/`). Ledger `data/ledger/ledger.parquet` (NHL_DFS_LEDGER_ROOT), backlog `BACKLOG.md`
+  (NHL_DFS_BACKLOG).
 - Forecast: PRE_LOCK only if the manifest's `created_utc` AND the forecast files' write times are before the
   slate's first game; otherwise POST_LOCK, graded as a plumbing check and never counted as evidence. Only frozen
   files are graded: `scenario/fields.json` `own_by`/`dup_by`, `scenario/selection` draws. Nothing is rebuilt.
@@ -195,14 +214,20 @@ coerced to a known value (CLAUDE.md); other vocabularies here that have no
   = 1.5 x FLEX). Joins: normalized name + roster token; two candidates = CONFLICTED, never guessed; own entries by
   Entry ID. Names outside the salary file are reported (DK added them after the download).
 - Money per own entry: REPORTED (Ben's `winnings.csv` from DK My Contests) > EXACT (a final prize table: filled or
-  guaranteed; DK tie rule `objectives.split_tie`) > UNKNOWN (null, never $0). Tables: browser-saved
-  `dk_contest_<id>.json` beside the standings, `--prize-table`, or the raw DK cache; each labeled. An UNKNOWN entry
+  guaranteed; DK tie rule `objectives.split_tie`) > UNKNOWN (null, never $0). Tables, first found: `--prize-table`,
+  the run's pre-lock `contests/` copy (then its parent chain's), browser-saved `dk_contest_<id>.json` beside the
+  standings, an earlier settle's copy, the raw DK cache; each labeled. An UNKNOWN entry
   gets a row in a pre-filled `winnings.csv` (appended, Ben's lines kept). Net and drawdown over known payouts;
   incomplete when any payout is unknown. A re-settle replaces the run's ledger rows.
 - Grades: ownership (MAE all/active/top-20, weighted, bands, top-10 recall, CPT share, team totals, zero-observed
   mass, Pearson/Spearman, duplicate counts rescaled from the forecast's field size); forecasts (FPTS for points; NHL
-  box scores through the accepted crosswalk for participation only; goalies on nonzero draws; MAE, bias, CRPS,
-  p10-p90 coverage; goalie decisions from the draws' implied start probability; bonus rates NOT_AVAILABLE).
+  box scores through the accepted crosswalk for participation and bonus outcomes; MAE, bias, CRPS, p10-p90 coverage).
+  With frozen indicators: skaters on dressed draws, goalies on started draws (relief on relief draws); bonus-rate
+  calibration per bonus for every pool person in the box scores (hat trick, 5+ SOG, 3+ blocks, 3+ points; starters'
+  35+ saves and shutout; SH point not graded: no shorthanded points in box scores); goalie decisions and Brier from
+  the saved p_start, checked against the started share in Monte Carlo SE; play-probability Brier from saved p_play.
+  Older caches: skaters unconditional, goalies on nonzero draws, decisions and play probability from the nonzero
+  share, bonus rates NOT_AVAILABLE (each labeled).
 - Evidence: `data/ledger/graded.json`; `gates.tier` per mode from PRE_LOCK runs only (Showdown contests of one game
   = one group; a (date, game, person) outcome counts once across modes). Reported, never acted on.
 - Backlog: `learn/backlog.add` appends keyed rows only for deterministic defects and missing frozen artifacts;
