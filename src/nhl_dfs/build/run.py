@@ -109,6 +109,47 @@ def salary_statuses(pool: SalaryPool) -> dict[str, tuple[Participation, str]]:
     return out
 
 
+def salary_starting(pool: SalaryPool) -> dict[str, str]:
+    """role_id -> the salary file's Starting column text (DraftKings marks its starting goalie 'P'); {} if absent."""
+    text = pool.raw.decode("utf-8-sig")
+    records = list(csv.reader(io.StringIO(text, newline="")))
+    if not records:
+        return {}
+    header = records[0]
+    if header.count("Starting") != 1 or header.count("ID") != 1:
+        return {}
+    si, ii = header.index("Starting"), header.index("ID")
+    return {rec[ii].strip(): rec[si].strip() for rec in records[1:]
+            if len(rec) > max(si, ii) and rec[ii].strip() in pool.by_role_id}
+
+
+def dk_goalie_starters(pool: SalaryPool, st: dict | None = None) -> dict[str, str]:
+    """DK team -> person_key of the one goalie the salary file marks Starting=P (Ben, 2026-09-30: use DraftKings'
+    starting flag). A team with no P goalie, several, or a P goalie DraftKings lists OUT is left out."""
+    st = salary_statuses(pool) if st is None else st
+    flag = salary_starting(pool)
+    marked: dict[str, set[str]] = {}
+    for r in pool.rows:
+        if r.is_goalie and flag.get(r.role_id, "").upper() == "P":
+            marked.setdefault(r.team, set()).add(r.person_key)
+    out = {}
+    for team, keys in marked.items():
+        if len(keys) != 1:
+            continue
+        k = next(iter(keys))
+        rows = [r for r in pool.rows if r.person_key == k]
+        if any(st.get(r.role_id, (Participation.PLAYING, ""))[0] is Participation.OUT for r in rows):
+            continue
+        out[team] = k
+    return out
+
+
+def dk_backup_goalies(pool: SalaryPool, st: dict | None = None) -> set[str]:
+    """person_keys of goalies whose team has a DraftKings starter (Starting=P) other than them."""
+    starters = dk_goalie_starters(pool, st)
+    return {r.person_key for r in pool.rows if r.is_goalie and r.team in starters and r.person_key != starters[r.team]}
+
+
 def start_times(pool: SalaryPool) -> dict[str, datetime]:
     """role_id -> scheduled game start (UTC) from Game Info."""
     out: dict[str, datetime] = {}
@@ -237,6 +278,7 @@ def load_run_pool(run: RunDir):
     entries = read_entries(run.inputs / "DKEntries.csv")
     st = salary_statuses(pool)
     out = {pool.by_role_id[r].person_key for r, (p, _) in st.items() if p is Participation.OUT}
+    out |= dk_backup_goalies(pool, st)  # the same exclusion Phase A makes
     return pool, entries, pool_without(pool, _person_rows(pool, out)), st
 
 
@@ -407,17 +449,20 @@ def run_slate(
 
     st = salary_statuses(pool)
     out_people = {pool.by_role_id[rid].person_key for rid, (p, _) in st.items() if p is Participation.OUT}
-    excluded = _person_rows(pool, out_people)
+    backups = dk_backup_goalies(pool, st) - out_people  # DraftKings marks another goalie of the team Starting=P
+    excluded = _person_rows(pool, out_people | backups)
     questionable = [rid for rid, (p, _) in st.items() if p is Participation.QUESTIONABLE]
     unknown = {rid: raw for rid, (p, raw) in st.items() if p is Participation.UNKNOWN}
     m["news"]["csv"] = {
         "status_column": bool(st),
-        "excluded_out": _names(pool, excluded),
+        "excluded_out": _names(pool, _person_rows(pool, out_people)),
+        "excluded_dk_backup_goalies": _names(pool, _person_rows(pool, backups)),
         "questionable": _names(pool, questionable),
         "unknown": {pool.by_role_id[r].name: raw for r, raw in unknown.items()},
     }
     m["news"]["csv_summary"] = (
-        f"{len(out_people)} OUT/IR excluded, {len(_names(pool, questionable))} DTD kept as QUESTIONABLE, "
+        f"{len(out_people)} OUT/IR excluded, {len(backups)} goalie(s) excluded because DraftKings marks another goalie "
+        f"of their team Starting=P, {len(_names(pool, questionable))} DTD kept as QUESTIONABLE, "
         f"{len(unknown)} unrecognized (UNKNOWN, kept)" if st else "no Status column; nothing excluded"
     )
     if unknown:

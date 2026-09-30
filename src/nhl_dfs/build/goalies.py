@@ -8,7 +8,8 @@ DEGRADED_REVIEW. Lock semantics are C2c's, untouched.
 
 Per-goalie status (the table's column):
   CONFIRMED     this goalie is his team's confirmed starter
-  NOT STARTING  another goalie of his team is confirmed, or he is OUT (DK status or an accepted override)
+  NOT STARTING  another goalie of his team is confirmed or is DraftKings' starter (salary file Starting=P, the only P
+                of the team), or he is OUT (DK status or an accepted override)
   CONFLICTED    the sources disagree (Daily Faceoff CONFLICTED, or an accepted override confirms a different goalie
                 than Daily Faceoff does): never repaired automatically, flagged for Ben
   EXPECTED      he is the named, unconfirmed starter
@@ -135,7 +136,7 @@ def build(pool, *, dk_rec=None, csv_status=None, now: datetime, cache=None, offl
           overrides: list | None = None, inputs: tuple | None = None) -> Board:
     """The goalie board for this slate at `now`. inputs: (lines, reports, path, problems, page) from gather()
     (tests and callers that already hold them); otherwise gathered here. Never raises."""
-    from nhl_dfs.build.run import salary_statuses
+    from nhl_dfs.build.run import dk_goalie_starters, salary_statuses
     from nhl_dfs.models import roles as roles_mod
 
     try:
@@ -164,6 +165,11 @@ def build(pool, *, dk_rec=None, csv_status=None, now: datetime, cache=None, offl
     for r in pool.rows:
         if r.is_goalie:
             goalies.setdefault(r.team, set()).add(r.person_key)
+    try:  # Ben, 2026-09-30: DraftKings' own starting flag (salary file Starting=P) names the team's starter
+        dk_p = dk_goalie_starters(pool, csv_status)
+    except Exception as exc:
+        dk_p = {}
+        board.problems.append(f"salary file Starting column unreadable ({type(exc).__name__})")
 
     # accepted overrides still valid at now: goalie_start confirmations and participation OUT
     ovr_start: dict[str, tuple[str, Any]] = {}
@@ -201,9 +207,16 @@ def build(pool, *, dk_rec=None, csv_status=None, now: datetime, cache=None, offl
                 conflict = "; ".join(gr.notes[-1:]) or "Daily Faceoff sources disagree"
             elif df_conf:
                 starter, s_state, s_source, s_time = df_conf, "CONFIRMED", page_label, rep_utc
+            elif team in dk_p:
+                starter, s_state, s_source = dk_p[team], "DK", "DraftKings salary file Starting=P"
             elif gr.named and board.available:
                 via = "team page depth order" if gr.report is None else page_label
                 starter, s_state, s_source, s_time = gr.named, "EXPECTED", via, rep_utc
+        if not conflict and starter is None and team in dk_p:  # no role state at all: DraftKings' flag alone
+            starter, s_state, s_source = dk_p[team], "DK", "DraftKings salary file Starting=P"
+        if not conflict and s_state == "CONFIRMED" and team in dk_p and dk_p[team] != starter:
+            board.problems.append(f"{team}: {name[starter]} confirmed ({s_source}) but DraftKings marks {name[dk_p[team]]} "
+                                  "Starting=P; the confirmation is used")
         if conflict:
             board.conflicted_teams.add(team)
             board.problems.append(f"{team}: {conflict}")
@@ -223,6 +236,10 @@ def build(pool, *, dk_rec=None, csv_status=None, now: datetime, cache=None, offl
                 gl.repair = k != starter
                 if gl.repair:
                     gl.source = f"{name[starter]} confirmed for {team} ({s_source})"
+            elif starter is not None and s_state == "DK":
+                gl.status = EXPECTED if k == starter else NOT_STARTING
+                gl.repair = k != starter
+                gl.source = s_source if k == starter else f"DraftKings marks {name[starter]} as {team}'s starter (Starting=P)"
             elif starter is not None:
                 gl.status = EXPECTED if k == starter else NOT_EXPECTED
                 gl.source, gl.report_utc = s_source, s_time
