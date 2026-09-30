@@ -55,7 +55,18 @@ def render(rec: dict) -> str:
                      f"p10-p90 coverage {o.get('cover_p10_p90', float('nan')):.2f} (target 0.80); goalie starts "
                      + (f"{d.get('accuracy')} of {d.get('teams')} teams right" if d.get("teams") else d.get("status", ""))
                      + (f" (missed: {'; '.join(d['misses'])})" if d.get("misses") else ""))
-        lines.append(f"- Bonus-rate calibration: {fg['bonus_rate_calibration']}")
+        from nhl_dfs.learn.grade_forecasts import bonus_summary
+
+        lines.append(f"- Bonus-rate calibration: {bonus_summary(fg['bonus_rate_calibration'])}")
+        sc = fg.get("start_probability_check") or {}
+        if sc.get("goalies"):  # B26: only runs that saved their start probabilities
+            lines.append(f"- Saved goalie start probabilities: {sc['goalies']} goalies, max |z| {sc['max_abs_z']} against "
+                         f"the frozen draws ({'within' if sc['within_3_se'] else 'OUTSIDE'} 3 Monte Carlo SE); sources "
+                         + ", ".join(f"{k} {v}" for k, v in (d.get("sources") or {}).items()))
+        pp = fg.get("play_probability") or {}
+        if str(pp.get("status", "")).startswith("saved"):
+            lines.append("- Play probability Brier (saved at build): " + ", ".join(
+                f"{g} {pp[g]['brier']} (n {pp[g]['n']})" for g in ("F", "D", "G") if (pp.get(g) or {}).get("n")))
     else:
         lines.append("- Forecasts: not graded (the run saved no scenario cache)")
     for mode, gt in (rec.get("gates") or {}).items():

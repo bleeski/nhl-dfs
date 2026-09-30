@@ -115,7 +115,7 @@ def gate_report(idx: dict, mode: str) -> dict:
 def _backlog_rows(rec: dict, sl, joins, fg) -> list[backlog_mod.Row]:
     ev = f"{sl.slate_date} settle of {sl.run_id}"
     rows = []
-    if fg is not None and fg.bonus_rate_calibration.startswith("NOT_AVAILABLE"):
+    if fg is not None and isinstance(fg.bonus_rate_calibration, str) and fg.bonus_rate_calibration.startswith("NOT_AVAILABLE"):
         rows.append(backlog_mod.Row(
             "cache_event_counts_missing", ev,
             "Gap: the C8 scenario cache stores DK points per draw, not event counts, so the plan section 12 bonus "
@@ -123,7 +123,7 @@ def _backlog_rows(rec: dict, sl, joins, fg) -> list[backlog_mod.Row]:
             "Bonus-rate calibration (C11 grade_forecasts)", "Store per-draw bonus indicators (or event counts) for "
             "the selection draws in scenario/ at build; grade them at settle", "High: read the code",
             "A settle of a new run reports bonus-rate calibration per bonus from its own frozen files", "Medium"))
-    if fg is not None and fg.goalie_decisions.get("teams"):
+    if fg is not None and fg.goalie_decisions.get("teams") and str(fg.goalie_decisions.get("status", "")).startswith("implied"):
         rows.append(backlog_mod.Row(
             "frozen_goalie_p_start_missing", ev,
             "Gap: no goalie start probability is saved at build; settle uses the share of nonzero goalie draws as "

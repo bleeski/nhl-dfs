@@ -469,6 +469,8 @@ def _goalies(rng, gp: _Goalies, n: int, ga: np.ndarray, saves: np.ndarray, win: 
         if slot < m:
             col = gp.cols[slot]
             o.dressed[:, col] = st | re
+            if o.started is not None:
+                o.started[:, col] = st  # no draw consumed: the stream is unchanged
             o.saves[:, col] = np.where(st, sv_s, 0) + np.where(re, saves - sv_s, 0)
             o.ga[:, col] = np.where(st, ga_s, 0) + np.where(re, ga - ga_s, 0)
             rec = of_record == slot

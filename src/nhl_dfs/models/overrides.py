@@ -235,4 +235,5 @@ def apply_to_roles(roles, overrides, now: datetime | None = None):
             gr = out.goalies[r.team]
             gr.state, gr.confirmed, gr.named, gr.confirmed_at = GoalieState.CONFIRMED, r.person_key, r.person_key, o.effective_utc
             gr.p_start = {k: (1.0 if k == r.person_key else 0.0) for k in gr.p_start}
+            gr.notes.append(f"override: {r.person_key.split('|')[0]} confirmed starter")  # B26 source label
     return out

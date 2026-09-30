@@ -42,11 +42,22 @@ DISCLAIMER = ("uncalibrated scenario proxies: OUTCOME_CALIBRATION=UNVALIDATED (B
               "and 20,000 scenarios cannot resolve massive-field win rates precisely; never measured ROI, EV or ruin")
 
 
-def simulate_base(slate, params, n: int, seed: int, purpose: str) -> tuple[np.ndarray, list[str]]:
-    """(n, P) int32 base tenths in the simulator's person order, chunk by chunk (nothing written to disk)."""
+def simulate_base(slate, params, n: int, seed: int, purpose: str, flags_out: list | None = None,
+                  flags_keep: int = 0) -> tuple[np.ndarray, list[str]]:
+    """(n, P) int32 base tenths in the simulator's person order, chunk by chunk (nothing written to disk).
+    flags_out: a list that receives the (<= flags_keep, P, F) bool indicators (sim/score.bonus_flags) of the
+    first flags_keep draws (backlog B25, B28), taken from the same chunks' outcomes."""
     from nhl_dfs.sim import game, score
 
-    parts = [score.base_tenths(o) for o in game.iter_chunks(slate, params, n, seed, purpose)]
+    parts, fl, have = [], [], 0
+    for o in game.iter_chunks(slate, params, n, seed, purpose):
+        parts.append(score.base_tenths(o))
+        if flags_out is not None and have < flags_keep:
+            f = score.bonus_flags(o)
+            fl.append(f[: flags_keep - have])
+            have += len(fl[-1])
+    if flags_out is not None and fl:
+        flags_out.append(np.concatenate(fl, axis=0))
     return np.concatenate(parts, axis=0), sorted(params.persons)
 
 
@@ -103,9 +114,10 @@ def prior_persons(by_entry: dict, pool, proj) -> int:
 def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, runtime, seed, slate_id, outputs_root,
                       cache, m: dict, messages: list[str], prov: dict | None, v1_assignment, expect_sha: str, clock,
                       publish_fn, set_fields_fn, scenario_n: dict | None = None, play_prob: dict | None = None,
-                      confirmed_at: dict | None = None) -> None:
+                      confirmed_at: dict | None = None, roles=None) -> None:
     """play_prob, confirmed_at (C10, backlog B9): from the run's role state when it was built; play_prob then
-    replaces the configured DTD probability (priced once, see build/swap_objective.play_probs)."""
+    replaces the configured DTD probability (priced once, see build/swap_objective.play_probs). roles: the run's
+    RoleState, for each goalie's start-probability source in scenario/meta.json (B26)."""
     from nhl_dfs.models import contests as contests_mod
     from nhl_dfs.sim import cache as cache_mod
     from nhl_dfs.sim.slate import build_slate, fetch_odds
@@ -147,10 +159,13 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
     kept: dict[str, dict] = {}
     for purpose in ("design", "selection", "referee"):
         t = time.perf_counter()
-        base, keys = simulate_base(slate, proj, int(n[purpose]), seed, purpose)
+        fl: list = []
+        base, keys = simulate_base(slate, proj, int(n[purpose]), seed, purpose,
+                                   flags_out=fl if purpose in scache.PURPOSES else None, flags_keep=keep)
         if purpose in scache.PURPOSES:
             try:
-                kept[purpose] = scache.save_base(run.path, purpose, base, keep, int(slate.cfg["chunk_size"]))
+                kept[purpose] = scache.save_base(run.path, purpose, base, keep, int(slate.cfg["chunk_size"]),
+                                                 flags=fl[0] if fl else None)
             except OSError as exc:
                 messages.append(f"scenario cache not written ({type(exc).__name__}); late swap will fall back")
         sets[purpose] = ob.scenario_set(base, keys, work, purpose=purpose, seed=seed,
@@ -199,7 +214,8 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
                 n_opponents={cid: int(ctx.field_size - own_n[cid]) for cid, ctx in contexts.items()},
                 own_by={cid: {r: float(v) for r, v in own_by[cid].items()} for cid in contexts},
                 dup_by={cid: {k: float(v) for k, v in dup_by[cid].items()} for cid in contexts},
-                field_cal=field_cal.value, model_status=proj.source().value, play_prob=dict(play))
+                field_cal=field_cal.value, model_status=proj.source().value, play_prob=dict(play),
+                participation=scache.participation_record(proj, play, roles))
         except (OSError, TypeError, ValueError) as exc:
             messages.append(f"scenario cache not written ({type(exc).__name__}: {str(exc)[:80]}); late swap will fall back")
 

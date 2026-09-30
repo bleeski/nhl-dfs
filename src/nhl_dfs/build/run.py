@@ -501,7 +501,8 @@ def run_slate(
                           expect_sha=m["versions"][-1]["sha256"], clock=clock, publish_fn=_export_and_publish,
                           set_fields_fn=_set_assignment_fields, scenario_n=scenario_n,
                           play_prob=rm.play_prob if rm is not None else None,
-                          confirmed_at=rm.roles.confirmed_at() if rm is not None else None)
+                          confirmed_at=rm.roles.confirmed_at() if rm is not None else None,
+                          roles=rm.roles if rm is not None else None)
     except Exception as exc:  # the current version stays; never raised out of the run
         import traceback
 

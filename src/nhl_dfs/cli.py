@@ -743,10 +743,20 @@ def cmd_settle(args: argparse.Namespace) -> int:
     fg = rec["forecasts"]
     if fg:
         o, d = fg["overall"], fg["goalie_decisions"]
-        print(f"FORECASTS (PARTICIPATION={fg['participation_status']}; skaters unconditional on dressing): n {o.get('n')}, "
+        cond = "skaters conditional on dressing" if str(fg.get("skater_conditioning", "")).startswith("CONDITIONAL") \
+            else "skaters unconditional on dressing"
+        print(f"FORECASTS (PARTICIPATION={fg['participation_status']}; {cond}): n {o.get('n')}, "
               f"MAE {o.get('mae')}, bias "
               f"{o.get('bias')}, CRPS {o.get('crps')}, p10-p90 coverage {o.get('cover_p10_p90')}; goalie starts "
               + (f"{d.get('accuracy')} of {d.get('teams')} teams" if d.get("teams") else d.get("status")))
+        if not isinstance(fg["bonus_rate_calibration"], str):  # B25: a cache with per-draw indicators
+            from nhl_dfs.learn.grade_forecasts import bonus_summary
+
+            print(f"BONUS_CALIBRATION: {bonus_summary(fg['bonus_rate_calibration'])}")
+        sc = fg.get("start_probability_check") or {}
+        if sc.get("goalies"):
+            print(f"P_START: saved at build, {d.get('status', '')[:5]}; max |z| {sc['max_abs_z']} vs the frozen draws "
+                  f"({'within' if sc['within_3_se'] else 'OUTSIDE'} 3 SE); Brier {d.get('brier')}")
     for mode, gt in rec["gates"].items():
         print(f"GATE {mode}: tier {gt['tier']}; allowed: {', '.join(k for k, v in gt['allowed'].items() if v) or 'none'}")
     for b in rec["backlog"]:

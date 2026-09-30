@@ -33,6 +33,23 @@ def base_tenths(o: Outcomes, params=None) -> np.ndarray:
     return total.astype(np.int32)
 
 
+# Per-draw indicators the scenario cache keeps beside the points (backlog B25, B28): participation, then one
+# indicator per DK bonus in docs/rules (Classic and Showdown list the same bonuses). The shorthanded point bonus
+# pays per point; its indicator is "at least one". The thresholds are base_tenths' own expressions.
+FLAG_NAMES = ("dressed", "started", "hat_trick", "sog_5", "blocks_3", "points_3", "sh_point", "shutout", "saves_35")
+
+
+def bonus_flags(o: Outcomes) -> np.ndarray:
+    """(n, P, len(FLAG_NAMES)) bool. dressed: dressed (skater) or played in net (goalie, relief included);
+    started: a goalie who started in net, a skater who dressed."""
+    g = o.goals.astype(np.int32)
+    a = o.assists.astype(np.int32)
+    started = o.dressed if o.started is None else np.where(o.is_goalie[None, :], o.started, o.dressed)
+    cols = (o.dressed, started, g >= 3, o.sog >= 5, o.blocks >= 3, (g + a) >= 3, o.sh_pts > 0, o.shutout > 0,
+            o.saves >= 35)
+    return np.stack([np.asarray(c, bool) for c in cols], axis=-1)
+
+
 def role_tenths(base_person: np.ndarray, role_map) -> np.ndarray:
     """(n, R): role row r copies person column role_map[r]. CPT rows are NOT multiplied here."""
     return base_person[:, np.asarray(role_map, dtype=np.int64)]

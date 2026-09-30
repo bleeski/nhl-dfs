@@ -13,7 +13,7 @@ import numpy as np
 
 DECISIONS = {"ND": 0, "W": 1, "L": 2, "OTL": 3}
 
-PERSON_2D = ("dressed", "goals", "assists", "sog", "blocks", "sh_pts", "so_goals", "saves", "ga", "decision", "shutout")
+PERSON_2D = ("dressed", "goals", "assists", "sog", "blocks", "sh_pts", "so_goals", "saves", "ga", "decision", "shutout", "started")
 TEAM_2D = ("team_goals", "team_en", "team_sog", "team_pace")
 GAME_2D = ("game_tie", "game_ot", "game_so", "game_home_win")
 
@@ -45,6 +45,7 @@ class Outcomes:
     game_home_win: np.ndarray | None = None  # (n, G)
     seed: int = 0
     purpose: str = "design"
+    started: np.ndarray | None = None  # (n, P) bool: goalies only, started in net (a relief goalie is dressed, not started)
 
     @property
     def n(self) -> int:
@@ -65,7 +66,7 @@ def empty(person_keys: list[str], is_goalie: np.ndarray, n: int) -> Outcomes:
         return np.zeros((n, p), np.int16)
 
     return Outcomes(person_keys, np.asarray(is_goalie, bool), np.zeros((n, p), bool), z16(), z16(), z16(), z16(), z16(), z16(),
-                    z16(), z16(), np.zeros((n, p), np.int8), np.zeros((n, p), np.int8))
+                    z16(), z16(), np.zeros((n, p), np.int8), np.zeros((n, p), np.int8), started=np.zeros((n, p), bool))
 
 
 def concat(parts: list[Outcomes]) -> Outcomes:

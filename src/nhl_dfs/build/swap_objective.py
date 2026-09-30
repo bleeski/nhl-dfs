@@ -298,6 +298,12 @@ class ScenarioObjective:
             notes.append(f"scenario objective without a role state: cached draws, DTD masked at {q:g}")
         self.sets = {}
         kept: dict[str, dict] = {}
+        from nhl_dfs.sim.score import FLAG_NAMES
+
+        persist = persist_to is not None and self.slate is not None
+        carry = persist and cache.flag_names == list(FLAG_NAMES)  # B25, B28: the child keeps the indicators too
+        if persist:
+            self.record["flags"] = "carried to the child cache" if carry else "none (the parent cache has no indicators)"
         for purpose in scache.PURPOSES:
             base = np.zeros((n[purpose], len(keys_all)), np.int32)
             cached = cache.base(purpose, n[purpose], start[purpose])
@@ -306,12 +312,27 @@ class ScenarioObjective:
                 a, b = zip(*src)
                 base[:, list(b)] = cached[:, list(a)]
             del cached
+            fl = None
+            if carry:
+                cf = cache.flags(purpose, n[purpose], start[purpose])
+                if cf is None:
+                    carry = False
+                    self.record["flags"] = "none (the parent's indicators could not be read: " + "; ".join(cache.notes[-1:]) + ")"
+                    kept = {p: {k: v for k, v in rec.items() if k != "flags"} for p, rec in kept.items()}
+                else:
+                    fl = np.zeros((n[purpose], len(keys_all), cf.shape[2]), bool)
+                    if src:
+                        fl[:, list(b)] = cf[:, list(a)]
+                    del cf
             if self.resim:
-                self._splice(base, col, purpose, n[purpose])
+                self._splice(base, col, purpose, n[purpose], flags=fl)
             for k in out_people:
                 base[:, col[k]] = 0  # ruled OUT since the draws were made: never scores
-            if persist_to is not None and self.slate is not None:  # refresh: the child run carries the updated draws
-                kept[purpose] = scache.save_base(persist_to, purpose, base, n[purpose], chunk)
+                if fl is not None:
+                    fl[:, col[k]] = False
+            if persist:  # refresh: the child run carries the updated draws
+                kept[purpose] = scache.save_base(persist_to, purpose, base, n[purpose], chunk, flags=fl)
+            del fl
             if play:
                 mask = ob.play_mask(n[purpose], keys_all, play, cache.seed, int(cache.meta["purposes"][purpose]["code"]))
                 base = np.where(mask, base, 0).astype(np.int32)
@@ -324,7 +345,8 @@ class ScenarioObjective:
                                contest_family=cache.contest_family, fields=cache.families, n_opponents=cache.n_opponents,
                                own_by=cache.own_by, dup_by=cache.dup_by,
                                field_cal=cache.meta.get("field_calibration", "PRIOR"),
-                               model_status=self.table.source().value, play_prob=play)
+                               model_status=self.table.source().value, play_prob=play,
+                               participation=scache.participation_record(self.table, play, rm.roles if rm is not None else None))
             self.record["persisted"] = info
         self.record["build_s"] = round(time.perf_counter() - t, 3)
         self._fields: dict[tuple[str, str], tuple[SortedField, ob.FieldSpec]] = {}
@@ -358,7 +380,8 @@ class ScenarioObjective:
         started = {k for k in changed if k in started_games}
         return changed, changed - started
 
-    def _splice(self, base: np.ndarray, col: dict, purpose: str, n: int) -> None:
+    def _splice(self, base: np.ndarray, col: dict, purpose: str, n: int, flags: np.ndarray | None = None) -> None:
+        """Replace the re-simulated games' columns of base (and of flags, the (n, P, F) indicators, when given)."""
         from nhl_dfs.sim import game, score
 
         teams = {c for g in self.slate.games if g.key in self.resim for c in (g.home, g.away)}
@@ -366,14 +389,24 @@ class ScenarioObjective:
             rows = self.pool.persons[k]
             if (rows.classic or rows.flex or rows.cpt).team in teams:
                 base[:, col[k]] = 0
+                if flags is not None:
+                    flags[:, col[k]] = False
         if getattr(self, "_prep", None) is None:  # one preparation (assist pilot included) for both streams
             self._prep = game.prepare(self.slate, self.table, self.resim)
             game.check_memory(self._prep, self.slate.cfg)
-        new = np.concatenate([score.base_tenths(game.simulate_chunk(self._prep, size, self.cache.seed, purpose, ci, self.resim))
-                              for ci, size in enumerate(game.chunk_bounds(n, self.slate.cfg))], axis=0)
+        parts, fparts = [], []
+        for ci, size in enumerate(game.chunk_bounds(n, self.slate.cfg)):
+            o = game.simulate_chunk(self._prep, size, self.cache.seed, purpose, ci, self.resim)
+            parts.append(score.base_tenths(o))
+            if flags is not None:
+                fparts.append(score.bonus_flags(o))
+        new = np.concatenate(parts, axis=0)
+        newf = np.concatenate(fparts, axis=0) if flags is not None else None
         for j, k in enumerate(sorted(self.table.persons)):
             if k in col and self.table.persons[k].team in teams:
                 base[:, col[k]] = new[:, j]
+                if flags is not None:
+                    flags[:, col[k]] = newf[:, j]
 
     def surrogate(self) -> dict[str, float]:
         """The MILP's linear objective: scenario mean points per role (Captain at 1.5x); it only proposes
