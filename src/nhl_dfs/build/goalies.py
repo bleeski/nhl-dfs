@@ -287,7 +287,7 @@ def cli_lines(rec: dict | None) -> list[str]:
     rows = rec.get("rows", [])
     out = [f"GOALIE_GATE={rec['GOALIE_GATE']}"]
     if rec["GOALIE_GATE"] == "NO_NEWS":
-        out.append("  goalie news unavailable: " + "; ".join(rec.get("problems", [])[:2]))
+        out.append("  " + "; ".join(rec.get("problems", [])[:2]))
     by: dict[tuple, list] = {}
     for r in rows:
         by.setdefault((r["goalie"], r["team"], r["status"], r["starter"], r["starter_state"], r["source"],

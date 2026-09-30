@@ -93,13 +93,14 @@ def due_window(c: Candidate, now: datetime, cfg: dict, done: set[str]) -> tuple[
 
 
 def toast(title: str, message: str) -> str:
-    """A Windows toast through tools/notify.ps1 (WinRT; no module, no network). Returns 'shown' or the error."""
+    """A Windows toast through tools/notify.ps1 (WinRT; no module, no network). Returns 'sent' (the notifier
+    accepted it; Focus Assist or notification settings can still hide it) or the error."""
     try:
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         r = subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(NOTIFY_PS1),
                             "-Title", title, "-Message", message], capture_output=True, text=True, timeout=30,
                            creationflags=flags)
-        return "shown" if r.returncode == 0 else f"toast failed: {(r.stderr or r.stdout).strip()[:200]}"
+        return "sent" if r.returncode == 0 else f"toast failed: {(r.stderr or r.stdout).strip()[:200]}"
     except Exception as exc:
         return f"toast failed: {type(exc).__name__}"
 
