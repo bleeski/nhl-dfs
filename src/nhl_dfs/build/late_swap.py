@@ -177,6 +177,34 @@ def fetch_draftables_bounded(entries: EntriesFile, cache, budget_s: float):
     return box["d"], f"draftables fetched ({len(box['d'].rows)} rows)"
 
 
+def accepted_overrides(parent, pool, now: datetime) -> tuple[list, dict[str, str]]:
+    """(Override objects still valid at `now`, person_key -> exclusion reason) from the parent run's
+    news/accepted_overrides.json. A participation OUT excludes the person; a goalie_start confirmation
+    excludes the team's other goalies (they will not start: backlog B17 on the override path)."""
+    path = parent.path / "news" / "accepted_overrides.json"
+    if not path.exists():
+        return [], {}
+    from nhl_dfs.build.controller import override_from
+
+    objs, out = [], {}
+    for d in json.loads(path.read_text(encoding="utf-8")):
+        try:
+            o = override_from(d)
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not (o.effective_utc <= now < o.expiry_utc) or o.role_id not in pool.by_role_id:
+            continue
+        objs.append(o)
+        row = pool.by_role_id[o.role_id]
+        if o.field == "participation" and o.new == "OUT":
+            out[row.person_key] = "override OUT"
+        elif o.field == "goalie_start" and o.new is True:
+            for r in pool.rows:
+                if r.is_goalie and r.team == row.team and r.person_key != row.person_key:
+                    out[r.person_key] = f"not the confirmed {row.team} starter ({row.name})"
+    return objs, out
+
+
 # -- re-solve ------------------------------------------------------------------------------
 
 @dataclass
@@ -411,6 +439,14 @@ def swap_core(
         m["statuses"]["NEWS_STATE"] = (NewsState.PARTIAL if missing else NewsState.FULL).value
         out_people |= {pool.by_role_id[r].person_key for r, s in rec.rows.items()
                        if s.participation is Participation.OUT or s.eligibility is Eligibility.DISABLED}
+    # C10: overrides accepted on the parent run (overrides-apply or a QA correctness repair) and still valid now
+    overrides, ovr_out = accepted_overrides(parent, pool, clock())
+    if ovr_out:
+        out_people |= set(ovr_out)
+        m["news"]["override_exclusions"] = {pool.persons[k].classic.name if pool.persons[k].classic else k: why
+                                            for k, why in sorted(ovr_out.items())}
+        messages.append(f"{len(ovr_out)} person(s) excluded from free cells by accepted overrides (OUT, or not the "
+                        "confirmed starting goalie)")
     excluded_rows = frozenset(r.role_id for r in pool.rows if r.person_key in out_people)
     m["news"]["csv_summary"] = (f"{len(out_people)} OUT/IR/DISABLED person(s) excluded from free cells, "
                                 f"{len(unknown)} unrecognized status(es) kept as UNKNOWN")
@@ -482,7 +518,7 @@ def swap_core(
             objective, pool=pool, work=pool_without(pool, excluded_rows), st=st, started_games=ls.started_games,
             dk_rec=rec, runs_root=runs_root, run_id=parent.run_id, offline=offline, cache=cache, clock=clock, now=clock(),
             runtime=runtime, fast=fast, optional_ok=ok, live=standings, entry_ids=entry_ids, apply_state=apply_state,
-            persist_to=run.path if eager_objective else None, odds_snapshot=odds_snapshot)
+            persist_to=run.path if eager_objective else None, odds_snapshot=odds_snapshot, overrides=overrides)
         linear = resolved.linear
         m["objective"] = resolved.record()
         for f in resolved.fallbacks:

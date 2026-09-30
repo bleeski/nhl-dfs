@@ -207,3 +207,68 @@ def test_rounds_two_and_three_need_a_correctness_repair(full_classic, tmp_path):
     run2, runs2, outs2 = _copy(full_classic, tmp_path / "b")
     ok3, why3 = controller.permitted(run2, 1, cfg, late, runs2)
     assert not ok3 and ("T-8" in why3 or "nothing open" in why3)
+
+
+# -- CLI and the override path -----------------------------------------------------------------------------
+
+def test_cli_qa_round_flow(full_classic, tmp_path, capsys):  # noqa: F811
+    from nhl_dfs import cli
+
+    run, runs, outs = _copy(full_classic, tmp_path)
+    base = ["--run", run.run_id, "--runs-root", str(runs), "--outputs-root", str(outs), "--as-of", "2026-10-15T12:00:00Z"]
+    assert cli.main(["qa-packet", *base, "--round", "1", "--canary", "CANARY-XYZ"]) == 0
+    out = capsys.readouterr().out
+    assert "QA_PERMITTED=YES" in out and "CANARY-XYZ" in out
+    body = out.split("----- PACKET JSON (pass inline, verbatim) -----", 1)[1].strip()
+    assert json.loads(body)["round"] == 1
+    reply = tmp_path / "proposals_1.json"
+    reply.write_text('{"packet_id": "x", "proposals": []}', encoding="utf-8")
+    assert cli.main(["qa-apply", *base, "--round", "1", "--proposals", str(reply)]) == 0
+    out = capsys.readouterr().out
+    assert "ANOTHER_ROUND=NO" in out and "zero changes" in out
+    assert cli.main(["qa-packet", *base, "--round", "2"]) == 1
+    assert "QA_PERMITTED=NO" in capsys.readouterr().out
+    assert cli.main(["research-request", *base]) == 0
+    out = capsys.readouterr().out
+    assert "RESEARCH_PLAYERS=" in out and json.loads(out.split("-----\n", 1)[1])["players"]
+
+
+def test_overrides_apply_repairs_a_non_starting_goalie_and_late_swap_honors_it(full_classic, tmp_path, capsys):  # noqa: F811
+    from nhl_dfs import cli
+    from nhl_dfs.build import late_swap
+
+    run, runs, outs = _copy(full_classic, tmp_path)
+    pool, eid, x, y = _goalie_case(run)
+    v_before = run.current_version()
+    delivered = run.version_file(v_before)
+    reply = tmp_path / "overrides_1.json"
+    reply.write_text(json.dumps({"request_id": run.run_id, "overrides": [_override(y.role_id, "goalie_start", False, True)],
+                                 "unresolved": []}), encoding="utf-8")
+    base = ["--run", run.run_id, "--runs-root", str(runs), "--outputs-root", str(outs), "--as-of", "2026-10-15T12:00:00Z"]
+    assert cli.main(["overrides-apply", *base, "--file", str(reply)]) == 0
+    out = capsys.readouterr().out
+    assert "OVERRIDES_ACCEPTED=1" in out
+    assert run.current_version() == v_before + 1 and all(x not in lu for lu in _current(run).values())
+    assert (run.path / "news" / "overrides_1_result.json").exists()
+    # a fast late swap from the export Ben still has (the old file) repairs the same goalie from the stored override
+    s = late_swap.run(run.run_id, delivered, offline=True, runs_root=runs, outputs_root=outs, as_of=BEFORE)
+    assert s.ok and "override_exclusions" in s.manifest["news"]
+    assert all(x not in lu for lu in (
+        [cell_role_id(c) for c in e.cells if cell_role_id(c)] for e in read_entries(s.run.version_file(1)).entries))
+
+
+def test_env_vars_redirect_the_default_roots(monkeypatch, tmp_path):
+    import importlib
+
+    from nhl_dfs import cli
+
+    monkeypatch.setenv("NHL_DFS_RUNS_ROOT", str(tmp_path / "r"))
+    monkeypatch.setenv("NHL_DFS_OUTPUTS_ROOT", str(tmp_path / "o"))
+    mod = importlib.reload(cli)
+    try:
+        args = mod.build_parser().parse_args(["late-swap", "--run", "x"])
+        assert mod._roots(args) == (tmp_path / "r", tmp_path / "o")
+    finally:
+        monkeypatch.delenv("NHL_DFS_RUNS_ROOT")
+        monkeypatch.delenv("NHL_DFS_OUTPUTS_ROOT")
+        importlib.reload(cli)

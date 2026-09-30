@@ -143,7 +143,7 @@ def _avail(pp) -> float:
 
 
 def build_role_model(pool, work, st, *, dk_rec, now: datetime, clock, offline: bool, cache, budget_s: float,
-                     apply_state: Callable | None = None) -> RoleModel:
+                     apply_state: Callable | None = None, overrides: list | None = None) -> RoleModel:
     """ParamTable (C5), then roles.merge and roles.apply_state exactly once (B11). Raises when the
     ParamTable cannot be built (the caller falls back and says so)."""
     from nhl_dfs.build import news
@@ -165,6 +165,12 @@ def build_role_model(pool, work, st, *, dk_rec, now: datetime, clock, offline: b
     rs = roles_mod.merge(dk_rec, lines, reports, roles_mod.rotation_from(table0), now, pool=pool,
                          csv_status=salary_statuses(pool), goalie_path=path)
     table = apply_state(table0, rs)  # exactly once per run (B11: a second apply mixes dressing again)
+    if overrides:  # C10: accepted, still-valid overrides (validated again here against this state), once, after roles
+        from nhl_dfs.models import overrides as overrides_mod
+
+        table, ok, bad = overrides_mod.apply_with_report(table, rs, overrides, now)
+        rs = overrides_mod.apply_to_roles(rs, ok, now)
+        notes.append(f"overrides: {len(ok)} applied, {len(bad)} no longer valid")
     pp, pnotes = play_probs(table0, table, rs)
     return RoleModel(table0, table, rs, pp, news.state(rs, pool).value, notes + pnotes + table.notes[-1:],
                      list(rs.warnings) + [f"roles note: {p}" for p in problems[:8]])
@@ -486,7 +492,8 @@ def provisional_linear(pool, rm: RoleModel) -> dict[str, float]:
 
 def resolve(requested: str, *, pool, work, st, started_games, dk_rec, runs_root, run_id: str, offline: bool, cache,
             clock, now: datetime, runtime: dict, fast: bool, optional_ok: tuple[bool, str], live=None,
-            entry_ids=(), odds_snapshot=None, apply_state: Callable | None = None, persist_to=None) -> Resolved:
+            entry_ids=(), odds_snapshot=None, apply_state: Callable | None = None, persist_to=None,
+            overrides: list | None = None) -> Resolved:
     """Try the objectives in the documented order from `requested`; never raises."""
     if requested not in ORDER:
         raise ValueError(f"objective must be one of auto, scenario, provisional, baseline (got {requested!r})")
@@ -509,7 +516,8 @@ def resolve(requested: str, *, pool, work, st, started_games, dk_rec, runs_root,
         t = time.perf_counter()
         try:
             rm = build_role_model(pool, work, st, dk_rec=dk_rec, now=now, clock=clock, offline=offline, cache=cache,
-                                  budget_s=float(runtime.get("network_pass_budget_s", 25)), apply_state=apply_state)
+                                  budget_s=float(runtime.get("network_pass_budget_s", 25)), apply_state=apply_state,
+                                  overrides=overrides)
             res.role_model = rm
             res.notes += rm.notes
         except Exception as exc:  # reported; the objective steps down

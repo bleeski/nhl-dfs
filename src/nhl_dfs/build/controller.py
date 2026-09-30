@@ -167,6 +167,34 @@ def permitted(run, round_no: int, cfg: dict, now: datetime, runs_root=None) -> t
     return True, f"permitted until {dl:%H:%MZ} (T-{c['llm_stop_min']})"
 
 
+def _deadline_ok(run, cfg: dict, now: datetime, runs_root=None) -> tuple[bool, str]:
+    v = packet_mod.RunView(run, runs_root)
+    stop = float(cfg["controller"]["llm_stop_min"])
+    dl = v.qa_deadline(now, stop)
+    if dl is None:
+        return False, "every game has started or is inside the edit stop: nothing open to change"
+    if now >= dl:
+        return False, f"T-{stop:g} deadline passed ({dl:%H:%MZ}): nothing applied, the checked file stands"
+    return True, f"permitted until {dl:%H:%MZ}"
+
+
+def parse_overrides(text: str) -> tuple[list[Proposal], str | None]:
+    """A researcher reply: {"request_id"?, "overrides": [Override objects], "unresolved"?: [...]} or a bare list.
+    Each override becomes a correctness proposal."""
+    try:
+        doc = json.loads(_strip_fence(text))
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise MalformedProposals(f"not JSON ({exc})") from None
+    rid = None
+    if isinstance(doc, dict):
+        rid = doc.get("request_id") or doc.get("run_id")
+        doc = doc.get("overrides")
+    if not isinstance(doc, list) or not all(isinstance(x, dict) for x in doc):
+        raise MalformedProposals("expected a list of override objects")
+    return [Proposal("correctness", {"role_id": x.get("role_id")}, {"type": "override", **x}, str(x.get("claim") or ""),
+                     x.get("source_url") if isinstance(x.get("source_url"), str) else None) for x in doc], rid
+
+
 # -- evaluation on paired draws -------------------------------------------------------------------------------
 
 def _portfolio(so, lineups: dict, contest_of: dict, purpose: str, contests: list[str]):
@@ -233,8 +261,10 @@ def evaluate(so, before: dict, after: dict, changed: set[str], contest_of: dict,
 
 def apply_round(run, round_no: int, proposals, cfg: dict | None = None, *, now: datetime | None = None,
                 runs_root=None, outputs_root=None, apply_state: Callable | None = None,
-                clock: Callable[[], datetime] | None = None) -> RoundResult:
-    """proposals: a path to the reply saved verbatim, or its text."""
+                clock: Callable[[], datetime] | None = None, source: str = "qa") -> RoundResult:
+    """proposals: a path to the reply saved verbatim, or its text. source="overrides": a researcher reply
+    (`overrides-apply`): every item is a correctness override, recorded as news/overrides_<k>_result.json,
+    with no round rules beyond the T-8 deadline."""
     from nhl_dfs.build import late_swap, swap_objective
     from nhl_dfs.build.manifest import read_manifest, write_manifest
     from nhl_dfs.build.notes import write_run_notes
@@ -264,22 +294,32 @@ def apply_round(run, round_no: int, proposals, cfg: dict | None = None, *, now: 
     def record() -> RoundResult:
         rec = {**asdict(res), "proposals_path": str(path) if path else None, "created_utc": now.isoformat(),
                "elapsed_s": round(time.perf_counter() - t0, 3)}
-        p = qa_dir(run) / f"round_{round_no}.json"
+        if source == "overrides":
+            (run.path / "news").mkdir(exist_ok=True)
+            p = run.path / "news" / f"overrides_{round_no}_result.json"
+        else:
+            p = qa_dir(run) / f"round_{round_no}.json"
         p.write_text(json.dumps(rec, indent=1, default=str), encoding="utf-8")
         res.record_path = str(p)
         return res
 
-    ok, why = permitted(run, round_no, cfg, now, runs_root)
+    if source == "overrides":
+        ok, why = _deadline_ok(run, cfg, now, runs_root)
+        if ok and (run.path / "news" / f"overrides_{round_no}_result.json").exists():
+            ok, why = False, f"overrides file {round_no} was already applied"
+    else:
+        ok, why = permitted(run, round_no, cfg, now, runs_root)
     if not ok:
         res.stop_reason = why
         if "already applied" in why:
             return res  # never overwrite an earlier round's record
         return record()
     try:
-        props, res.packet_id = parse(text)
+        props, res.packet_id = parse_overrides(text) if source == "overrides" else parse(text)
     except MalformedProposals as exc:
-        res.stop_reason = f"malformed proposals ({exc}): QA ends, the incumbent is kept"
+        res.stop_reason = f"malformed reply ({exc}): nothing applied, the incumbent is kept"
         return record()
+    limit = int(cfg["research"]["max_players"]) if source == "overrides" else int(cc["max_proposals"])
 
     v = packet_mod.RunView(run, runs_root)
     pool, mode = v.pool, v.mode
@@ -328,8 +368,8 @@ def apply_round(run, round_no: int, proposals, cfg: dict | None = None, *, now: 
     accepted_overrides = []
     for i, p in enumerate(props):
         typ = str(p.change.get("type", ""))
-        if i >= int(cc["max_proposals"]):
-            reject(i, p, typ, f"over the per-round limit of {cc['max_proposals']} proposals")
+        if i >= limit:
+            reject(i, p, typ, f"over the per-round limit of {limit} proposals")
             continue
         try:
             if p.kind == "correctness":
@@ -504,7 +544,7 @@ def apply_round(run, round_no: int, proposals, cfg: dict | None = None, *, now: 
         m["messages"] = list(m.get("messages", [])) + [f"QA round {round_no} published v{pub.version}"] + repair_notes
         write_manifest(run, m)
         write_run_notes(run, m)
-    more = res.accepted_correctness > 0 and round_no < int(cc["max_rounds"])  # the T-8 check runs when that round starts
+    more = source == "qa" and res.accepted_correctness > 0 and round_no < int(cc["max_rounds"])  # T-8 is checked when it starts
     res.another_round = bool(more)
     res.stop_reason = ("round accepted a correctness repair: another round is permitted (before T-8)" if more else
                        ("zero changes accepted: QA stops" if not (res.accepted_correctness or res.accepted_strategic) else

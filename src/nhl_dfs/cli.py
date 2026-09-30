@@ -422,6 +422,96 @@ def _print_objective(result) -> None:
     print(f"LIVE_STATUS={(result.manifest.get('live') or {}).get('LIVE_STATUS', 'NO_SNAPSHOT')}")
 
 
+def _qa_run(args):
+    from nhl_dfs.build.state import open_run
+
+    runs_root, outputs_root = _roots(args)
+    return open_run(runs_root, args.run), runs_root, outputs_root
+
+
+def cmd_qa_packet(args: argparse.Namespace) -> int:
+    """C10: write runs/<id>/qa/packet_<k>.json and print it (the skill passes the content inline to the adversary)."""
+    import json
+    from datetime import datetime, timezone
+
+    from nhl_dfs.build import controller, packet
+
+    if not (args.run and args.round):
+        print("qa-packet needs --run <id> --round <k>")
+        return 2
+    run, runs_root, _ = _qa_run(args)
+    cfg = packet.load_qa_config()
+    now = _as_of(args.as_of) or datetime.now(timezone.utc)
+    ok, why = controller.permitted(run, int(args.round), cfg, now, runs_root)
+    if not ok:
+        print(f"QA_PERMITTED=NO: {why}")
+        return 1
+    p = packet.build(run, int(args.round), cfg, now=now, canary=args.canary, runs_root=runs_root)
+    path = controller.qa_dir(run) / f"packet_{int(args.round)}.json"
+    path.write_text(json.dumps(p, indent=1, ensure_ascii=False), encoding="utf-8")
+    print(f"QA_PERMITTED=YES: {why}")
+    print(f"packet: {path} (packet_id {p['packet_id']}, about {p['size']['est_tokens']} tokens)")
+    print("----- PACKET JSON (pass inline, verbatim) -----")
+    print(packet.serialize(p))
+    return 0
+
+
+def cmd_qa_apply(args: argparse.Namespace) -> int:
+    from datetime import datetime, timezone
+
+    from nhl_dfs.build import controller
+
+    if not (args.run and args.round and args.proposals):
+        print("qa-apply needs --run <id> --round <k> --proposals <file saved verbatim>")
+        return 2
+    run, runs_root, outputs_root = _qa_run(args)
+    res = controller.apply_round(run, int(args.round), Path(args.proposals), now=_as_of(args.as_of) or datetime.now(timezone.utc),
+                                 runs_root=runs_root, outputs_root=outputs_root)
+    for line in res.lines():
+        print(line)
+    return 0
+
+
+def cmd_research_request(args: argparse.Namespace) -> int:
+    import json
+    from datetime import datetime, timezone
+
+    from nhl_dfs.build import packet
+
+    if not args.run:
+        print("research-request needs --run <id>")
+        return 2
+    run, runs_root, _ = _qa_run(args)
+    req = packet.research_request(run, now=_as_of(args.as_of) or datetime.now(timezone.utc), runs_root=runs_root)
+    path = run.path / "news" / "research_request.json"
+    path.parent.mkdir(exist_ok=True)
+    path.write_text(json.dumps(req, indent=1, ensure_ascii=False), encoding="utf-8")
+    print(f"RESEARCH_PLAYERS={len(req['players'])}")
+    print(f"request: {path}")
+    print("----- REQUEST JSON (pass inline, verbatim) -----")
+    print(packet.serialize(req))
+    return 0
+
+
+def cmd_overrides_apply(args: argparse.Namespace) -> int:
+    from datetime import datetime, timezone
+
+    from nhl_dfs.build import controller
+
+    if not (args.run and args.file):
+        print("overrides-apply needs --run <id> --file <researcher reply saved verbatim>")
+        return 2
+    run, runs_root, outputs_root = _qa_run(args)
+    news = run.path / "news"
+    k = 1 + max([int(p.stem.split("_")[1]) for p in news.glob("overrides_*_result.json")] or [0]) if news.exists() else 1
+    res = controller.apply_round(run, k, Path(args.file), now=_as_of(args.as_of) or datetime.now(timezone.utc),
+                                 runs_root=runs_root, outputs_root=outputs_root, source="overrides")
+    for line in res.lines()[:-1]:
+        print(line.replace("QA round", "overrides file"))
+    print(f"OVERRIDES_ACCEPTED={res.accepted_correctness}")
+    return 0
+
+
 def cmd_refresh(args: argparse.Namespace) -> int:
     from nhl_dfs.build import refresh
 
@@ -520,6 +610,23 @@ def build_parser() -> argparse.ArgumentParser:
     cal.add_argument("--store-root", type=str, default=None)
     cal.add_argument("--out-dir", type=str, default=None)
     cal.set_defaults(func=cmd_calibrate)
+
+    for name, func in (("qa-packet", cmd_qa_packet), ("qa-apply", cmd_qa_apply), ("research-request", cmd_research_request),
+                       ("overrides-apply", cmd_overrides_apply)):
+        sp = sub.add_parser(name)
+        sp.add_argument("--run", type=str, default=None)
+        sp.add_argument("--runs-root", type=str, default=str(RUNS_ROOT))
+        sp.add_argument("--outputs-root", type=str, default=None)
+        sp.add_argument("--as-of", type=str, default=None, help="REHEARSAL clock in UTC")
+        if name in ("qa-packet", "qa-apply"):
+            sp.add_argument("--round", type=int, default=None)
+        if name == "qa-packet":
+            sp.add_argument("--canary", type=str, default=None, help="rehearsal only: a token the adversary must echo")
+        if name == "qa-apply":
+            sp.add_argument("--proposals", type=str, default=None)
+        if name == "overrides-apply":
+            sp.add_argument("--file", type=str, default=None)
+        sp.set_defaults(func=func)
 
     for name, func in (("late-swap", cmd_late_swap), ("refresh", cmd_refresh)):
         sp = sub.add_parser(name)
