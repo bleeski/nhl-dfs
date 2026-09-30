@@ -177,10 +177,21 @@ def run(run_id: str, standings_path, *, runs_root, prize_paths=(), winnings_path
     ledger_root = Path(ledger_root) if ledger_root is not None else ledger_mod.default_root()
     backlog_path = Path(backlog_path) if backlog_path is not None else backlog_mod.default_path()
     run = open_run(Path(runs_root), run_id)
-    before = frozen_hashes(run)
     m = read_manifest(run)
     pool = read_salary(run.inputs / "DKSalaries.csv")
-    status, detail = forecast_status(run, m, pool)
+    own_status, own_detail = forecast_status(run, m, pool)
+    frun, status, detail = forecast_run(Path(runs_root), run, pool)
+    if frun.run_id != run.run_id:  # B30: this run has no pre-lock forecast of its own
+        detail = (f"graded from run {frun.run_id}, its nearest pre-lock ancestor ({detail}); this run itself: {own_status}; "
+                  "money and entered lineups from this run")
+
+    def hashes() -> dict[str, str]:
+        out = frozen_hashes(run)
+        if frun.run_id != run.run_id:
+            out.update({f"{frun.run_id}/{k}": v for k, v in frozen_hashes(frun).items()})
+        return out
+
+    before = hashes()
     notes: list[str] = []
     all_st, st_notes = standings_mod.read_all(standings_path)
     notes += st_notes
@@ -224,7 +235,7 @@ def run(run_id: str, standings_path, *, runs_root, prize_paths=(), winnings_path
     # grades (frozen files only)
     own_grades = []
     for s in mine:
-        f = grade_ownership.forecast_from_run(run, s.contest_id, pool)
+        f = grade_ownership.forecast_from_run(frun, s.contest_id, pool)
         if f is None:
             notes.append(f"contest {s.contest_id}: the run saved no field forecast, ownership not graded")
             continue
@@ -235,16 +246,18 @@ def run(run_id: str, standings_path, *, runs_root, prize_paths=(), winnings_path
             pts.setdefault(k, v)
     boxes, b_notes = (grade_forecasts.fetch_boxscores(pool, cache=cache, offline=offline) if boxscores else ([], []))
     notes += b_notes
-    fg = grade_forecasts.grade(run, boxes or None, actual_points=pts, pool=pool, accepted=accepted)
+    fg = grade_forecasts.grade(frun, boxes or None, actual_points=pts, pool=pool, accepted=accepted)
     # evidence and gates (PRE_LOCK forecasts only)
     entry = {"run_id": run.run_id, "mode": pool.mode.value, "slate_date": sl.slate_date, "slate_id": m["slate_id"],
              "games": sorted(pool.games), "frozen": status == "PRE_LOCK", "complete_payout": sl.complete,
+             "forecast_run_id": frun.run_id,
              "contests": {g["contest_id"]: {"family": g["family"], "labels": g["n_roles"]} for g in own_grades},
              "played": [[sl.slate_date, *p] for p in (fg.played if fg else [])], "settled_utc": _iso(now)}
     idx = update_index(ledger_root, entry)
     gates = {pool.mode.value: gate_report(idx, pool.mode.value)}
     rec = {"run_id": run.run_id, "mode": pool.mode.value, "slate_id": m["slate_id"], "settled_utc": _iso(now),
-           "forecast": {"status": status, "detail": detail},
+           "forecast": {"status": status, "detail": detail, "run_id": frun.run_id, "own_status": own_status,
+                        "own_detail": own_detail},
            "standings": {"files": len(mine), "contests": [s.contest_id for s in mine],
                          "sources": {str(s.contest_id): s.source for s in mine}},
            "ledger": sl.record(), "drawdown": dd, "ledger_path": str(lpath),
@@ -265,19 +278,21 @@ def run(run_id: str, standings_path, *, runs_root, prize_paths=(), winnings_path
     text = notes_mod.render(rec)
     (d / "grades.json").write_text(json.dumps(rec, indent=1, default=str), encoding="utf-8")
     notes_mod.write(run, rec, text)
-    after = frozen_hashes(run)
+    after = hashes()
     changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
     rec["freeze_check"] = {"ok": not changed, "files": len(before), "changed": changed}
     (d / "grades.json").write_text(json.dumps(rec, indent=1, default=str), encoding="utf-8")
     return rec
 
 
-def run_contest_dirs(runs_root: Path, run, max_depth: int = 8) -> list[Path]:
-    """runs/<id>/contests of the run, then of each run on its parent_run_id chain (a refresh or late swap child
-    uses its parent's pre-lock contest details, backlog B24)."""
+def ancestry(runs_root: Path, run, max_depth: int = 8) -> list[Path]:
+    """The run's folder, then each run's on its parent_run_id chain (existing folders only; one walk shared by the
+    contest-detail lookup, B24, and the forecast choice, B30)."""
     out, path = [], run.path
     for _ in range(max_depth):
-        out.append(path / "contests")
+        if not path.is_dir():
+            break
+        out.append(path)
         try:
             parent = json.loads((path / "manifest.json").read_text(encoding="utf-8")).get("parent_run_id")
         except (OSError, ValueError):
@@ -286,6 +301,34 @@ def run_contest_dirs(runs_root: Path, run, max_depth: int = 8) -> list[Path]:
             break
         path = Path(runs_root) / parent
     return out
+
+
+def run_contest_dirs(runs_root: Path, run, max_depth: int = 8) -> list[Path]:
+    """runs/<id>/contests of the run, then of each run on its parent_run_id chain (a refresh or late swap child
+    uses its parent's pre-lock contest details, backlog B24)."""
+    return [p / "contests" for p in ancestry(runs_root, run, max_depth)]
+
+
+def forecast_run(runs_root: Path, run, pool):
+    """B30: the run whose frozen forecast settle grades: the nearest run on the chain (the run itself first) that has a
+    scenario cache written before the first game (PRE_LOCK). A late-swap child (created after first lock, no cache)
+    grades against its pre-lock ancestor; with no pre-lock run on the chain, the run itself, as before.
+    Returns (forecast run, its status, its detail)."""
+    from nhl_dfs.build.manifest import read_manifest
+    from nhl_dfs.build.state import open_run
+
+    for p in ancestry(runs_root, run):
+        if not (p / "scenario" / "meta.json").exists():
+            continue
+        cand = run if p == run.path else open_run(Path(runs_root), p.name)
+        try:
+            status, detail = forecast_status(cand, read_manifest(cand), pool)
+        except (OSError, ValueError, KeyError):
+            continue
+        if status == "PRE_LOCK":
+            return cand, status, detail
+    status, detail = forecast_status(run, read_manifest(run), pool)
+    return run, status, detail
 
 
 def final_lineups(run, pool) -> dict[str, list]:
