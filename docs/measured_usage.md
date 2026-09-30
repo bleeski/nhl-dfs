@@ -20,6 +20,19 @@ clock, held by the controller. Fill the slate table after each of the first ten 
 | 2026-09-30 03:11 | headless `/nhl-qa-rehearse` | 5 (synthetic) | n/a | n/a | 58 | no | rehearsal | $0.42 at list price | see the rehearsal table |
 <!-- slates: new rows above this line -->
 
+## /usage after the C10 exit runs (2026-09-30)
+
+Ben ran `/usage` in the Claude desktop app's Code window after the headless exit runs. It showed plan usage only, with
+no Attribution section, so no per-skill or per-subagent split is available from this client:
+
+- Current session: 21% used (resets Sep 30, 12:10am America/Chicago)
+- Current week (all models): 54% used (resets Oct 2, 7pm America/Chicago)
+- Current week (Fable): 19% used (resets Oct 2, 6:59pm America/Chicago)
+
+Per-run figures come from the headless JSON report instead (list-price cost, cache and output tokens, subagents
+included): `/nhl-run` $0.48 and `/nhl-qa-rehearse` $0.42 (slate table above). If a later client shows Attribution,
+add it here after a slate run.
+
 ## Adversary isolation rehearsals (`/nhl-qa-rehearse`)
 
 A PASS means the adversary echoed the packet's canary and its reply contains neither the token planted in the main
