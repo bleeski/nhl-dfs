@@ -205,7 +205,10 @@ coerced to a known value (CLAUDE.md); other vocabularies here that have no
   and after (plus `contests/`). Ledger `data/ledger/ledger.parquet` (NHL_DFS_LEDGER_ROOT), backlog `BACKLOG.md`
   (NHL_DFS_BACKLOG).
 - Forecast: PRE_LOCK only if the manifest's `created_utc` AND the forecast files' write times are before the
-  slate's first game; otherwise POST_LOCK, graded as a plumbing check and never counted as evidence. Only frozen
+  slate's first game; otherwise POST_LOCK, graded as a plumbing check and never counted as evidence. The forecast run
+  (B30) is the nearest run on the `parent_run_id` chain, the settled run first, with a PRE_LOCK scenario cache (a
+  late-swap child grades against its pre-lock ancestor, labeled 'graded from run X'); none on the chain: the run
+  itself. Money, standings and the entered-lineup check stay on the settled run; the freeze check hashes both. Only frozen
   files are graded: `scenario/fields.json` `own_by`/`dup_by`, `scenario/selection` draws. Nothing is rebuilt.
 - Standings: entry block and ownership block share rows but are unrelated. Lineups parse against the slot sequence
   (Classic `C C D D G UTIL W W W`, Showdown `CPT` + 5 `FLEX`). Actual ownership is reconstructed from the lineup
@@ -218,7 +221,8 @@ coerced to a known value (CLAUDE.md); other vocabularies here that have no
   the run's pre-lock `contests/` copy (then its parent chain's), browser-saved `dk_contest_<id>.json` beside the
   standings, an earlier settle's copy, the raw DK cache; each labeled. An UNKNOWN entry
   gets a row in a pre-filled `winnings.csv` (appended, Ben's lines kept). Net and drawdown over known payouts;
-  incomplete when any payout is unknown. A re-settle replaces the run's ledger rows.
+  incomplete when any payout is unknown. A re-settle replaces the run's ledger rows, and any other run's rows for the
+  same (slate date, entry id) (B31: a run and its child book each entry once; the note names the replaced run).
 - Grades: ownership (MAE all/active/top-20, weighted, bands, top-10 recall, CPT share, team totals, zero-observed
   mass, Pearson/Spearman, duplicate counts rescaled from the forecast's field size); forecasts (FPTS for points; NHL
   box scores through the accepted crosswalk for participation and bonus outcomes; MAE, bias, CRPS, p10-p90 coverage).
@@ -229,6 +233,17 @@ coerced to a known value (CLAUDE.md); other vocabularies here that have no
   Older caches: skaters unconditional, goalies on nonzero draws, decisions and play probability from the nonzero
   share, bonus rates NOT_AVAILABLE (each labeled).
 - Evidence: `data/ledger/graded.json`; `gates.tier` per mode from PRE_LOCK runs only (Showdown contests of one game
-  = one group; a (date, game, person) outcome counts once across modes). Reported, never acted on.
+  = one group; a (date, game, person) outcome counts once across modes; a contest's ownership labels count once per
+  (slate date, contest id), newest settle, B31). Reported, never acted on. `complete_payout` per date is still an AND
+  over the settled runs (a stale incomplete parent keeps its date incomplete: errs low).
 - Backlog: `learn/backlog.add` appends keyed rows only for deterministic defects and missing frozen artifacts;
   hand-written rows are mapped (B17, B20, B21, B22, B24). Strategy hypotheses stay in the grades and notes.
+
+## History raw cache (B2, `data/history/nhl_reports.evict_raw`)
+
+- After a clean `history` backfill (no exception, zero box-score cross-check mismatches; `--keep-raw` skips it), the
+  report sources (`nhl_report`, `nhl_goalie_report`) drop index entries past their TTL that are not a completed
+  season's canonical window (the full-season windows and every split of them) and whose season's Parquet store was
+  written after the fetch, then delete bodies no index entry references (unreferenced diagnosis bodies after
+  `history.keep_unindexed_days`) and MoneyPuck `.tmp` files over a day old. Completed seasons rebuild offline row for
+  row from the kept bodies. No other source is touched (DK contest bodies, capture/, observations/).
