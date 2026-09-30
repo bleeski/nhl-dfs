@@ -1,0 +1,53 @@
+﻿Rank,EntryId,EntryName,TimeRemaining,Points,Lineup,,Player,Roster Position,%Drafted,FPTS
+1,5275693899,entrant0001 (15/20),0,101.85,CPT Jack Eichel FLEX Carter Hart FLEX Mitch Marner FLEX Shea Theodore FLEX Victor Olofsson FLEX Jordan Greenway,,Jack Eichel,FLEX,45.72%,24.5
+2,5275566605,entrant0002 (12/20),0,94.95,CPT Victor Olofsson FLEX Jack Eichel FLEX Carter Hart FLEX Spencer Knight FLEX Patrick Kane FLEX Trevor Connelly,,Mark Stone,FLEX,33.52%,10
+3,5275500983,entrant0003 (15/20),0,94.45,CPT Jack Eichel FLEX Carter Hart FLEX Mark Stone FLEX Shea Theodore FLEX Victor Olofsson FLEX Wyatt Kaiser,,Mitch Marner,FLEX,30.43%,6
+3,5275793009,entrant0004 (15/20),0,94.45,CPT Jack Eichel FLEX Carter Hart FLEX Mark Stone FLEX Shea Theodore FLEX Victor Olofsson FLEX Wyatt Kaiser,,Victor Olofsson,FLEX,30.43%,11.5
+5,5275693891,entrant0005 (7/20),0,93.55,CPT Jack Eichel FLEX Carter Hart FLEX Mitch Marner FLEX Brett Howden FLEX Victor Olofsson FLEX Jordan Greenway,,Tomas Hertl,FLEX,28.89%,6
+6,5274309511,entrant0006 (6/20),0,92.05,CPT Jack Eichel FLEX Carter Hart FLEX Mark Stone FLEX Ivan Barbashev FLEX Brayden McNabb FLEX Ryan Greene,,Carter Hart,FLEX,28.75%,15.8
+7,5275700239,entrant0007 (9/20),0,91.700005,CPT Mark Stone FLEX Jack Eichel FLEX Carter Hart FLEX Mitch Marner FLEX Jordan Greenway FLEX Jeremy Lauzon,,Anton Frondell,FLEX,28.75%,1.5
+7,5275700243,entrant0008 (13/20),0,91.7,CPT Carter Hart FLEX Jack Eichel FLEX Patrick Kane FLEX Tomas Hertl FLEX Brayden McNabb FLEX Victor Olofsson,,Jack Eichel,CPT,24.96%,36.75
+9,5275594636,entrant0009 (1/20),0,91.3,CPT Carter Hart FLEX Jack Eichel FLEX Shea Theodore FLEX Ivan Barbashev FLEX Trevor Connelly FLEX Nick Lardis,,Patrick Kane,FLEX,20.76%,14.5
+10,5275412919,entrant0010 (1/3),0,90.45,CPT Jack Eichel FLEX Carter Hart FLEX Mitch Marner FLEX Shea Theodore FLEX Victor Olofsson FLEX Wyatt Kaiser,,Shea Theodore,FLEX,20.62%,12.8
+10,5275585559,entrant0011 (13/20),0,90.45,CPT Jack Eichel FLEX Carter Hart FLEX Mitch Marner FLEX Shea Theodore FLEX Victor Olofsson FLEX Wyatt Kaiser,,Bowen Byram,FLEX,17.81%,2.6
+10,5275594787,entrant0012 (20/20),0,90.45,CPT Jack Eichel FLEX Carter Hart FLEX Mitch Marner FLEX Shea Theodore FLEX Victor Olofsson FLEX Wyatt Kaiser,,Brett Howden,FLEX,17.67%,4.5
+10,5275605784,entrant0013 (9/20),0,90.45,CPT Jack Eichel FLEX Carter Hart FLEX Mitch Marner FLEX Shea Theodore FLEX Victor Olofsson FLEX Wyatt Kaiser,,Frank Nazar,FLEX,14.87%,4.5
+101,5274453163,bleeski (2/2),0,80.35,CPT Jack Eichel FLEX Mark Stone FLEX Anton Frondell FLEX Ivan Barbashev FLEX Noah Hanifin FLEX Nic Dowd,,Ivan Barbashev,FLEX,13.18%,11.5
+582,5269780166,entrant0014,0,48.1,CPT Carter Hart FLEX Rasmus Andersson FLEX Ivan Barbashev FLEX William Karlsson FLEX Frank Nazar FLEX Bowen Byram,,Spencer Knight,FLEX,12.62%,8.4
+582,5274453000,bleeski (1/2),0,48.1,CPT Spencer Knight FLEX Patrick Kane FLEX Anton Frondell FLEX Roman Kantserov FLEX Brayden McNabb FLEX Ryan Greene,,Roman Kantserov,FLEX,12.62%,1.5
+582,5275797611,entrant0015 (9/20),0,48.1,CPT Mitch Marner FLEX Carter Hart FLEX Shea Theodore FLEX Tomas Hertl FLEX William Karlsson FLEX Oliver Moore,,Spencer Knight,CPT,12.20%,12.6
+712,5274238351,entrant0016,0,0,,,William Karlsson,FLEX,12.06%,1.5
+712,5275501766,entrant0017 (2/2),0,0,,,Brayden McNabb,FLEX,11.92%,11.5
+,,,,,,,Wyatt Kaiser,FLEX,11.78%,7.6
+,,,,,,,Trevor Connelly,FLEX,10.94%,14.5
+,,,,,,,Rasmus Andersson,FLEX,10.80%,4.3
+,,,,,,,Carter Hart,CPT,9.54%,23.7
+,,,,,,,Mitch Marner,CPT,8.84%,9
+,,,,,,,Oliver Moore,FLEX,8.70%,3
+,,,,,,,Mark Stone,CPT,7.57%,15
+,,,,,,,Anton Frondell,CPT,4.77%,2.25
+,,,,,,,Patrick Kane,CPT,4.35%,21.75
+,,,,,,,Brett Howden,CPT,4.07%,6.75
+,,,,,,,Tomas Hertl,CPT,3.65%,9
+,,,,,,,Noah Hanifin,FLEX,3.37%,15.6
+,,,,,,,Shea Theodore,CPT,3.09%,19.2
+,,,,,,,Nick Lardis,FLEX,2.95%,4.3
+,,,,,,,Ryan Greene,FLEX,2.95%,6.5
+,,,,,,,Victor Olofsson,CPT,2.81%,17.25
+,,,,,,,Trevor Connelly,CPT,2.81%,21.75
+,,,,,,,Jeremy Lauzon,FLEX,2.52%,11.4
+,,,,,,,Ivan Barbashev,CPT,1.82%,17.25
+,,,,,,,William Karlsson,CPT,1.82%,2.25
+,,,,,,,Roman Kantserov,CPT,1.40%,2.25
+,,,,,,,Nic Dowd,FLEX,1.40%,5
+,,,,,,,Rasmus Andersson,CPT,1.26%,6.45
+,,,,,,,Bowen Byram,CPT,1.12%,3.9
+,,,,,,,Jordan Greenway,FLEX,0.84%,19
+,,,,,,,Frank Nazar,CPT,0.70%,6.75
+,,,,,,,Oliver Moore,CPT,0.42%,4.5
+,,,,,,,Nick Lardis,CPT,0.28%,6.45
+,,,,,,,Brayden McNabb,CPT,0.14%,17.25
+,,,,,,,Noah Hanifin,CPT,0.14%,23.4
+,,,,,,,Tyler Bertuzzi,CPT,1.54%,0
+,,,,,,,Teuvo Teravainen,CPT,0.28%,0
+,,,,,,,Sam Rinzel,CPT,0.14%,8.4

@@ -1,0 +1,61 @@
+﻿Rank,EntryId,EntryName,TimeRemaining,Points,Lineup,,Player,Roster Position,%Drafted,FPTS
+1,5275612384,entrant0001,0,189.5,C Connor McDavid C Fraser Minten D Evan Bouchard D Hampus Lindholm G Jeremy Swayman UTIL Vasily Podkolzin W Leon Draisaitl W Pavel Dorofeyev W Victor Olofsson,,Connor McDavid,C,53.83%,10
+2,5275495653,entrant0002,0,187.7,C Jack Eichel C Sean Kuraly D Evan Bouchard D Elias-Nils Pettersson G Jakub Dobes UTIL Ivan Barbashev W Leon Draisaitl W Mark Stone W Vasily Podkolzin,,Leon Draisaitl,W,31.03%,15.5
+3,5275948289,entrant0003,0,181.3,C Connor McDavid C Marco Rossi D Evan Bouchard D Mike Matheson G Jeremy Swayman UTIL Kasperi Kapanen W Leon Draisaitl W Vasily Podkolzin W Victor Olofsson,,Vasily Podkolzin,W,26.91%,30.5
+4,5275332458,entrant0004,0,178.79999,C Connor McDavid C Jack Eichel D Evan Bouchard D Connor Murphy G Jakub Dobes UTIL Mattias Ekholm W Pavel Dorofeyev W Vasily Podkolzin W Victor Olofsson,,Evan Bouchard,D,26.24%,60.4
+5,5275929183,entrant0005,0,175.8,C Connor McDavid C Elias Pettersson D Evan Bouchard D Mason Lohrei G Jeremy Swayman UTIL Leon Draisaitl W Jake DeBrusk W Vasily Podkolzin W Jonathan Lekkerimaki,,Hampus Lindholm,D,23.47%,6.3
+6,5275733386,entrant0006,0,175.3,C Connor McDavid C Jack Eichel D Evan Bouchard D Mike Matheson G Carter Hart UTIL Tomas Hertl W Vasily Podkolzin W Victor Olofsson W Casey Mittelstadt,,Pavel Dorofeyev,W,17.07%,10.5
+7,5275880792,entrant0007,0,171.2,C Elias Pettersson C Kirby Dach D Evan Bouchard D Jake Walman G Jeremy Swayman UTIL Mitch Marner W Leon Draisaitl W Vasily Podkolzin W Kasperi Kapanen,,Tomas Hertl,C,16.57%,6
+8,5275960074,entrant0008,0,170.5,C Connor McDavid C Max Sasson D Evan Bouchard D Mike Matheson G Spencer Knight UTIL Jonathan Lekkerimaki W Leon Draisaitl W Zach Hyman W Vasily Podkolzin,,Carter Hart,G,16.40%,15.8
+9,5274360392,entrant0009,0,169.5,C Connor McDavid C Oliver Moore D Evan Bouchard D Shea Theodore G Jakub Dobes UTIL Sam Rinzel W Leon Draisaitl W Vasily Podkolzin W Trevor Connelly,,Jeremy Swayman,G,15.81%,26.8
+10,5274646205,entrant0010,0,168.5,C Connor McDavid C Elias Pettersson D Evan Bouchard D Hampus Lindholm G Jakub Dobes UTIL Victor Olofsson W Leon Draisaitl W Vasily Podkolzin W Brett Howden,,Nick Suzuki,C,15.56%,4.3
+10,5275570755,entrant0011,0,168.5,C Connor McDavid C Elias Pettersson D Evan Bouchard D Hampus Lindholm G Jakub Dobes UTIL Victor Olofsson W Leon Draisaitl W Vasily Podkolzin W Brett Howden,,Jakub Dobes,G,15.31%,17.2
+10,5275610596,entrant0012,0,168.5,C Connor McDavid C Elias Pettersson D Evan Bouchard D Hampus Lindholm G Jakub Dobes UTIL Victor Olofsson W Leon Draisaitl W Vasily Podkolzin W Brett Howden,,Lane Hutson,D,15.22%,1.3
+10,5275706105,entrant0013,0,168.5,C Connor McDavid C Elias Pettersson D Evan Bouchard D Hampus Lindholm G Jakub Dobes UTIL Victor Olofsson W Leon Draisaitl W Vasily Podkolzin W Brett Howden,,Jack Eichel,C,13.62%,24.5
+532,5272298984,entrant0014,0,95.600006,C Jack Eichel C Tomas Hertl D Adam Fox D Filip Hronek G Kevin Lankinen UTIL Mitch Marner W Pavel Dorofeyev W Jake DeBrusk W Victor Olofsson,,Darren Raddysh,D,13.37%,7.1
+532,5274444880,bleeski,0,95.6,C Nick Suzuki C Phillip Danault D Lane Hutson D Mike Matheson G Adin Hill UTIL Evan Bouchard W Cole Caufield W Ivan Barbashev W Ivan Demidov,,Victor Olofsson,W,11.94%,11.5
+532,5275566223,entrant0015,0,95.6,C John Tavares C Tomas Hertl D Darren Raddysh D Jake Walman G Sergei Bobrovsky UTIL Victor Olofsson W William Nylander W Gavin McKenna W Trevor Connelly,,Cole Caufield,W,11.44%,4.5
+1189,5275834428,entrant0016,0,0,,,Zach Hyman,W,11.02%,4.5
+,,,,,,,Elias Pettersson,C,10.85%,12.6
+,,,,,,,Mark Stone,W,10.34%,10
+,,,,,,,Ivan Barbashev,W,9.25%,11.5
+,,,,,,,Mike Matheson,D,8.75%,12.1
+,,,,,,,Marco Rossi,C,8.41%,10
+,,,,,,,Connor Murphy,D,8.24%,11.2
+,,,,,,,Spencer Knight,G,7.65%,8.4
+,,,,,,,Jake DeBrusk,W,7.65%,5
+,,,,,,,Mitch Marner,W,7.49%,6
+,,,,,,,Brett Howden,W,7.32%,4.5
+,,,,,,,Shea Theodore,D,6.90%,12.8
+,,,,,,,Adam Fox,D,6.56%,1.3
+,,,,,,,Mattias Ekholm,D,6.39%,3
+,,,,,,,Victor Olofsson,UTIL,6.22%,11.5
+,,,,,,,Filip Hronek,D,6.22%,19.9
+,,,,,,,Kevin Lankinen,G,6.22%,10.9
+,,,,,,,Sergei Bobrovsky,G,5.63%,4.2
+,,,,,,,Trevor Connelly,W,5.13%,14.5
+,,,,,,,Ivan Demidov,W,4.79%,1.5
+,,,,,,,William Nylander,W,4.46%,28.8
+,,,,,,,Jake Walman,D,4.46%,8.4
+,,,,,,,Kasperi Kapanen,W,4.29%,4.5
+,,,,,,,Gavin McKenna,W,4.21%,1.5
+,,,,,,,Evan Bouchard,UTIL,3.95%,60.4
+,,,,,,,Vasily Podkolzin,UTIL,3.95%,30.5
+,,,,,,,Mason Lohrei,D,3.87%,5
+,,,,,,,Casey Mittelstadt,W,3.78%,4.5
+,,,,,,,Fraser Minten,C,3.62%,18
+,,,,,,,John Tavares,C,3.45%,13.6
+,,,,,,,Tomas Hertl,UTIL,3.36%,6
+,,,,,,,Brett Howden,UTIL,3.28%,4.5
+,,,,,,,Mark Stone,UTIL,3.20%,10
+,,,,,,,Leon Draisaitl,UTIL,3.11%,15.5
+,,,,,,,Ivan Barbashev,UTIL,3.11%,11.5
+,,,,,,,Connor McDavid,UTIL,2.69%,10
+,,,,,,,Jonathan Lekkerimaki,W,2.52%,10
+,,,,,,,Mitch Marner,UTIL,2.19%,6
+,,,,,,,Elias Pettersson,UTIL,1.93%,12.6
+,,,,,,,Marco Rossi,UTIL,1.93%,10
+,,,,,,,Oliver Moore,C,1.93%,3
+,,,,,,,Jake DeBrusk,UTIL,1.68%,5
+,,,,,,,Phillip Danault,C,1.68%,0
+,,,,,,,Jack Eichel,UTIL,1.60%,24.5
