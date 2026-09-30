@@ -85,7 +85,7 @@ def save_base(run_path: Path, purpose: str, base: np.ndarray, keep: int, chunk_s
 def save(run_path: Path, *, purposes: dict[str, dict], person_keys: list[str], slate, params, seed: int,
          chunk_size: int, contests: dict[str, ob.Contest], contest_family: dict[str, str], fields: dict[str, tuple[list, list]],
          n_opponents: dict[str, int], own_by: dict[str, dict], dup_by: dict[str, dict], field_cal: str,
-         model_status: str) -> dict:
+         model_status: str, play_prob: dict | None = None) -> dict:
     """Write the cache's meta, contests and fields (after save_base wrote each stream); meta.json last,
     so a cache without it is absent, never half-read."""
     root = Path(run_path) / CACHE_DIR
@@ -95,7 +95,8 @@ def save(run_path: Path, *, purposes: dict[str, dict], person_keys: list[str], s
             "person_keys": list(person_keys), "games": [g.key for g in slate.games], "game_sha256": game_hashes(slate, params),
             "game_sources": {g.key: g.rates.source for g in slate.games},
             "game_rates": {g.key: asdict(g.rates) for g in slate.games}, "model_status": model_status,
-            "field_calibration": field_cal}
+            "field_calibration": field_cal,
+            "play_prob": play_prob}  # the participation the selection priced (C10: the controller reuses it)
     (root / "contests.json").write_text(json.dumps({cid: _contest_json(c) for cid, c in contests.items()}), encoding="utf-8")
     fam_fields = {fam: {"lineups": [list(x) for x in lus], "keys": list(ks)} for fam, (lus, ks) in fields.items()}
     (root / "fields.json").write_text(json.dumps({

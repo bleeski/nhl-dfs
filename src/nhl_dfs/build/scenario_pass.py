@@ -199,7 +199,7 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
                 n_opponents={cid: int(ctx.field_size - own_n[cid]) for cid, ctx in contexts.items()},
                 own_by={cid: {r: float(v) for r, v in own_by[cid].items()} for cid in contexts},
                 dup_by={cid: {k: float(v) for k, v in dup_by[cid].items()} for cid in contexts},
-                field_cal=field_cal.value, model_status=proj.source().value)
+                field_cal=field_cal.value, model_status=proj.source().value, play_prob=dict(play))
         except (OSError, TypeError, ValueError) as exc:
             messages.append(f"scenario cache not written ({type(exc).__name__}: {str(exc)[:80]}); late swap will fall back")
 

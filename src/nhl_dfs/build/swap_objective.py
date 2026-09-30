@@ -282,6 +282,9 @@ class ScenarioObjective:
         out_people = {pool.by_role_id[r].person_key for r, (p, _) in st.items() if p is Participation.OUT}
         if rm is not None:
             play = dict(rm.play_prob)
+        elif cache.meta.get("play_prob") is not None:  # the pricing the run's selection used (C10 controller)
+            play = {k: float(v) for k, v in cache.meta["play_prob"].items()}
+            notes.append(f"cached draws with the run's own participation pricing ({len(play)} person(s))")
         else:  # no role state: C8's rule, DTD at the configured probability
             q = float(self.fam_cfg["selection"]["questionable_play_prob"])
             play = {pool.by_role_id[r].person_key: q for r, (p, _) in st.items() if p is Participation.QUESTIONABLE}
@@ -314,7 +317,7 @@ class ScenarioObjective:
                                contest_family=cache.contest_family, fields=cache.families, n_opponents=cache.n_opponents,
                                own_by=cache.own_by, dup_by=cache.dup_by,
                                field_cal=cache.meta.get("field_calibration", "PRIOR"),
-                               model_status=self.table.source().value)
+                               model_status=self.table.source().value, play_prob=play)
             self.record["persisted"] = info
         self.record["build_s"] = round(time.perf_counter() - t, 3)
         self._fields: dict[tuple[str, str], tuple[SortedField, ob.FieldSpec]] = {}

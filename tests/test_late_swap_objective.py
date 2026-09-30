@@ -269,7 +269,8 @@ def test_the_cache_survives_a_missing_param_table_without_resimulation(full_clas
     s = _swap(tmp, r.run.run_id, _v3(r), as_of=BEFORE, salary=fresh)
     o = s.manifest["objective"]
     assert s.ok and o["kind"] == "scenario" and o["scenario"]["games_resimulated"] == []
-    assert any("without a role state" in n for n in o["notes"])
+    # C10: a cache written after B9 carries the run's own participation pricing; older caches fall back to 0.85
+    assert any("without a role state" in n or "run's own participation pricing" in n for n in o["notes"])
 
 
 def test_optional_work_stop_steps_down_to_baseline_and_says_why(full_classic, tmp_path):

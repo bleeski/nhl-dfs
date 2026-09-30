@@ -9,7 +9,7 @@ allowed-tools: PowerShell(.\nhl.ps1 *) Agent(nhl-researcher) Agent(nhl-adversary
 
 ## Engine output (already run before you read this; do not rerun it)
 
-!`.\nhl.ps1 run --salary "$0" --entries "$1"; .\nhl.ps1 research-request --run latest; .\nhl.ps1 qa-packet --run latest --round 1`
+!`.\nhl.ps1 run --salary "$0" --entries "$1"; if ($LASTEXITCODE -eq 0) { .\nhl.ps1 research-request --run latest; .\nhl.ps1 qa-packet --run latest --round 1 } else { "RUN FAILED: no research request and no QA packet (latest would name an older run)" }`
 
 ## What to do (you relay bytes; you never edit a lineup or a CSV)
 
