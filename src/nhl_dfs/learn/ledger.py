@@ -77,10 +77,11 @@ def _cached(contest_id: int, cache_root: Path) -> tuple[ContestDetail, str] | No
 
 
 def prize_tables(contest_ids, *, entries_n: dict[int, int], search_dirs=(), paths=(), cache_root: Path | None = None,
-                 saved_dir: Path | None = None) -> tuple[dict[int, PrizeTable], list[str]]:
-    """contest id -> the final prize table from the first source that has one: an explicit path, a browser-saved
-    file beside the standings, the copy an earlier settle saved in the run (saved_dir, with its original source),
-    then the raw DK cache."""
+                 saved_dir: Path | None = None, run_dirs=()) -> tuple[dict[int, PrizeTable], list[str]]:
+    """contest id -> the final prize table from the first source that has one: an explicit path, the copy the run
+    (or a run it descends from) saved before lock (run_dirs: runs/<id>/contests, backlog B24), a browser-saved file
+    beside the standings, the copy an earlier settle saved in the run (saved_dir, with its original source), then the
+    raw DK cache."""
     cache_root = cache_root if cache_root is not None else REPO_ROOT / "data" / "raw"
     found: dict[int, tuple[ContestDetail, str]] = {}
     notes: list[str] = []
@@ -90,6 +91,20 @@ def prize_tables(contest_ids, *, entries_n: dict[int, int], search_dirs=(), path
             found.setdefault(d.contest_id, (d, f"prize table file {Path(p).name}"))
         except Exception as exc:
             notes.append(f"prize table {p}: unreadable ({type(exc).__name__})")
+    for d_ in run_dirs:
+        labels = {}
+        lp = Path(d_) / "sources.json"
+        try:
+            labels = json.loads(lp.read_text(encoding="utf-8")) if lp.exists() else {}
+        except (OSError, ValueError):
+            notes.append(f"{lp}: unreadable labels")
+        for p in sorted(Path(d_).glob("dk_contest_*.json")) if Path(d_).is_dir() else []:
+            try:
+                d = _load_json(p)
+                found.setdefault(d.contest_id, (d, f"saved in run {Path(d_).parent.name} before lock "
+                                                   f"({labels.get(str(d.contest_id), 'fetched during the run')})"))
+            except Exception as exc:
+                notes.append(f"{p.name}: unreadable ({type(exc).__name__})")
     for d_ in search_dirs:
         for p in sorted(Path(d_).rglob("dk_contest_*.json")) if Path(d_).is_dir() else []:
             try:

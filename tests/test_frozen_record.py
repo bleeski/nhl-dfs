@@ -281,3 +281,126 @@ def test_refresh_carries_the_indicators_and_play_probabilities_into_its_child_ca
             assert np.array_equal(cf[:, j], pf[:, pj])  # untouched games keep the frozen indicators
     cb = child.base("selection", n)
     assert not ((cb != 0) & ~cf[..., 0] & (cb % 15 != 0)).any()  # re-simulated columns: points only when dressed
+
+
+# -- B24: a Phase B contest detail is kept in the run and settles without network --------------------------------------
+
+DETAIL = {"contestDetail": {
+    "contestKey": "297000001", "name": "NHL Synthetic Classic", "maximumEntries": 5, "maximumEntriesPerUser": 5,
+    "entryFee": 1.0, "entries": 5, "draftGroupId": 1, "contestStartTime": "2026-10-15T23:00:00.0000000Z",
+    "isGuaranteed": True, "payoutSummary": [{"minPosition": 1, "maxPosition": 1, "tierPayoutDescriptions": {"Cash": "$4.00"}}]}}
+
+
+def _standings(tmp_path):
+    sdir = tmp_path / "standings"
+    sdir.mkdir()
+    hdr = "Rank,EntryId,EntryName,TimeRemaining,Points,Lineup,,Player,Roster Position,%Drafted,FPTS\r\n"
+    body = "".join(f"{i + 1},{e},bleeski,0,{50 - i},,,,,,\r\n" for i, e in enumerate(
+        ["7100000001", "7100000002", "7100000003", "7100000004", "7100000005"]))
+    (sdir / "contest-standings-297000001.csv").write_bytes(("﻿" + hdr + body).encode("utf-8"))
+    bl = tmp_path / "BACKLOG.md"
+    bl.write_bytes(b"# Backlog\r\n\r\n| ID | a | b | c | d | e | f | g | h | i |\r\n|---|---|---|---|---|---|---|---|---|---|\r\n")
+    return sdir, bl
+
+
+@pytest.mark.c11
+def test_a_phase_b_contest_detail_is_saved_in_the_run_and_settles_without_network(tmp_path, monkeypatch, capsys):
+    from conftest import TESTS
+    from nhl_dfs.build import run as run_mod
+    from nhl_dfs.cli import main
+    from nhl_dfs.data.http import SourceUnavailable
+    from nhl_dfs.data.sources import dk_public
+
+    def detail_then_403(entries, cache, pool, box=None):
+        box["detail"] = dk_public.parse_contest_detail(DETAIL)  # the contest page answered, draftables did not
+        raise SourceUnavailable("stub 403")
+
+    monkeypatch.setattr(run_mod, "_fetch_draftables", detail_then_403)
+    ls = TESTS / "fixtures" / "late_swap" / "classic"
+    r = run_mod.run_slate(ls / "DKSalaries.csv", ls / "DKEntries.template.csv", offline=False, out_root=tmp_path / "runs",
+                          clock=lambda: datetime(2026, 10, 15, 12, 0, tzinfo=timezone.utc))
+    saved = r.run.path / "contests" / "dk_contest_297000001.json"
+    assert saved.exists() and json.loads(saved.read_text(encoding="utf-8")) == DETAIL
+    assert "Phase B contest detail" in r.manifest["contests_saved"]["297000001"]
+    monkeypatch.undo()
+    sdir, bl = _standings(tmp_path)
+    args = ["settle", r.run.run_id, str(sdir), "--runs-root", str(tmp_path / "runs"), "--ledger-root",
+            str(tmp_path / "ledger"), "--backlog", str(bl), "--no-boxscores"]
+    assert main(args) == 0  # conftest blocks the network: the table can only come from the run
+    out = capsys.readouterr().out
+    assert "PAYOUT_SOURCE=EXACT" in out and "FREEZE_CHECK=OK" in out
+    g = json.loads((r.run.path / "settle" / "grades.json").read_text(encoding="utf-8"))
+    assert "before lock" in g["prize_tables"]["297000001"]["source"]
+    from nhl_dfs.learn.settle import frozen_hashes
+
+    assert "contests/dk_contest_297000001.json" in frozen_hashes(r.run) and g["freeze_check"]["ok"]  # frozen too
+
+
+@pytest.mark.c11
+def test_a_refresh_child_of_a_new_format_run_settles_in_full(tmp_path, monkeypatch):
+    """The file Ben uploads often comes from a refresh child (the scheduled refresh): it must grade in full."""
+    from conftest import TESTS
+    from nhl_dfs.build import refresh
+    from nhl_dfs.build import run as run_mod
+    from nhl_dfs.data.http import SourceUnavailable
+    from nhl_dfs.data.identity.crosswalk import key_sha, verified_team_map
+    from nhl_dfs.data.sources import dk_public
+    from nhl_dfs.data.sources.nhl import BoxGoalie, BoxScore, BoxSkater
+    from nhl_dfs.intake.salary import read_salary
+    from nhl_dfs.learn import grade_forecasts as gf
+    from nhl_dfs.learn import settle
+
+    def detail_then_403(entries, cache, pool, box=None):
+        box["detail"] = dk_public.parse_contest_detail(DETAIL)
+        raise SourceUnavailable("stub 403")
+
+    monkeypatch.setattr(run_mod, "_fetch_draftables", detail_then_403)
+    monkeypatch.setattr(run_mod, "_fetch_contest_details", lambda ids, cache, budget: ({}, ["stub"]))
+    ls = TESTS / "fixtures" / "late_swap" / "classic"
+    clock = datetime(2026, 10, 15, 12, 0, tzinfo=timezone.utc)
+    r = run_mod.run_slate(ls / "DKSalaries.csv", ls / "DKEntries.template.csv", offline=False, baseline_only=False,
+                          scenario=True, scenario_n=SMALL, out_root=tmp_path / "runs", outputs_root=tmp_path / "outputs",
+                          clock=lambda: clock)
+    assert r.ok and (r.run.path / "contests" / "dk_contest_297000001.json").exists(), r.manifest["failed"]
+    monkeypatch.undo()
+    f = refresh.run(r.run.run_id, offline=True, runs_root=tmp_path / "runs", outputs_root=tmp_path / "outputs", as_of=clock)
+    assert f.ok and (f.run.path / "scenario" / "meta.json").exists(), f.manifest["failed"]
+    assert not (f.run.path / "contests").exists()  # the child reads its parent's pre-lock copy
+    pool = read_salary(f.run.inputs / "DKSalaries.csv")
+    from nhl_dfs.data.identity import crosswalk
+
+    tm = {**verified_team_map(), **{t: t for t in pool.teams}}  # the fixture's synthetic codes map to themselves
+    monkeypatch.setattr(crosswalk, "verified_team_map", lambda *a, **k: tm)
+    acc, boxes, nid = {}, [], 0
+    for key, g in sorted(pool.games.items()):
+        sk, gs = [], []
+        for team in (g.home, g.away):
+            first = True
+            for pk, pr in sorted(pool.persons.items()):
+                row_ = pr.classic
+                if row_.team != team:
+                    continue
+                nid += 1
+                acc[key_sha(row_.name, row_.team, "G" if row_.is_goalie else ("D" if row_.position == "D" else "F"))] = nid
+                if row_.is_goalie:
+                    if first:
+                        gs.append(BoxGoalie(nid, tm[team], "W", 30, 32, 2, 3600))
+                        first = False
+                else:
+                    sk.append(BoxSkater(nid, tm[team], row_.position, nid % 4 == 0, 0, 2 + nid % 5, nid % 4, 0, 900))
+        boxes.append(BoxScore(nid, "OFF", tm[g.home], tm[g.away], 3, 2, sk, gs))
+    monkeypatch.setattr(gf, "fetch_boxscores", lambda pool, cache=None, offline=False: (boxes, []))
+    sdir, bl = _standings(tmp_path)
+    rec = settle.run(f.run.run_id, sdir, runs_root=tmp_path / "runs", ledger_root=tmp_path / "ledger", backlog_path=bl,
+                     offline=True, accepted=acc)
+    assert rec["freeze_check"]["ok"]
+    assert "before lock" in rec["prize_tables"]["297000001"]["source"] and r.run.run_id in rec["prize_tables"]["297000001"]["source"]
+    assert rec["statuses"]["PAYOUT_SOURCE"] == "EXACT"
+    fg = rec["forecasts"]
+    assert fg["skater_conditioning"].startswith("CONDITIONAL") and fg["participation_status"] == "BOX_SCORES"
+    assert fg["bonus_rate_calibration"]["sog_5"]["n"] > 0 and fg["bonus_rate_calibration"]["blocks_3"]["observed"] > 0
+    assert fg["goalie_decisions"]["status"].startswith("saved at build") and fg["goalie_decisions"]["teams"] >= 1
+    assert fg["start_probability_check"]["within_3_se"]
+    assert fg["play_probability"]["status"].startswith("saved")
+    keys = {b["key"] for b in rec["backlog"]}
+    assert not keys & {"cache_event_counts_missing", "frozen_goalie_p_start_missing", "cache_dressed_indicator_missing"}

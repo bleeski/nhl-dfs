@@ -469,6 +469,7 @@ def run_slate(
         after_b.setdefault("bank", search.bank)
         after_b["proj"] = proj
         timings["phase_b_s"] = round(time.perf_counter() - t, 3)
+        save_contest_details(run, after_b.get("details") or {}, m, "Phase B contest detail")
     if baseline_only:
         return finish()
 
@@ -653,6 +654,29 @@ def _phase_b(run, entries, pool, work, a, objective, excluded_a, runtime, caps, 
 
 # -- provisional pass (C3) -------------------------------------------------------------------
 
+def save_contest_details(run: RunDir, details: dict, m: dict, label: str) -> None:
+    """Backlog B24: keep each DK contest detail that answered during the run (its prize table) in
+    runs/<id>/contests/dk_contest_<id>.json, before lock, so settle never depends on a later fetch (DK answers 403
+    from this machine at times). A file already saved is kept; sources.json labels each one. Never raises."""
+    import json
+
+    d = run.path / "contests"
+    saved = m.setdefault("contests_saved", {})
+    try:
+        for det in details.values():
+            cid = str(det.contest_id)
+            p = d / f"dk_contest_{cid}.json"
+            if p.exists():
+                continue
+            d.mkdir(exist_ok=True)
+            p.write_text(json.dumps(det.raw, ensure_ascii=False), encoding="utf-8")
+            saved[cid] = f"{label}, saved {_utc(datetime.now(timezone.utc))}"
+        if saved:
+            (d / "sources.json").write_text(json.dumps(saved, indent=1, sort_keys=True), encoding="utf-8")
+    except (OSError, TypeError, ValueError, AttributeError) as exc:
+        m.setdefault("messages", []).append(f"contest detail not saved in the run ({type(exc).__name__})")
+
+
 def _fetch_contest_details(contest_ids, cache, budget_s: float) -> tuple[dict, list[str]]:
     """DK contest detail per id in a worker thread joined against one budget."""
     box: dict[str, Any] = {"details": {}, "errors": []}
@@ -719,6 +743,7 @@ def _provisional_pass(run, entries, pool, after_b, st, starts, offline, runtime,
         ids = [cid for cid in dict.fromkeys(e.contest_id for e in entries.entries) if cid not in details]
         got, network = _fetch_contest_details(ids, cache, float(runtime["network_pass_budget_s"]))
         details.update(got)
+        save_contest_details(run, got, m, "provisional pass contest detail")
     contexts = contests_mod.resolve(entries, details, fam_cfg)
     payout = contests_mod.overall_payout_source(contexts.values())
 

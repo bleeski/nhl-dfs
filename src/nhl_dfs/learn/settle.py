@@ -25,7 +25,7 @@ from nhl_dfs.learn import notes as notes_mod
 from nhl_dfs.learn import standings as standings_mod
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-FROZEN = ("manifest.json", "field.json", "inputs", "versions", "scenario")
+FROZEN = ("manifest.json", "field.json", "inputs", "versions", "scenario", "contests")
 
 
 def _iso(t: datetime) -> str:
@@ -192,7 +192,8 @@ def run(run_id: str, standings_path, *, runs_root, prize_paths=(), winnings_path
     sdir = Path(standings_path) if Path(standings_path).is_dir() else Path(standings_path).parent
     saved = run.path / "settle" / "prize_tables"
     tables, t_notes = ledger_mod.prize_tables([s.contest_id for s in mine], entries_n={s.contest_id: len(s.entries) for s in mine},
-                                              search_dirs=[sdir], paths=prize_paths, saved_dir=saved)
+                                              search_dirs=[sdir], paths=prize_paths, saved_dir=saved,
+                                              run_dirs=run_contest_dirs(Path(runs_root), run))
     notes += t_notes
     ledger_mod.save_tables(tables, saved)
     wpath = Path(winnings_path) if winnings_path else sdir / "winnings.csv"
@@ -262,6 +263,22 @@ def run(run_id: str, standings_path, *, runs_root, prize_paths=(), winnings_path
     rec["freeze_check"] = {"ok": not changed, "files": len(before), "changed": changed}
     (d / "grades.json").write_text(json.dumps(rec, indent=1, default=str), encoding="utf-8")
     return rec
+
+
+def run_contest_dirs(runs_root: Path, run, max_depth: int = 8) -> list[Path]:
+    """runs/<id>/contests of the run, then of each run on its parent_run_id chain (a refresh or late swap child
+    uses its parent's pre-lock contest details, backlog B24)."""
+    out, path = [], run.path
+    for _ in range(max_depth):
+        out.append(path / "contests")
+        try:
+            parent = json.loads((path / "manifest.json").read_text(encoding="utf-8")).get("parent_run_id")
+        except (OSError, ValueError):
+            parent = None
+        if not parent:
+            break
+        path = Path(runs_root) / parent
+    return out
 
 
 def final_lineups(run, pool) -> dict[str, list]:
