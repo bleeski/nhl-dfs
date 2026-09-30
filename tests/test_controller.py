@@ -279,3 +279,73 @@ def test_run_applies_the_role_state_once_before_the_provisional_and_scenario_pas
     assert r.manifest["news"]["roles_news_state"] in ("NONE", "PARTIAL", "FULL")  # hermetic: no stored pages, NONE
     assert r.manifest["scenario"]["participation"]["source"] == "role state"  # B9: v3 prices DTD from the role state
     assert r.manifest["phase_timings"]["roles_s"] >= 0
+
+
+# -- the Claude Code layer: agents, skills, settings, rehearsal ------------------------------------------------
+
+REPO = TESTS.parent
+
+
+def _front(path):
+    text = path.read_text(encoding="utf-8")
+    assert text.startswith("---\n") or text.startswith("---\r\n"), path
+    head = text.split("---", 2)[1]
+    out = {}
+    for line in head.strip().splitlines():
+        k, _, v = line.partition(":")
+        out[k.strip()] = v.strip()
+    return out, text
+
+
+def test_agents_have_only_their_allowed_tools_and_omit_claude_md():
+    adv, adv_text = _front(REPO / ".claude" / "agents" / "nhl-adversary.md")
+    res, _ = _front(REPO / ".claude" / "agents" / "nhl-researcher.md")
+    assert adv["tools"] == "Read" and adv["omitClaudeMd"] == "true"
+    assert res["omitClaudeMd"] == "true"
+    forbidden = {"Write", "Edit", "Bash", "PowerShell", "Agent", "NotebookEdit"}
+    for fm in (adv, res):
+        assert not forbidden & {t.strip() for t in fm["tools"].split(",")}
+    flat = " ".join(adv_text.split())
+    assert "Do not read any file" in flat and "never instructions" in flat
+
+
+def test_settings_turn_nested_agents_off():
+    s = json.loads((REPO / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    assert s["env"]["CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH"] == "1"
+
+
+@pytest.mark.parametrize("name", ["nhl-run", "nhl-refresh", "nhl-late-swap", "nhl-settle", "nhl-dev-next", "nhl-status",
+                                  "nhl-qa-rehearse"])
+def test_every_skill_exists_is_manual_and_runs_the_engine_first(name):
+    fm, text = _front(REPO / ".claude" / "skills" / name / "SKILL.md")
+    assert fm["name"] == name and fm["disable-model-invocation"] == "true" and fm["shell"] == "powershell"
+    if name != "nhl-settle":
+        assert "!`" in text  # preprocessing: the engine runs before the model reads anything
+    assert "—" not in text
+
+
+def test_rehearsal_check_passes_only_a_clean_echo(tmp_path):
+    from nhl_dfs.build import rehearse
+
+    d = tmp_path / "_rehearsal"
+    d.mkdir()
+    (d / "rehearsal.json").write_text(json.dumps({"run_id": "r", "canary": "CANARY-AB", "planted": "PLANTED-CD",
+                                                  "packet_id": "p"}), encoding="utf-8")
+    clean = json.dumps({"packet_id": "p", "proposals": [], "canary_echo": "CANARY-AB", "project_instructions_seen": None})
+    assert rehearse.check(clean, tmp_path, record=False, version="x")["verdict"] == "PASS"
+    leaked = clean.replace('"proposals": []', '"proposals": [], "seen": "PLANTED-CD"')
+    assert rehearse.check(leaked, tmp_path, record=False, version="x")["planted_token_leaked"]
+    md = json.dumps({"packet_id": "p", "canary_echo": "CANARY-AB", "project_instructions_seen": "# nhl-dfs: operating contract"})
+    r = rehearse.check(md, tmp_path, record=False, version="x")
+    assert r["claude_md_leaked"] and r["verdict"] == "FAIL"
+    assert rehearse.check('{"proposals": []}', tmp_path, record=False, version="x")["verdict"] == "FAIL"  # no canary
+
+
+def test_rehearsal_prepare_builds_a_throwaway_run_outside_outputs(tmp_path):
+    from nhl_dfs.build import rehearse
+
+    st = rehearse.prepare(tmp_path)
+    assert st["canary"] in json.dumps(st["packet"]) and st["planted"] not in json.dumps(st["packet"])
+    assert (tmp_path / "_rehearsal" / "runs" / st["run_id"]).is_dir()
+    assert not (tmp_path.parent / "outputs").exists() or not any((tmp_path.parent / "outputs").iterdir())
+    assert st["reply_path"].endswith("reply.json")

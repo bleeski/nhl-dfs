@@ -423,10 +423,52 @@ def _print_objective(result) -> None:
 
 
 def _qa_run(args):
+    """--run <id>, or --run latest (the newest run with a manifest: the skills run the engine first and do not
+    know the id in advance)."""
+    import json
+
     from nhl_dfs.build.state import open_run
 
     runs_root, outputs_root = _roots(args)
+    if args.run == "latest":  # by the manifest's creation time, not the folder name (c0b-demo sorts after dates)
+        best = None
+        for d in runs_root.iterdir() if runs_root.is_dir() else []:
+            try:
+                created = json.loads((d / "manifest.json").read_text(encoding="utf-8")).get("created_utc") or ""
+            except (OSError, ValueError):
+                continue
+            if best is None or created > best[0]:
+                best = (created, d.name)
+        if best is None:
+            raise SystemExit(f"no run under {runs_root}")
+        return open_run(runs_root, best[1]), runs_root, outputs_root
     return open_run(runs_root, args.run), runs_root, outputs_root
+
+
+def cmd_qa_rehearse(args: argparse.Namespace) -> int:
+    """C10 isolation rehearsal: --prepare builds a throwaway run under <runs-root>/_rehearsal and prints the
+    PLANTED token (for this conversation only) and the canary packet; --check --reply <file> verifies the
+    adversary's reply and appends the verdict to docs/measured_usage.md."""
+    from nhl_dfs.build import packet, rehearse
+
+    runs_root = Path(args.runs_root)
+    if args.prepare:
+        st = rehearse.prepare(runs_root)
+        print(f"REHEARSAL run={st['run_id']} packet_id={st['packet_id']}")
+        print(f"PLANTED TOKEN (stays in this conversation; never pass it to the adversary): {st['planted']}")
+        print(f"CANARY (inside the packet): {st['canary']}")
+        print(f"SAVE THE REPLY TO: {st['reply_path']}")
+        print("----- PACKET JSON (pass inline, verbatim) -----")
+        print(packet.serialize(st["packet"]))
+        return 0
+    if args.check and args.reply:
+        res = rehearse.check(Path(args.reply).read_text(encoding="utf-8-sig", errors="replace"), runs_root)
+        for k, v in res.items():
+            print(f"{k}={v}")
+        print(f"REHEARSAL={res['verdict']} (recorded in docs/measured_usage.md)")
+        return 0 if res["verdict"] == "PASS" else 1
+    print("qa-rehearse needs --prepare, or --check --reply <file saved verbatim>")
+    return 2
 
 
 def cmd_qa_packet(args: argparse.Namespace) -> int:
@@ -610,6 +652,13 @@ def build_parser() -> argparse.ArgumentParser:
     cal.add_argument("--store-root", type=str, default=None)
     cal.add_argument("--out-dir", type=str, default=None)
     cal.set_defaults(func=cmd_calibrate)
+
+    reh = sub.add_parser("qa-rehearse")
+    reh.add_argument("--prepare", action="store_true")
+    reh.add_argument("--check", action="store_true")
+    reh.add_argument("--reply", type=str, default=None)
+    reh.add_argument("--runs-root", type=str, default=str(RUNS_ROOT))
+    reh.set_defaults(func=cmd_qa_rehearse)
 
     for name, func in (("qa-packet", cmd_qa_packet), ("qa-apply", cmd_qa_apply), ("research-request", cmd_research_request),
                        ("overrides-apply", cmd_overrides_apply)):
