@@ -261,8 +261,9 @@ def test_discovery_forces_candidates_for_every_usable_goalie():
     got, report = pf.discover(pool, design, 6, runtime, RISK, seed=1, goalies=keys)
     fam = Counter(c.family for c in got if c.family.startswith("goalie:"))
     per = int(RISK["discovery"]["per_goalie"])
-    assert {f"goalie:{k}" for k in keys} == set(fam) and all(v == per for v in fam.values())
+    assert {pf.goalie_tag(k) for k in keys} == set(fam) and all(v == per for v in fam.values())
     for c in got:
         if c.family.startswith("goalie:"):
-            assert c.family.split(":", 1)[1] in exposure.goalies_in(c.role_ids, pool)
+            assert "|" not in c.family  # RUN_NOTES tables split on "|"
+            assert c.family in {pf.goalie_tag(g) for g in exposure.goalies_in(c.role_ids, pool)}
     assert report["target"]["goalie"] == per * len(keys)

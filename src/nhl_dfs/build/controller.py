@@ -543,6 +543,9 @@ def apply_round(run, round_no: int, proposals, cfg: dict | None = None, *, now: 
                                        "accepted_strategic": res.accepted_strategic, "version": pub.version,
                                        "changed_entries": sorted(changes), "notes": repair_notes})
         m["messages"] = list(m.get("messages", [])) + [f"QA round {round_no} published v{pub.version}"] + repair_notes
+        if "RISK_BUDGET" in m["statuses"]:  # B40: the scenario pass measured the version before these changes
+            m["statuses"]["RISK_BUDGET"] = (f"NOT_EVALUATED (v{pub.version} changed {len(changes)} entr"
+                                            f"{'y' if len(changes) == 1 else 'ies'} after the scenario pass)")
         write_manifest(run, m)
         write_run_notes(run, m)
     more = source == "qa" and res.accepted_correctness > 0 and round_no < int(cc["max_rounds"])  # T-8 is checked when it starts

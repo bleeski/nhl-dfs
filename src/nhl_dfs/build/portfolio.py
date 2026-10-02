@@ -148,7 +148,7 @@ def discover(pool, design: ob.ScenarioSet, n_total: int, runtime: dict, risk_cfg
              time_limit_s: float | None = None, goalies: Sequence[str] = ()) -> tuple[list[Candidate], dict]:
     """Candidates tagged central / alternate:<team> / priors_wrong:<team>, plus (Classic, B36) up to
     discovery.per_goalie central-objective candidates forced to hold each usable goalie (person keys in
-    `goalies`), tagged goalie:<person key>, on top of n_total and its time share. Without them the
+    `goalies`), tagged by goalie_tag, on top of n_total and its time share. Without them the
     perturbed central search may return almost no lineup without the projected top goalie, and the
     goalie cap can only relax. Returns (candidates, report)."""
     from nhl_dfs.build import candidates as cand_mod
@@ -178,7 +178,7 @@ def discover(pool, design: ob.ScenarioSet, n_total: int, runtime: dict, risk_cfg
         for r in pool.rows:
             if r.is_goalie:
                 rows_of[r.person_key].append(r.role_id)
-        menu = [(f"goalie:{g}", (GroupConstraint(frozenset(rows_of[g]), min_count=1),)) for g in sorted(set(goalies))
+        menu = [(goalie_tag(g), (GroupConstraint(frozenset(rows_of[g]), min_count=1),)) for g in sorted(set(goalies))
                 if g in rows_of]
     if menu:  # one draw per goalie in turn (candidates.generate cycles the menu)
         jobs.append(("goalie", role_objective(design, pool), int(d["per_goalie"]) * len(menu)))
@@ -203,6 +203,12 @@ def discover(pool, design: ob.ScenarioSet, n_total: int, runtime: dict, risk_cfg
             report["made"][name.split(":")[0]] += 1
     report["made"] = dict(report["made"])
     return out, report
+
+
+def goalie_tag(person_key: str) -> str:
+    """Family tag of a forced-goalie candidate, "goalie:<name> (<team>)": no "|", which RUN_NOTES tables split on."""
+    name, team = (person_key.split("|") + [""])[:2]
+    return f"goalie:{name} ({team})"
 
 
 # -- selection ------------------------------------------------------------------------------------
