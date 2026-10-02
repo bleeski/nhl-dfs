@@ -35,6 +35,9 @@ SHOWDOWN_ROSTER_POSITIONS = {"CPT", "FLEX"}
 
 _EASTERN = ZoneInfo("America/New_York")
 _GAME_INFO_RE = re.compile(r"^([A-Z]+)@([A-Z]+) (\d{2}/\d{2}/\d{4} \d{2}:\d{2}[AP]M) ET$")
+# DK replaces Game Info with this marker once the game has started ("In-Progress" in the salary CSV,
+# "In Progress" in the entries file's embedded list). It carries no teams or start time (B42).
+_STARTED_MARKER_RE = re.compile(r"^in[ -]progress$", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -54,7 +57,7 @@ class PersonRows:
 
 @dataclass(frozen=True)
 class Conflict:
-    """kind: DUPLICATE_ROLE and PERSON_KEY_COLLISION exclude their rows from
+    """kind: DUPLICATE_ROLE, PERSON_KEY_COLLISION and STARTED_GAME exclude their rows from
     selection; SAME_NAME, UNPAIRED, CPT_SALARY_RATIO, CPT_APPG_MISMATCH are
     reported only."""
 
@@ -153,12 +156,23 @@ def read_salary(path) -> SalaryPool:
         raise ValueError(f"{path}: mixes CPT/FLEX rows with Classic rows")
     mode = Mode.SHOWDOWN if showdown_flags == {True} else Mode.CLASSIC
 
+    # B42: rows whose game DK marks as started can never be added to a lineup. They leave the selectable pool
+    # as an excluded, reported conflict, so no module downstream sees a game without teams or a start time.
+    started = [r for r in parsed if _STARTED_MARKER_RE.match(r.game_info.strip())]
+    parsed = [r for r in parsed if not _STARTED_MARKER_RE.match(r.game_info.strip())]
+
     games: dict[str, GameInfo] = {}
     for r in parsed:
         key, info = parse_game_info(r.game_info)
         games.setdefault(key, info)
 
     conflicts = _find_conflicts(parsed, mode)
+    if started:
+        teams = ", ".join(sorted({r.team for r in started}))
+        conflicts.append(Conflict(
+            "STARTED_GAME", tuple(r.role_id for r in started),
+            f"{len(started)} row(s) from started game(s) ({teams}): Game Info is the DK in-progress marker; "
+            "excluded, never added to a lineup", True))
     excluded = {rid for c in conflicts if c.excluded for rid in c.role_ids}
     rows = [r for r in parsed if r.role_id not in excluded]
 
