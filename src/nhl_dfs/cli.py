@@ -206,9 +206,15 @@ def cmd_run(args: argparse.Namespace) -> int:
     return _print_result(result)
 
 
+REPORTED_EXTRA = ("MARKET_COVERAGE", "RISK_BUDGET")  # B40: printed on every run, late swap and refresh
+
+
 def _print_result(result) -> int:
     for k, v in result.statuses.items():
         print(f"{k}={v}")
+    for k in REPORTED_EXTRA:  # the scenario pass sets them; a baseline-only run or a late swap does not evaluate them
+        if k not in result.statuses:
+            print(f"{k}=NOT_EVALUATED")
     print(f"run={result.run.run_id} slate={result.slate_id}")
     if result.public_path:
         print(f"published: {result.public_path}")
@@ -219,6 +225,17 @@ def _print_result(result) -> int:
     print(f"notes: {result.notes_path}")
     _print_goalies((result.manifest or {}).get("goalies"))
     return 0 if result.ok else 1
+
+
+def _print_risk_budget(run) -> None:
+    """B40: after qa-apply or overrides-apply, the budget line as it stands (NOT_EVALUATED once a version changed lineups)."""
+    from nhl_dfs.build.manifest import read_manifest
+
+    try:
+        st = read_manifest(run).get("statuses", {})
+    except (OSError, ValueError):
+        return
+    print(f"RISK_BUDGET={st.get('RISK_BUDGET', 'NOT_EVALUATED')}")
 
 
 def _print_goalies(rec) -> None:
@@ -613,6 +630,7 @@ def cmd_qa_apply(args: argparse.Namespace) -> int:
                                  runs_root=runs_root, outputs_root=outputs_root)
     for line in res.lines():
         print(line)
+    _print_risk_budget(run)
     _print_goalies(_goalie_refresh(run))
     return 0
 
@@ -666,6 +684,7 @@ def cmd_overrides_apply(args: argparse.Namespace) -> int:
     for line in res.lines()[:-1]:
         print(line.replace("QA round", "overrides file"))
     print(f"OVERRIDES_ACCEPTED={res.accepted_correctness}")
+    _print_risk_budget(run)
     _print_goalies(_goalie_refresh(run))
     return 0
 

@@ -1,40 +1,44 @@
 # 32 NHL teams. Every value here was observed, not assumed (2026-09-28):
 #   nhl: api-web.nhle.com/v1/standings/now; name: same response (teamName.default)
 #   df_slug: dailyfaceoff.com/teams index links (.../teams/<slug>/line-combinations)
-#   dk: DK lobby matchup suffixes plus Ben's 2026-09-29 DKSalaries TeamAbbrev; null when not yet seen
+#   dk: DK lobby matchup suffixes plus Ben's 2026-09-29 DKSalaries TeamAbbrev; null when not yet seen.
+#     2026-10-02 (B35): 31 codes confirmed from DK lobby GameSets (Competitions[].Description "AWAY @ HOME"
+#     with the team's city and nickname), recorded in tests/fixtures/http/dk_lobby_gamesets_2026-09-29/-30/
+#     10-01.json; COL, LAK, NYI, PHI, PIT also match the 2026-09-30 DKSalaries TeamAbbrev. OTT has not
+#     appeared in any DK file yet.
 #   covers: covers.com NHL odds board logo alt text; null when the team was not on the board.
 #     Each code was confirmed by matching all 16 board games to NHL schedule games on start time.
 # Fill a null only from an observed DK or Covers file, and set its *_verified flag true.
 teams:
-  - {nhl: ANA, dk: null, dk_verified: false, covers: null, df_slug: anaheim-ducks, name: "Anaheim Ducks"}
+  - {nhl: ANA, dk: ANA, dk_verified: true, covers: null, df_slug: anaheim-ducks, name: "Anaheim Ducks"}
   - {nhl: BOS, dk: BOS, dk_verified: true, covers: BOS, df_slug: boston-bruins, name: "Boston Bruins"}
-  - {nhl: BUF, dk: null, dk_verified: false, covers: BUF, df_slug: buffalo-sabres, name: "Buffalo Sabres"}
+  - {nhl: BUF, dk: BUF, dk_verified: true, covers: BUF, df_slug: buffalo-sabres, name: "Buffalo Sabres"}
   - {nhl: CAR, dk: CAR, dk_verified: true, covers: CAR, df_slug: carolina-hurricanes, name: "Carolina Hurricanes"}
-  - {nhl: CBJ, dk: null, dk_verified: false, covers: CLB, df_slug: columbus-blue-jackets, name: "Columbus Blue Jackets"}
-  - {nhl: CGY, dk: null, dk_verified: false, covers: CAL, df_slug: calgary-flames, name: "Calgary Flames"}
+  - {nhl: CBJ, dk: CBJ, dk_verified: true, covers: CLB, df_slug: columbus-blue-jackets, name: "Columbus Blue Jackets"}
+  - {nhl: CGY, dk: CGY, dk_verified: true, covers: CAL, df_slug: calgary-flames, name: "Calgary Flames"}
   - {nhl: CHI, dk: CHI, dk_verified: true, covers: CHI, df_slug: chicago-blackhawks, name: "Chicago Blackhawks"}
-  - {nhl: COL, dk: null, dk_verified: false, covers: COL, df_slug: colorado-avalanche, name: "Colorado Avalanche"}
-  - {nhl: DAL, dk: null, dk_verified: false, covers: null, df_slug: dallas-stars, name: "Dallas Stars"}
-  - {nhl: DET, dk: null, dk_verified: false, covers: null, df_slug: detroit-red-wings, name: "Detroit Red Wings"}
+  - {nhl: COL, dk: COL, dk_verified: true, covers: COL, df_slug: colorado-avalanche, name: "Colorado Avalanche"}
+  - {nhl: DAL, dk: DAL, dk_verified: true, covers: null, df_slug: dallas-stars, name: "Dallas Stars"}
+  - {nhl: DET, dk: DET, dk_verified: true, covers: null, df_slug: detroit-red-wings, name: "Detroit Red Wings"}
   - {nhl: EDM, dk: EDM, dk_verified: true, covers: EDM, df_slug: edmonton-oilers, name: "Edmonton Oilers"}
   - {nhl: FLA, dk: FLA, dk_verified: true, covers: FLA, df_slug: florida-panthers, name: "Florida Panthers"}
-  - {nhl: LAK, dk: null, dk_verified: false, covers: LA, df_slug: los-angeles-kings, name: "Los Angeles Kings"}
-  - {nhl: MIN, dk: null, dk_verified: false, covers: MIN, df_slug: minnesota-wild, name: "Minnesota Wild"}
+  - {nhl: LAK, dk: LAK, dk_verified: true, covers: LA, df_slug: los-angeles-kings, name: "Los Angeles Kings"}
+  - {nhl: MIN, dk: MIN, dk_verified: true, covers: MIN, df_slug: minnesota-wild, name: "Minnesota Wild"}
   - {nhl: MTL, dk: MTL, dk_verified: true, covers: MON, df_slug: montreal-canadiens, name: "Montréal Canadiens"}
-  - {nhl: NJD, dk: null, dk_verified: false, covers: NJ, df_slug: new-jersey-devils, name: "New Jersey Devils"}
-  - {nhl: NSH, dk: null, dk_verified: false, covers: NAS, df_slug: nashville-predators, name: "Nashville Predators"}
-  - {nhl: NYI, dk: null, dk_verified: false, covers: NYI, df_slug: new-york-islanders, name: "New York Islanders"}
+  - {nhl: NJD, dk: NJD, dk_verified: true, covers: NJ, df_slug: new-jersey-devils, name: "New Jersey Devils"}
+  - {nhl: NSH, dk: NSH, dk_verified: true, covers: NAS, df_slug: nashville-predators, name: "Nashville Predators"}
+  - {nhl: NYI, dk: NYI, dk_verified: true, covers: NYI, df_slug: new-york-islanders, name: "New York Islanders"}
   - {nhl: NYR, dk: NYR, dk_verified: true, covers: NYR, df_slug: new-york-rangers, name: "New York Rangers"}
   - {nhl: OTT, dk: null, dk_verified: false, covers: null, df_slug: ottawa-senators, name: "Ottawa Senators"}
-  - {nhl: PHI, dk: null, dk_verified: false, covers: PHI, df_slug: philadelphia-flyers, name: "Philadelphia Flyers"}
-  - {nhl: PIT, dk: null, dk_verified: false, covers: PIT, df_slug: pittsburgh-penguins, name: "Pittsburgh Penguins"}
-  - {nhl: SEA, dk: null, dk_verified: false, covers: SEA, df_slug: seattle-kraken, name: "Seattle Kraken"}
-  - {nhl: SJS, dk: null, dk_verified: false, covers: SJ, df_slug: san-jose-sharks, name: "San Jose Sharks"}
-  - {nhl: STL, dk: null, dk_verified: false, covers: null, df_slug: st-louis-blues, name: "St. Louis Blues"}
-  - {nhl: TBL, dk: null, dk_verified: false, covers: TB, df_slug: tampa-bay-lightning, name: "Tampa Bay Lightning"}
+  - {nhl: PHI, dk: PHI, dk_verified: true, covers: PHI, df_slug: philadelphia-flyers, name: "Philadelphia Flyers"}
+  - {nhl: PIT, dk: PIT, dk_verified: true, covers: PIT, df_slug: pittsburgh-penguins, name: "Pittsburgh Penguins"}
+  - {nhl: SEA, dk: SEA, dk_verified: true, covers: SEA, df_slug: seattle-kraken, name: "Seattle Kraken"}
+  - {nhl: SJS, dk: SJS, dk_verified: true, covers: SJ, df_slug: san-jose-sharks, name: "San Jose Sharks"}
+  - {nhl: STL, dk: STL, dk_verified: true, covers: null, df_slug: st-louis-blues, name: "St. Louis Blues"}
+  - {nhl: TBL, dk: TBL, dk_verified: true, covers: TB, df_slug: tampa-bay-lightning, name: "Tampa Bay Lightning"}
   - {nhl: TOR, dk: TOR, dk_verified: true, covers: TOR, df_slug: toronto-maple-leafs, name: "Toronto Maple Leafs"}
-  - {nhl: UTA, dk: null, dk_verified: false, covers: UTAH, df_slug: utah-mammoth, name: "Utah Mammoth"}
+  - {nhl: UTA, dk: UTA, dk_verified: true, covers: UTAH, df_slug: utah-mammoth, name: "Utah Mammoth"}
   - {nhl: VAN, dk: VAN, dk_verified: true, covers: VAN, df_slug: vancouver-canucks, name: "Vancouver Canucks"}
   - {nhl: VGK, dk: VGK, dk_verified: true, covers: VEG, df_slug: vegas-golden-knights, name: "Vegas Golden Knights"}
-  - {nhl: WPG, dk: null, dk_verified: false, covers: null, df_slug: winnipeg-jets, name: "Winnipeg Jets"}
-  - {nhl: WSH, dk: null, dk_verified: false, covers: null, df_slug: washington-capitals, name: "Washington Capitals"}
+  - {nhl: WPG, dk: WPG, dk_verified: true, covers: null, df_slug: winnipeg-jets, name: "Winnipeg Jets"}
+  - {nhl: WSH, dk: WSH, dk_verified: true, covers: null, df_slug: washington-capitals, name: "Washington Capitals"}

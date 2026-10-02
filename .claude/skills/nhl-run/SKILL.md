@@ -25,7 +25,9 @@ value. Do all of step 1 in ONE turn, step 2 in ONE turn, step 3 in ONE turn:
 3. Run in one PowerShell call, only the parts whose file you saved:
    `.\nhl.ps1 overrides-apply --run <id> --file "<run folder>\news\overrides_1.json"; .\nhl.ps1 qa-apply --run <id> --round 1 --proposals "<run folder>\qa\proposals_1.json"`
 4. Report to Ben in at most 10 plain lines: FILE_VALID, DELIVERY_STATUS, MODEL_STATUS, NEWS_STATE, PAYOUT_SOURCE,
-   OUTCOME_CALIBRATION, FIELD_CALIBRATION; which version is current and the public file path; overrides accepted;
+   OUTCOME_CALIBRATION, FIELD_CALIBRATION, MARKET_COVERAGE (games priced on market odds), RISK_BUDGET (OK or
+   BREACHED with its reasons, say plainly that the engine flagged it) and GOALIE_CAP / GAME_CAP when printed;
+   which version is current and the public file path; overrides accepted;
    QA changes accepted or rejected (one line each); any DTD player still unresolved. Say "checked" only for what
    the referee checked. If ANOTHER_ROUND=YES, say that a second QA round is allowed and ask Ben whether to run it.
    Then give the goalie table exactly as last printed (by step 3 if it ran, else by the engine output above): the

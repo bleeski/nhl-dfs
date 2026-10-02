@@ -77,6 +77,26 @@ def test_malformed_proposals_end_qa_and_keep_the_incumbent(full_classic, tmp_pat
     assert "already applied" in again.stop_reason  # a round is never applied twice
 
 
+def test_a_published_change_marks_the_risk_budget_not_evaluated(full_classic, tmp_path, monkeypatch):  # noqa: F811
+    """B40: RISK_BUDGET describes the scenario pass's version; a QA or overrides version that changes lineups
+    must not keep reporting it as OK."""
+    from nhl_dfs.build.manifest import read_manifest, write_manifest
+
+    run, runs, outs = _copy(full_classic, tmp_path)
+    m = read_manifest(run)
+    m["statuses"]["RISK_BUDGET"] = "OK"
+    write_manifest(run, m)
+    pool, eid, x, y = _goalie_case(run)
+    monkeypatch.setattr(controller, "evaluate", lambda *a, **k: pytest.fail("a correctness repair must not be contested"))
+    reply = json.dumps({"packet_id": "p", "proposals": [
+        {"kind": "correctness", "target": {"role_id": y.role_id}, "change": _override(y.role_id, "goalie_start", False, True),
+         "evidence": "DF confirmed", "source_url": "https://www.dailyfaceoff.com/starting-goalies"}]})
+    res = _apply(run, runs, outs, reply)
+    assert res.published_version is not None
+    st = read_manifest(run)["statuses"]["RISK_BUDGET"]
+    assert st.startswith(f"NOT_EVALUATED (v{res.published_version} changed ") and "after the scenario pass" in st
+
+
 def test_a_correctness_repair_is_accepted_without_a_simulation_contest(full_classic, tmp_path, monkeypatch):  # noqa: F811
     run, runs, outs = _copy(full_classic, tmp_path)
     pool, eid, x, y = _goalie_case(run)

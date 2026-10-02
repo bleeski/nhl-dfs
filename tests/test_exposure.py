@@ -39,12 +39,41 @@ def test_single_game_showdown_never_triggers_the_per_game_cap():
     assert classic.game_fee_share == pytest.approx(0.40)
 
 
-def test_fee_budget_below_the_achievable_floor_uses_the_floor():
+def test_fee_budget_below_the_achievable_floor_caps_lineups_instead():
     pool = classic_pool()
     c = exposure.caps(CFG, 2, pool, Mode.CLASSIC, 4, fees_cents=[100, 100], usable_goalies=6, budget=BUDGET["classic"])
-    assert c.goalie_fee_share == pytest.approx(0.5) and c.floors["goalie_fee_share_max"] == 0.5
+    # two $1 entries: some goalie carries at least half the fees, so the 40% budget is a lineup cap (B36)
+    assert c.goalie_fee_share is None and c.goalie_lineups == 1 and c.floors["goalie_fee_share_max"] == 0.5
     assert exposure.fee_floor([2000, 100, 100], 3) == pytest.approx(2000 / 2200)
     assert exposure.fee_floor([100] * 10, 5) == pytest.approx(0.2)
+
+
+def test_unequal_fees_of_2026_10_01_switch_the_goalie_and_game_caps_to_lineups():
+    """B36 acceptance: the $1 entry was 59% of $1.70, so no dollar cap at 40% exists; 40% of 5 entries is 2."""
+    c = exposure.caps(CFG, 5, classic_pool(), Mode.CLASSIC, 4, fees_cents=[25, 25, 100, 10, 10], tournament_entries=5,
+                      usable_goalies=8, budget=BUDGET["classic"])
+    assert c.goalie_fee_share is None and c.goalie_lineups == 2
+    assert c.game_fee_share is None and c.game_lineups == 2
+    assert c.cap_status["GOALIE_CAP"] == "LINEUPS 2/5 (fee floor 0.59 > budget 0.40)"
+    assert c.cap_status["GAME_CAP"].startswith("LINEUPS 2/5")
+    assert any(n.startswith("GOALIE_CAP=LINEUPS 2/5") for n in c.notes)
+    assert c.record()["goalie_lineups"] == 2
+
+
+def test_equal_fees_keep_the_dollar_cap():
+    c = exposure.caps(CFG, 5, classic_pool(), Mode.CLASSIC, 4, fees_cents=[100] * 5, usable_goalies=8,
+                      budget=BUDGET["classic"])
+    assert c.goalie_fee_share == pytest.approx(0.40) and c.goalie_lineups is None
+    assert c.game_fee_share == pytest.approx(0.40) and c.game_lineups is None
+    assert c.cap_status["GOALIE_CAP"].startswith("DOLLARS 0.40")
+
+
+def test_too_few_goalies_relax_the_lineup_cap_by_the_smallest_step_and_say_so():
+    c = exposure.caps(CFG, 5, classic_pool(), Mode.CLASSIC, 4, fees_cents=[25, 25, 100, 10, 10], usable_goalies=2,
+                      budget=BUDGET["classic"])
+    assert c.goalie_lineups == 3  # ceil(5 / 2): two goalies cannot hold five entries at two each
+    assert "relaxed from 2: 2 usable goalie(s)" in c.cap_status["GOALIE_CAP"]
+    assert any("GOALIE_CAP relaxed from 2 to 3 lineups" in n for n in c.notes)
 
 
 def _pool_with_games():

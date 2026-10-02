@@ -139,7 +139,12 @@ coerced to a known value (CLAUDE.md); other vocabularies here that have no
 - Tie-break: anchored bands, band = max(3% x anchor, anchor Monte Carlo SE); ownership never past one band; cash and
   satellite ignore ownership; dup = sampled count when FIELD_CALIBRATION=FITTED else the pre-fit proxy.
 - Caps: tournament entries only; plan defaults at >= 20 tournament entries with feasibility floors; below that no person
-  or goalie cap, Showdown Captain cap 1 for 2 to 3 entries. Fee-share budgets compare against max(budget, LPT floor).
+  or goalie cap, Showdown Captain cap 1 for 2 to 3 entries. Goalie and game budgets (B36): LPT floor <= budget is
+  DOLLARS mode (fee share cap = budget, hard); floor > budget is LINEUPS mode (no dollar cap; at most
+  max(1, floor(budget x entries)) of all entries per goalie / primary game, raised to ceil(entries / usable) only when
+  too few exist). Both hold through EXPOSURE; CONCENTRATION relaxes them by the smallest step, then REPEAT.
+  Captain budget compares against max(budget, LPT floor). Discovery adds `per_goalie` forced-goalie candidates per
+  usable goalie (Classic). Stdout: GOALIE_CAP, GAME_CAP, RISK_BUDGET, MARKET_COVERAGE (B40).
 - Frontier: five kappas (risk.yaml); dominated points dropped, identical portfolios share a row; choose the highest tail
   utility inside the budget, else the least-risk point (recorded). Budget is the [BEN] flag 2 placeholder.
 - Frozen record (backlog B25, B26, B28): beside each kept selection and referee chunk, `flags_XXXX.npy` holds per-draw

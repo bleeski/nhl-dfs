@@ -148,18 +148,19 @@ def _scenario_lines(s: dict[str, Any]) -> list[str]:
                    f"| {c['fee']:.2f} | {c['paid_positions']} / {c['cash_line']} | {c['first_prize']:.2f} | {c['field']} |")
     out += ["", "Frontier (selection scenarios; dominated points removed; knobs that chose the same portfolio share a row):", "",
             "| Knobs (kappa) | Tail utility / fees | P(lose >= 80% of fees) | E[payout] $ | Max goalie fee share | Max game fee share "
-            "| Max Captain fee share | Inside budget |", "|---|---:|---:|---:|---:|---:|---:|---|"]
+            "| Max Captain fee share | Most lineups on one goalie / game | Inside budget |", "|---|---:|---:|---:|---:|---:|---:|---:|---|"]
     for p in s.get("frontier", []):
         ks = ", ".join(f"{k:g}" for k in (p.get("kappas") or [p["kappa"]]))
         g = "n/a" if p.get("game_share_max") is None else f"{p['game_share_max']:.2f}"
         cp = "n/a" if p.get("captain_share_max") is None else f"{p['captain_share_max']:.2f}"
         out.append(f"| {ks} | {_pm(p['tail_utility'], p['tail_utility_se'])} | {_pm(p['p_lose80'], p['p_lose80_se'])} "
-                   f"| {p['exp_payout']:.2f} | {p['goalie_share_max']:.2f} | {g} | {cp} | "
+                   f"| {p['exp_payout']:.2f} | {p['goalie_share_max']:.2f} | {g} | {cp} | {p.get('goalie_lineups_max', '?')} / "
+                   f"{'n/a' if p.get('game_lineups_max') is None else p['game_lineups_max']} | "
                    f"{'yes' if p['feasible'] else 'no: ' + '; '.join(p['reasons'])} |")
     ch = s.get("chosen", {})
     out += ["", f"- Chosen: knob {ch.get('kappa')}: {ch.get('reason')}.",
             f"- Budget in force (config/risk.yaml, [BEN] flag 2 placeholder): " + ", ".join(
-                f"{k} {v:.2f}" for k, v in s.get("budget", {}).items() if v is not None),
+                f"{k} {v}" if isinstance(v, int) else f"{k} {v:.2f}" for k, v in s.get("budget", {}).items() if v is not None),
             "- Caps: " + "; ".join(s.get("caps", {}).get("notes", []) or ["defaults"]),
             f"- Candidate families: target {s.get('family_mix', {}).get('target')}, selected {s.get('family_mix', {}).get('selected')}; "
             f"{s.get('discovery', {}).get('candidates')} candidates ({s.get('discovery', {}).get('from_bank_and_provisional')} from the "
