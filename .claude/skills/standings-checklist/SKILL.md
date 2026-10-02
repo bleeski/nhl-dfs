@@ -33,7 +33,7 @@ To record Ben's own call on a contest (never guess one, and never mark without h
 
 A duplicate mark is refused. In a cloud session use `.venv/bin/python scripts/standings_checklist.py` instead.
 `--json` prints the full machine-readable report and writes nothing; `--also <folder>` scans one more folder
-(for example Downloads) and tags what it finds as loose; `--url-template` changes the export link if a click does
+and tags what it finds as loose (it does not filter by sport, so never point it at a mixed folder such as Downloads); `--url-template` changes the export link if a click does
 not download a file (the default is an unverified assumption about DraftKings' export address).
 
 DraftKings login, downloads and money actions are Ben's.

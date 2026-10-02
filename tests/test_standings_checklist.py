@@ -271,3 +271,15 @@ def test_blank_winnings_are_reported_as_owed(env):
     (d / "winnings.csv").write_text("contest_id,contest_name,entry_id,rank,fee,winnings_usd\n"
                                     "1001,n,e1,5,1.00,\n1002,n,e2,6,1.00,3.00\n", encoding="utf-8")
     assert [(w["contest_id"], w["entry_id"]) for w in sc.build_report()["winnings_blank"]] == [("1001", "e1")]
+
+
+def test_saved_ticks_are_scoped_to_one_generation(env):
+    put_run(env, "20260930-120000-classic", [ROW_A])
+    r = sc.build_report()
+    a = sc.render_html(r, date(2026, 10, 2), "20261002T150000Z")
+    b = sc.render_html(r, date(2026, 10, 2), "20261002T160000Z")
+    assert "standings_pulls_ticks_20261002T150000Z" in a and "standings_pulls_ticks_20261002T160000Z" in b
+    assert "%STAMP%" not in a
+    sc.write_outputs(r, date(2026, 10, 2), "20261002T150000Z")
+    d = env / "data/standings"  # the dated and stable copies are one generation, so they share ticks
+    assert (d / "CONTESTS_AWAITING_STANDINGS.html").read_bytes() == (d / "standings_pulls_2026-10-02.html").read_bytes()

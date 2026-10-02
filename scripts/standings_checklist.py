@@ -11,7 +11,8 @@ Entry-file locations scanned (see LOCATIONS in the report):
 - runs/<other folder>/*.csv     loose (demo copies); runs/_* folders are scratch and are not scanned
 - <repo root>/*.csv             loose
 - tests/fixtures/real/**/*.csv  loose (personal exports, gitignored)
-- --also <dir>                  loose, recursive (for example a Downloads folder)
+- --also <dir>                  loose, recursive; it does not filter by sport, so point it at a folder
+                                 that holds only NHL entry files (a mixed Downloads folder lists other sports)
 runs/ and outputs/ are gitignored: a slate run in a cloud session exists only in that container until its
 entry file is placed in one of these folders on this machine. The report names slates that tracked review
 notes mention but that have no local folder.
@@ -475,7 +476,7 @@ code{font:12px ui-monospace,Consolas,monospace;white-space:nowrap}
 
 _JS = """
 (function(){
-  var KEY='standings_pulls_ticks_v1', rows=[].slice.call(document.querySelectorAll('li.row[data-id]'));
+  var KEY='standings_pulls_ticks_%STAMP%', rows=[].slice.call(document.querySelectorAll('li.row[data-id]'));
   function load(){try{return JSON.parse(localStorage.getItem(KEY)||'{}')||{};}catch(e){return {};}}
   function save(m){try{localStorage.setItem(KEY,JSON.stringify(m));}catch(e){}}
   var ticks=load();
@@ -504,7 +505,9 @@ def _e(value) -> str:
     return html.escape(str(value), quote=True)
 
 
-def render_html(report: dict, today: date) -> str:
+def render_html(report: dict, today: date, stamp: str = "") -> str:
+    """`stamp` (UTC, to the second) scopes the saved ticks to this generation: a rerun re-reads the disk and
+    starts with no ticks, so a contest whose file never landed does not stay green."""
     n = report["counts"]
     groups = awaiting_groups(report)
     total_rows = sum(len(items) for _, items in groups)
@@ -569,18 +572,19 @@ def render_html(report: dict, today: date) -> str:
         "and drop it unmodified in <code>data/standings/inbox/</code>. Clicking also ticks the row.</p>"
         f'<div class="bar"><span id="pulled">0 / {total_rows} pulled</span>'
         '<div class="track"><div class="fill" id="fill"></div></div></div>'
-        + "".join(body) + f"<script>{_JS}</script></main></body></html>")
+        + "".join(body) + f"<script>{_JS.replace('%STAMP%', re.sub(r'[^0-9A-Za-z]', '', stamp))}</script></main></body></html>")
 
 
 # ---------------------------------------------------------------------------- output
 
-def write_outputs(report: dict, today: date) -> list[Path]:
+def write_outputs(report: dict, today: date, stamp: str | None = None) -> list[Path]:
+    stamp = stamp or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     STANDINGS_DIR.mkdir(parents=True, exist_ok=True)
     md = STANDINGS_DIR / MD_NAME
     dated = STANDINGS_DIR / HTML_DATED.format(day=today.isoformat())
     stable = STANDINGS_DIR / HTML_STABLE
     md.write_text(render_markdown(report, today), encoding="utf-8")
-    dated.write_text(render_html(report, today), encoding="utf-8")
+    dated.write_text(render_html(report, today, stamp), encoding="utf-8")
     newest = max(STANDINGS_DIR.glob("standings_pulls_*.html"), key=lambda p: p.name)
     shutil.copyfile(newest, stable)
     return [md, dated, stable]
@@ -594,7 +598,8 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="List the contests whose results export has not been pulled yet.")
     ap.add_argument("--json", action="store_true", help="print the machine-readable report; write nothing")
     ap.add_argument("--also", action="append", default=[], metavar="DIR",
-                    help="also scan this folder (recursive) for entry files, tagged loose; repeatable")
+                    help="also scan this folder (recursive) for entry files, tagged loose; repeatable. Does not filter by "
+                         "sport: other sports' entry files in the folder would be listed as owed")
     ap.add_argument("--url-template", default=EXPORT_URL_TEMPLATE, help="export link, with {contest_id}")
     ap.add_argument("--mark-unrecoverable", nargs=2, metavar=("ID", "REASON"))
     ap.add_argument("--mark-placeholder", nargs=2, metavar=("ID", "REASON"))
