@@ -1,0 +1,233 @@
+{
+ "GameSets": [
+  {
+   "GameSetKey": "5AD6C0F3EBA34CA43392DF8D0A269638",
+   "ContestStartTimeSuffix": "",
+   "Competitions": [
+    {
+     "GameId": 6200623,
+     "AwayTeamId": 4969,
+     "HomeTeamId": 4968,
+     "HomeTeamScore": 0,
+     "AwayTeamScore": 0,
+     "HomeTeamCity": "Philadelphia",
+     "AwayTeamCity": "Pittsburgh",
+     "HomeTeamName": "Flyers",
+     "AwayTeamName": "Penguins",
+     "StartDate": "2026-09-30T23:30:00.0000000Z",
+     "Location": "Philadelphia",
+     "LastPlay": null,
+     "TeamWithPossession": 0,
+     "TimeRemainingStatus": "Pre-Game",
+     "Sport": "NHL",
+     "Status": "Pre-Game",
+     "Description": "PIT @ PHI",
+     "FullDescription": "Pittsburgh Penguins @ Philadelphia Flyers",
+     "ExceptionalMessages": [],
+     "SeriesType": 0,
+     "NumberOfGamesInSeries": 1,
+     "SeriesInfo": null,
+     "HomeTeamCompetitionOrdinal": 0,
+     "AwayTeamCompetitionOrdinal": 0,
+     "HomeTeamCompetitionCount": 0,
+     "AwayTeamCompetitionCount": 0
+    },
+    {
+     "GameId": 6202627,
+     "AwayTeamId": 4965,
+     "HomeTeamId": 4974,
+     "HomeTeamScore": 0,
+     "AwayTeamScore": 0,
+     "HomeTeamCity": "Toronto",
+     "AwayTeamCity": "New York",
+     "HomeTeamName": "Maple Leafs",
+     "AwayTeamName": "Islanders",
+     "StartDate": "2026-09-30T23:30:00.0000000Z",
+     "Location": "Toronto",
+     "LastPlay": null,
+     "TeamWithPossession": 0,
+     "TimeRemainingStatus": "Pre-Game",
+     "Sport": "NHL",
+     "Status": "Pre-Game",
+     "Description": "NYI @ TOR",
+     "FullDescription": "New York Islanders @ Toronto Maple Leafs",
+     "ExceptionalMessages": [],
+     "SeriesType": 0,
+     "NumberOfGamesInSeries": 1,
+     "SeriesInfo": null,
+     "HomeTeamCompetitionOrdinal": 0,
+     "AwayTeamCompetitionOrdinal": 0,
+     "HomeTeamCompetitionCount": 0,
+     "AwayTeamCompetitionCount": 0
+    },
+    {
+     "GameId": 6200624,
+     "AwayTeamId": 4961,
+     "HomeTeamId": 4970,
+     "HomeTeamScore": 0,
+     "AwayTeamScore": 0,
+     "HomeTeamCity": "Colorado",
+     "AwayTeamCity": "Los Angeles",
+     "HomeTeamName": "Avalanche",
+     "AwayTeamName": "Kings",
+     "StartDate": "2026-10-01T02:00:00.0000000Z",
+     "Location": "Colorado",
+     "LastPlay": null,
+     "TeamWithPossession": 0,
+     "TimeRemainingStatus": "Pre-Game",
+     "Sport": "NHL",
+     "Status": "Pre-Game",
+     "Description": "LAK @ COL",
+     "FullDescription": "Los Angeles Kings @ Colorado Avalanche",
+     "ExceptionalMessages": [],
+     "SeriesType": 0,
+     "NumberOfGamesInSeries": 1,
+     "SeriesInfo": null,
+     "HomeTeamCompetitionOrdinal": 0,
+     "AwayTeamCompetitionOrdinal": 0,
+     "HomeTeamCompetitionCount": 0,
+     "AwayTeamCompetitionCount": 0
+    }
+   ],
+   "GameStyles": [
+    {
+     "GameStyleId": 13,
+     "SportId": 3,
+     "SortOrder": 1,
+     "Name": "Classic",
+     "Abbreviation": "CLA",
+     "Description": "Create a 9-player lineup while staying under the $50,000 salary cap",
+     "IsEnabled": true,
+     "Attributes": null
+    },
+    {
+     "GameStyleId": 180,
+     "SportId": 3,
+     "SortOrder": 12,
+     "Name": "Single Stat - Points",
+     "Abbreviation": "SSP",
+     "Description": "Draft 3 players you think will have the most combined goals and assists.",
+     "IsEnabled": true,
+     "Attributes": [
+      "singlestat"
+     ]
+    }
+   ],
+   "SortOrder": null,
+   "MinStartTime": "/Date(1790811000000)/",
+   "Tag": ""
+  },
+  {
+   "GameSetKey": "D0FF557D5D30EB87045543BB1F569B61",
+   "ContestStartTimeSuffix": " (NYI @ TOR)",
+   "Competitions": [
+    {
+     "GameId": 6202627,
+     "AwayTeamId": 4965,
+     "HomeTeamId": 4974,
+     "HomeTeamScore": 0,
+     "AwayTeamScore": 0,
+     "HomeTeamCity": "Toronto",
+     "AwayTeamCity": "New York",
+     "HomeTeamName": "Maple Leafs",
+     "AwayTeamName": "Islanders",
+     "StartDate": "2026-09-30T23:30:00.0000000Z",
+     "Location": "Toronto",
+     "LastPlay": null,
+     "TeamWithPossession": 0,
+     "TimeRemainingStatus": "Pre-Game",
+     "Sport": "NHL",
+     "Status": "Pre-Game",
+     "Description": "NYI @ TOR",
+     "FullDescription": "New York Islanders @ Toronto Maple Leafs",
+     "ExceptionalMessages": [],
+     "SeriesType": 0,
+     "NumberOfGamesInSeries": 1,
+     "SeriesInfo": null,
+     "HomeTeamCompetitionOrdinal": 0,
+     "AwayTeamCompetitionOrdinal": 0,
+     "HomeTeamCompetitionCount": 0,
+     "AwayTeamCompetitionCount": 0
+    }
+   ],
+   "GameStyles": [
+    {
+     "GameStyleId": 71,
+     "SportId": 3,
+     "SortOrder": 2,
+     "Name": "Showdown",
+     "Abbreviation": "",
+     "Description": "Create your team from 1 game, while staying under the $50,000 salary cap.",
+     "IsEnabled": true,
+     "Attributes": [
+      "showdown"
+     ]
+    }
+   ],
+   "SortOrder": null,
+   "MinStartTime": "/Date(1790811000000)/",
+   "Tag": "Featured"
+  },
+  {
+   "GameSetKey": "A0B399FC8E894E81C3E71600E14D3ED6",
+   "ContestStartTimeSuffix": "",
+   "Competitions": [
+    {
+     "GameId": 6200624,
+     "AwayTeamId": 4961,
+     "HomeTeamId": 4970,
+     "HomeTeamScore": 0,
+     "AwayTeamScore": 0,
+     "HomeTeamCity": "Colorado",
+     "AwayTeamCity": "Los Angeles",
+     "HomeTeamName": "Avalanche",
+     "AwayTeamName": "Kings",
+     "StartDate": "2026-10-01T02:00:00.0000000Z",
+     "Location": "Colorado",
+     "LastPlay": null,
+     "TeamWithPossession": 0,
+     "TimeRemainingStatus": "Pre-Game",
+     "Sport": "NHL",
+     "Status": "Pre-Game",
+     "Description": "LAK @ COL",
+     "FullDescription": "Los Angeles Kings @ Colorado Avalanche",
+     "ExceptionalMessages": [],
+     "SeriesType": 0,
+     "NumberOfGamesInSeries": 1,
+     "SeriesInfo": null,
+     "HomeTeamCompetitionOrdinal": 0,
+     "AwayTeamCompetitionOrdinal": 0,
+     "HomeTeamCompetitionCount": 0,
+     "AwayTeamCompetitionCount": 0
+    }
+   ],
+   "GameStyles": [
+    {
+     "GameStyleId": 71,
+     "SportId": 3,
+     "SortOrder": 2,
+     "Name": "Showdown",
+     "Abbreviation": "",
+     "Description": "Create your team from 1 game, while staying under the $50,000 salary cap.",
+     "IsEnabled": true,
+     "Attributes": [
+      "showdown"
+     ]
+    },
+    {
+     "GameStyleId": 107,
+     "SportId": 3,
+     "SortOrder": 10,
+     "Name": "Snake Showdown",
+     "Abbreviation": "SNKSD",
+     "Description": "Snake draft a 4-player lineup from one game. 3 starters and 1 bench player.",
+     "IsEnabled": true,
+     "Attributes": null
+    }
+   ],
+   "SortOrder": null,
+   "MinStartTime": "/Date(1790820000000)/",
+   "Tag": "Featured"
+  }
+ ]
+}

@@ -122,15 +122,63 @@ def test_extreme_market_is_capped_and_logged():
 
 def test_match_odds_uses_only_verified_codes():
     snap = OddsSnapshot(T0, "source", "book", "nhl_partner_odds", [
-        GameOdds("1", "WPG", "DAL", None, -120, 100, None, None, None, 5.5, -110, -110, None, None)])
-    games = {"DAL@WPG": ("WPG", "DAL"), "X@Y": ("YYY", "XXX")}
+        GameOdds("1", "WPG", "DAL", None, -120, 100, None, None, None, 5.5, -110, -110, None, None),
+        GameOdds("2", "OTT", "DAL", None, -120, 100, None, None, None, 5.5, -110, -110, None, None)])
+    games = {"DAL@WPG": ("WPG", "DAL"), "DAL@OTT": ("OTT", "DAL"), "X@Y": ("YYY", "XXX")}
     got, why = market.match_odds(snap, games)
-    if "DAL@WPG" in got:
-        assert got["DAL@WPG"].home_ml == -120
-    else:  # DAL or WPG not yet verified in teams.yaml: it falls back to the model with a reason
-        assert "unverified" in why["DAL@WPG"]
+    assert got["DAL@WPG"].home_ml == -120
+    assert why["DAL@OTT"] == "unverified team code OTT for source nhl_partner_odds"  # OTT: no DK file has shown it yet
     assert "unverified" in why["X@Y"]
     assert market.match_odds(None, games)[1]["X@Y"] == "no odds snapshot"
+
+
+def _lobby_codes() -> dict[str, set[str]]:
+    """DK code -> nicknames, from the recorded DK lobby GameSets (tests/fixtures/http/SOURCES.md)."""
+    import json
+
+    from conftest import fixture_bytes
+
+    out: dict[str, set[str]] = {}
+    for day in ("2026-09-29", "2026-09-30", "2026-10-01"):
+        for gs in json.loads(fixture_bytes(f"dk_lobby_gamesets_{day}.json"))["GameSets"]:
+            for c in gs["Competitions"]:
+                if c.get("Sport") != "NHL":
+                    continue
+                away, home = (x.strip() for x in c["Description"].split("@"))
+                out.setdefault(away, set()).add(c["AwayTeamName"])
+                out.setdefault(home, set()).add(c["HomeTeamName"])
+    return out
+
+
+def test_every_dk_lobby_code_is_verified_in_teams_yaml():
+    """B35: a DK code seen in a DK file is filled and verified; the row's name ends in DK's nickname."""
+    import yaml
+
+    teams = {t["dk"]: t for t in yaml.safe_load((market.REPO_ROOT / "config" / "teams.yaml").read_text(encoding="utf-8"))["teams"]
+             if t["dk_verified"]}
+    seen = _lobby_codes()
+    assert len(seen) == 31
+    for code, names in seen.items():
+        assert code in teams, code
+        assert all(teams[code]["name"].endswith(n) for n in names), (code, names)
+
+
+def test_2026_10_01_slate_matches_every_game_on_market():
+    """B35 acceptance: the run's cached DK feed (trimmed to the slate's four games) matches all four
+    games, and each fits as MARKET. On 2026-10-01 three of the four fell back to MODEL."""
+    import json
+
+    from conftest import fixture_bytes
+    from nhl_dfs.data.sources import nhl
+
+    snap = nhl.parse_partner_odds(json.loads(fixture_bytes("nhl_partner_odds_2026-10-01_slate.json")))
+    games = {"SEA@CGY": ("CGY", "SEA"), "CHI@UTA": ("UTA", "CHI"), "EDM@VAN": ("VAN", "EDM"), "FLA@SJS": ("SJS", "FLA")}
+    got, why = market.match_odds(snap, games)
+    assert why == {} and set(got) == set(games)
+    for key, odds in got.items():
+        gr = market.fit_game(odds, market.TeamStrength(3.0, 3.0), snap.as_of_utc, None, cfg=CFG)
+        assert gr.source == "MARKET", (key, gr.notes)
+    assert market.implied(got["FLA@SJS"].home_ml, got["FLA@SJS"].away_ml)[0] < 0.5  # DK has Florida favored
 
 
 def test_slate_uses_a_fresh_snapshot_for_verified_games_and_refuses_an_old_one():

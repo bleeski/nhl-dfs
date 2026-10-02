@@ -104,6 +104,22 @@ def assignment_from(by_entry: dict[str, tuple[str, ...]], pool, relaxations) -> 
     return Assignment(dict(by_entry), dict(keys), dict(persons), dict(caps_), overlap, list(relaxations))
 
 
+def risk_statuses(sel, caps) -> dict[str, str]:
+    """B36/B40 report lines: the goalie and game cap mode, and whether the chosen frontier point (selection
+    scenarios) is inside the risk budget. BREACHED names each breach and any CONCENTRATION relaxation."""
+    chosen = next((p for p in sel.frontier if p.kappa == sel.chosen_kappa), None)
+    out = dict(caps.cap_status)
+    if chosen is None:
+        out["RISK_BUDGET"] = "NOT_EVALUATED"
+        return out
+    why = list(chosen.reasons)
+    n_conc = sum(1 for r in sel.relaxations if r.kind == "CONCENTRATION")
+    if n_conc:
+        why.append(f"{n_conc} entr{'y' if n_conc == 1 else 'ies'} relaxed the goalie/game cap")
+    out["RISK_BUDGET"] = "OK" if chosen.feasible and not n_conc else f"BREACHED({'; '.join(why)})"
+    return out
+
+
 def prior_persons(by_entry: dict, pool, proj) -> int:
     """Distinct PRIOR (no usable history) persons across a portfolio."""
     persons = getattr(proj, "persons", {})
@@ -143,6 +159,10 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
     sec["odds"] = odds_msgs
     sec["games"] = game_lines
     sec["game_sources"] = {g.key: g.rates.source + (" STALE" if g.rates.stale else "") for g in slate.games}
+    # B40: odds coverage is a reported status, not only a RUN_NOTES line
+    on_market = sum(1 for g in slate.games if g.rates.source == "MARKET" and not g.rates.stale)
+    stale = sum(1 for g in slate.games if g.rates.source == "MARKET" and g.rates.stale)
+    m["statuses"]["MARKET_COVERAGE"] = f"{on_market}/{len(slate.games)}" + (f" ({stale} STALE)" if stale else "")
 
     # participation priced once: QUESTIONABLE (DTD) persons sit out a share of scenarios
     q = float(fam_cfg["selection"]["questionable_play_prob"])
@@ -225,7 +245,8 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
     n_total = min(int(c["bank_per_entry"]) * len(entries.entries) + int(c["bank_extra"]), int(c["bank_max"]))
     big = max(contexts.values(), key=lambda x: x.field_size)
     chalk = _chalk_team(work, fb.marginals[big.contest_id].own)
-    found, disc = pf.discover(work, sets["design"], n_total, runtime, risk_cfg, seed=seed + 7, chalk_team=chalk)
+    found, disc = pf.discover(work, sets["design"], n_total, runtime, risk_cfg, seed=seed + 7, chalk_team=chalk,
+                              goalies=exposure.usable_goalie_keys(proj, work))
     cands = list(found)
     seen = {x.key for x in cands}
     extra = [(lu, "central:provisional") for lu in (prov["assignment"].by_entry.values() if prov else [])]
@@ -311,6 +332,7 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
     sec["version"] = vs["version"]
     set_fields_fn(m, a_s, pool)
     m["statuses"].update({k: evidence[k] for k in ("PAYOUT_SOURCE", "OUTCOME_CALIBRATION", "FIELD_CALIBRATION")})
+    m["statuses"].update(risk_statuses(sel, caps))
     if not vs["public_replaced"] or any(r.kind == "REPEAT" for r in sel.relaxations):
         m["statuses"]["DELIVERY_STATUS"] = DeliveryStatus.DEGRADED_REVIEW.value
     m["worked"].append(f"scenario pass published v{vs['version']} ({sets['selection'].n} selection and "

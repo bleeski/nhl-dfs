@@ -70,8 +70,10 @@ def test_call_up_stays_unmatched_and_flagged(tmp_path, pool):
 
 def test_unverified_dk_team_never_auto_accepts(tmp_path, pool):
     p, base = pool
-    assert "NYI" not in cw.verified_team_map()
-    res = seed(tmp_path, p, directory(base))
+    # NYI is verified in teams.yaml since 2026-10-02 (B35); the map passed here leaves it unverified
+    team_map = {k: v for k, v in cw.verified_team_map().items() if k != "NYI"}
+    res = cw.seed(p, directory=directory(base), accepted_path=tmp_path / "accepted.csv",
+                  proposals_path=tmp_path / "proposals.json", team_map=team_map, clock=lambda: T0)
     assert not any(k.endswith("|NYI|F") or k.endswith("|NYI|D") or k.endswith("|NYI|G") for k in res.accepted)
     nyi = [x for x in res.proposals if x.dk_team == "NYI"]
     assert nyi and all("no verified NHL mapping" in x.reason for x in nyi)

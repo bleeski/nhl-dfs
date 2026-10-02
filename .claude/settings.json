@@ -2,6 +2,19 @@
   "env": {
     "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "1"
   },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c '[ \"${CLAUDE_CODE_REMOTE:-}\" = \"true\" ] && bash \"$CLAUDE_PROJECT_DIR/tools/cloud_bootstrap.sh\"; exit 0'"
+          }
+        ]
+      }
+    ]
+  },
   "permissions": {
     "allow": [
       "PowerShell(.\\nhl.ps1 scheduled-refresh)"

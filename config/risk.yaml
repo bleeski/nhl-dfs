@@ -14,9 +14,14 @@ budget:
     goalie_fee_share_max: 0.40
     game_fee_share_max: null    # a single-game slate cannot diversify its game
     captain_fee_share_max: 0.40 # Showdown concentration is measured by Captain share (and the shared failure scenario, reported)
-  # A concentration budget below what the entries can achieve (for example 2 entries: some goalie
-  # carries at least half the fees) is compared against max(budget, achievable floor); the floor
-  # is computed and recorded (build/exposure.fee_floor), never hidden.
+  # The achievable floor of each budget is computed and recorded (build/exposure.fee_floor), never hidden.
+  # Goalie and game budgets (B36, Ben 2026-10-01): when the floor is at or under the budget the cap is
+  # in dollars (fee share), hard. When the floor is above it (unequal fees: on 2026-10-01 one $1 entry
+  # was 59% of $1.70) the cap becomes lineups instead: at most max(1, floor(share x entries)) of all
+  # entries per goalie (per primary game), rounded DOWN so the share is never exceeded. 0.40 of 5
+  # entries is 2; of 3 entries, 1. The same key sets both modes. Printed as GOALIE_CAP= / GAME_CAP=.
+  # (config/exposure.yaml tournament.classic.goalie is a separate count cap for 20+ tournament entries.)
+  # The Captain budget is compared against max(budget, floor).
 
 # Frontier: five knob settings. kappa prices the portfolio's P(lose >= 80% of fees) against the
 # tail utility, both in dollars (kappa x total fees x delta probability). Knob 0 is pure tail.
@@ -35,6 +40,7 @@ discovery:
   cluster_quantile: 0.8          # alternate cores: scenarios where a team's skater points are in its top 20%
   failure_quantile: 0.2          # priors wrong: scenarios where the chalk team's skater points are in its bottom 20%
   stress_sleeve_max: 0.10        # at most this share of entries from the priors-wrong family
+  per_goalie: 2                  # Classic: central-objective candidates forced to hold each usable goalie (B36), on top
 
 # Selection (build/portfolio.select): candidates are screened per contest to the best
 # max(screen_min, screen_per_entry x its entries) by field-only family utility plus each discovery
@@ -44,6 +50,7 @@ selection:
   screen_min: 40
   screen_per_entry: 2
   screen_per_family: 3
+  screen_per_goalie: 2           # each goalie's best kept too, so the goalie cap has choices (B36)
   threads: 5
 
 # Scenario objectives (build/objectives.py)

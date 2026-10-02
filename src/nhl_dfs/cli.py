@@ -206,9 +206,15 @@ def cmd_run(args: argparse.Namespace) -> int:
     return _print_result(result)
 
 
+REPORTED_EXTRA = ("MARKET_COVERAGE", "RISK_BUDGET")  # B40: printed on every run, late swap and refresh
+
+
 def _print_result(result) -> int:
     for k, v in result.statuses.items():
         print(f"{k}={v}")
+    for k in REPORTED_EXTRA:  # the scenario pass sets them; a baseline-only run or a late swap does not evaluate them
+        if k not in result.statuses:
+            print(f"{k}=NOT_EVALUATED")
     print(f"run={result.run.run_id} slate={result.slate_id}")
     if result.public_path:
         print(f"published: {result.public_path}")

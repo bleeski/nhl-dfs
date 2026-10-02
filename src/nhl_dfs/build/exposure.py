@@ -13,9 +13,14 @@ are preferred (Captain cap 1 for up to three entries when enough viable Captains
 
 Fee concentration (the risk budget, config/risk.yaml): the share of ALL slate fees in entries that
 use one goalie, whose primary game is one game (only when the slate has more than one game), or
-whose Showdown Captain is one person. A budget below what the entries can achieve is compared
-against max(budget, achievable floor); the floor is computed by longest-processing-time packing
-of the fees and recorded.
+whose Showdown Captain is one person. The achievable floor is computed by longest-processing-time
+packing of the fees and recorded. For the goalie and game budgets (backlog B36, Ben 2026-10-01):
+    floor <= budget: DOLLARS mode, the fee share cap is the budget, hard.
+    floor >  budget: LINEUPS mode (unequal fees make the dollar cap unreachable, for example one $1
+        entry among 10-cent ones): no dollar cap; at most max(1, floor(budget x entries)) of ALL
+        entries per goalie (per primary game). 40% of 5 entries is 2. Raised to ceil(entries /
+        usable) only when fewer goalies (games) exist than that needs, and the raise is recorded.
+The Showdown Captain budget keeps max(budget, floor).
 
 A lineup's primary game is the game holding the largest share of its scenario mean points.
 The shared failure scenario (reported, plan section 7): for each team, the scenarios where its
@@ -53,15 +58,19 @@ class Caps:
     goalie: int | None  # Classic goalie slot
     captain: int | None  # Showdown Captain
     max_overlap: int | None  # Classic: most people two tournament entries may share
-    goalie_fee_share: float | None  # effective budget = max(budget, floor)
-    game_fee_share: float | None  # None when the slate has one game
-    captain_fee_share: float | None
+    goalie_fee_share: float | None  # DOLLARS mode: the budget; None in LINEUPS mode
+    game_fee_share: float | None  # None when the slate has one game, or in LINEUPS mode
+    captain_fee_share: float | None  # effective budget = max(budget, floor)
     floors: dict = field(default_factory=dict)
     notes: tuple[str, ...] = ()
+    goalie_lineups: int | None = None  # LINEUPS mode: most entries (all families) holding one goalie
+    game_lineups: int | None = None  # LINEUPS mode: most entries whose primary game is one game
+    cap_status: dict = field(default_factory=dict)  # {"GOALIE_CAP": "LINEUPS 2/5 (...)", "GAME_CAP": ...}
 
     def record(self) -> dict:
         return {k: getattr(self, k) for k in ("n_entries", "n_tournament", "person", "goalie", "captain", "max_overlap",
-                                              "goalie_fee_share", "game_fee_share", "captain_fee_share", "floors")} | \
+                                              "goalie_fee_share", "game_fee_share", "captain_fee_share", "floors",
+                                              "goalie_lineups", "game_lineups", "cap_status")} | \
             {"notes": list(self.notes)}
 
 
@@ -69,17 +78,22 @@ def usable_goalies(proj, pool, rel: float = 0.5) -> int:
     """Goalies in the pool whose start probability is at least `rel` x their team's highest. Relative to the
     team, because p_start is split across three to five camp goalies per team (an absolute 0.5 cut left 3
     usable goalies on the real 8-team 2026-09-29 slate and raised the goalie cap on a false floor)."""
+    return max(1, len(usable_goalie_keys(proj, pool, rel)))
+
+
+def usable_goalie_keys(proj, pool, rel: float = 0.5) -> list[str]:
+    """The person keys `usable_goalies` counts, sorted (a team with no start probability counts every goalie)."""
     persons = getattr(proj, "persons", {})
     in_pool = {r.person_key: r.team for r in pool.rows if r.is_goalie}
-    by: dict[str, list[float]] = defaultdict(list)
+    by: dict[str, list[tuple[str, float]]] = defaultdict(list)
     for k, team in in_pool.items():
         p = persons.get(k)
-        by[team].append(float(p.goalie.p_start) if p is not None and p.goalie is not None else 0.0)
-    n = 0
+        by[team].append((k, float(p.goalie.p_start) if p is not None and p.goalie is not None else 0.0))
+    out = []
     for vals in by.values():
-        top = max(vals)
-        n += sum(1 for v in vals if top > 0 and v >= rel * top) if top > 0 else len(vals)
-    return max(1, n)
+        top = max(v for _, v in vals)
+        out += [k for k, v in vals if v >= rel * top] if top > 0 else [k for k, _ in vals]
+    return sorted(out)
 
 
 def fee_floor(fees: Sequence[int], bins: int) -> float:
@@ -144,12 +158,39 @@ def caps(cfg: dict, n_entries: int, pool, mode: Mode, n_games: int, *, fees_cent
                          f"using {fl:.0%}")
         return max(float(b), fl)
 
-    g_share = share_cap("goalie_fee_share_max", goalies)
-    game_share = share_cap("game_fee_share_max", n_games) if n_games > 1 else None
+    status: dict[str, str] = {}
+
+    def concentration_cap(name: str, label: str, unit: str, bins: int) -> tuple[float | None, int | None]:
+        """(fee share cap, lineup cap): DOLLARS or LINEUPS mode, see the module docstring."""
+        b = budget.get(name)
+        if b is None:
+            return None, None
+        b = float(b)
+        fl = fee_floor(fees, bins)
+        floors[name] = round(fl, 4)
+        if fl <= b + 1e-12:
+            status[label] = f"DOLLARS {b:.2f} (fee floor {fl:.2f} <= budget)"
+            return b, None
+        n = int(n_entries)
+        cap = max(1, int(math.floor(b * n + 1e-9)))
+        need = math.ceil(n / max(1, bins))
+        detail = f"fee floor {fl:.2f} > budget {b:.2f}"
+        if cap < need:
+            notes.append(f"{label} relaxed from {cap} to {need} lineups: {bins} usable {unit}(s) for {n} entries")
+            detail += f"; relaxed from {cap}: {bins} usable {unit}(s)"
+            cap = need
+        status[label] = f"LINEUPS {cap}/{n} ({detail})"
+        notes.append(f"{label}=LINEUPS {cap}/{n} ({detail}): at most {cap} of {n} entries per {unit}")
+        return None, cap
+
+    g_share, g_lineups = concentration_cap("goalie_fee_share_max", "GOALIE_CAP", "goalie", goalies)
+    game_share, game_lineups = (concentration_cap("game_fee_share_max", "GAME_CAP", "game", n_games) if n_games > 1
+                                else (None, None))
     if n_games <= 1 and budget.get("game_fee_share_max") is not None:
         notes.append("single-game slate: no per-game cap")
     c_share = share_cap("captain_fee_share_max", captains) if mode is Mode.SHOWDOWN else None
-    return Caps(int(n_entries), nt, person, goalie, captain, overlap, g_share, game_share, c_share, floors, tuple(notes))
+    return Caps(int(n_entries), nt, person, goalie, captain, overlap, g_share, game_share, c_share, floors, tuple(notes),
+                g_lineups, game_lineups, status)
 
 
 # -- dependence of one lineup ---------------------------------------------------------------------

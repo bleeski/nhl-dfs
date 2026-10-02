@@ -15,7 +15,9 @@ each takes the candidate with the best
 among those that pass the caps, ordered by the deterministic tie-break inside one band (band >= the
 score's Monte Carlo SE; ownership never moves a choice past one band; cash and satellite use no
 ownership). The user's entries already placed in a contest count as copies and opponents. Caps are
-relaxed in the plan's order when nothing passes (OVERLAP, then EXPOSURE, then REPEAT), recorded.
+relaxed in the plan's order when nothing passes (OVERLAP, then EXPOSURE, then CONCENTRATION, then
+REPEAT), recorded. The goalie and game caps (build/exposure.py, DOLLARS or LINEUPS mode) survive
+EXPOSURE; CONCENTRATION relaxes them only by the smallest step some candidate needs (B36).
 
 Frontier: one portfolio per knob setting (five kappas, config/risk.yaml), each measured jointly
 (own entries ranked together). Dominated points are dropped from the report; the choice is the
@@ -46,11 +48,14 @@ class RiskBudget:
     goalie_fee_share_max: float | None
     game_fee_share_max: float | None
     captain_fee_share_max: float | None
+    goalie_lineups_max: int | None = None  # LINEUPS mode (build/exposure.py): entries per goalie
+    game_lineups_max: int | None = None  # LINEUPS mode: entries per primary game
 
     @classmethod
     def from_config(cls, risk_cfg: dict, mode: Mode, caps: exposure.Caps) -> "RiskBudget":
         b = risk_cfg["budget"][mode.value]
-        return cls(float(b["p_lose80_max"]), caps.goalie_fee_share, caps.game_fee_share, caps.captain_fee_share)
+        return cls(float(b["p_lose80_max"]), caps.goalie_fee_share, caps.game_fee_share, caps.captain_fee_share,
+                   caps.goalie_lineups, caps.game_lineups)
 
 
 @dataclass
@@ -68,7 +73,7 @@ class Choice:
     own_pct: float
     dup: float
     dup_measure: str
-    level: int  # 0 all caps, 1 overlap dropped, 2 exposure dropped, 3 repeat
+    level: int  # 0 all caps, 1 overlap dropped, 2 exposure dropped, 3 goalie/game cap relaxed, 4 repeat
 
 
 @dataclass
@@ -87,6 +92,8 @@ class FrontierPoint:
     reasons: list[str] = field(default_factory=list)
     portfolio_key: str = ""
     kappas: list[float] = field(default_factory=list)  # every knob that produced this portfolio
+    goalie_lineups_max: int = 0  # most entries holding one goalie
+    game_lineups_max: int | None = None  # most entries sharing a primary game (multi-game slates)
 
     def record(self) -> dict:
         return {k: (round(v, 5) if isinstance(v, float) else v) for k, v in self.__dict__.items()}
@@ -138,9 +145,14 @@ def team_points(scen: ob.ScenarioSet, pool) -> dict[str, np.ndarray]:
 
 def discover(pool, design: ob.ScenarioSet, n_total: int, runtime: dict, risk_cfg: dict, *, seed: int,
              chalk_team: str | None = None, families: Sequence[float] | None = None,
-             time_limit_s: float | None = None) -> tuple[list[Candidate], dict]:
-    """Candidates tagged central / alternate:<team> / priors_wrong:<team>. Returns (candidates, report)."""
+             time_limit_s: float | None = None, goalies: Sequence[str] = ()) -> tuple[list[Candidate], dict]:
+    """Candidates tagged central / alternate:<team> / priors_wrong:<team>, plus (Classic, B36) up to
+    discovery.per_goalie central-objective candidates forced to hold each usable goalie (person keys in
+    `goalies`), tagged goalie:<person key>, on top of n_total and its time share. Without them the
+    perturbed central search may return almost no lineup without the projected top goalie, and the
+    goalie cap can only relax. Returns (candidates, report)."""
     from nhl_dfs.build import candidates as cand_mod
+    from nhl_dfs.build.milp import GroupConstraint
     from nhl_dfs.models.field import split_counts
 
     d = risk_cfg["discovery"]
@@ -159,22 +171,35 @@ def discover(pool, design: ob.ScenarioSet, n_total: int, runtime: dict, risk_cfg
         t = chalk_team if chalk_team in tp else max(teams, key=lambda x: float(tp[x].mean()))
         rows = tp[t] <= np.quantile(tp[t], float(d["failure_quantile"]))
         jobs.append((f"priors_wrong:{t}", role_objective(design, pool, rows), per[2]))
+    total_k = sum(k for _, _, k in jobs) or 1
+    menu = []
+    if pool.mode is Mode.CLASSIC and int(d.get("per_goalie", 0)) > 0:
+        rows_of: dict[str, list[str]] = defaultdict(list)
+        for r in pool.rows:
+            if r.is_goalie:
+                rows_of[r.person_key].append(r.role_id)
+        menu = [(f"goalie:{g}", (GroupConstraint(frozenset(rows_of[g]), min_count=1),)) for g in sorted(set(goalies))
+                if g in rows_of]
+    if menu:  # one draw per goalie in turn (candidates.generate cycles the menu)
+        jobs.append(("goalie", role_objective(design, pool), int(d["per_goalie"]) * len(menu)))
     out: list[Candidate] = []
     seen: set[str] = set()
     report = {"target": dict(zip(("central", "alternate", "priors_wrong"), per)), "made": Counter()}
-    total_k = sum(k for _, _, k in jobs) or 1
+    if menu:
+        report["target"]["goalie"] = jobs[-1][2]
     for i, (name, obj, k) in enumerate(jobs):
         try:
             got = cand_mod.generate(pool, pool.mode, obj, k, seed=seed + 101 * i, perturb_sd=float(c["perturb_sd_points"]),
                                     time_limit_total_s=max(1.0, budget * k / total_k),
-                                    min_pairwise_diff=int(c["min_pairwise_diff"]))
+                                    min_pairwise_diff=int(c["min_pairwise_diff"]),
+                                    groups_menu=menu if name == "goalie" else ())
         except cand_mod.SolverUnavailable:
             got = []
         for g in got:
             if g.key in seen:
                 continue
             seen.add(g.key)
-            out.append(Candidate(g.role_ids, g.key, g.objective_value, name))
+            out.append(Candidate(g.role_ids, g.key, g.objective_value, g.family if name == "goalie" else name))
             report["made"][name.split(":")[0]] += 1
     report["made"] = dict(report["made"])
     return out, report
@@ -276,23 +301,43 @@ def _greedy(kappa: float, order: list, entry_contest: Mapping[str, str], fees: M
     pgame = [exposure.primary_game(c.role_ids, role_mean, games, pool) for c in candidates]
     person_n, goalie_n, captain_n, used = Counter(), Counter(), Counter(), Counter()
     fee_g, fee_game, fee_c = Counter(), Counter(), Counter()
+    lineups_g, lineups_game = Counter(), Counter()  # every entry, for the LINEUPS-mode caps
     placed: list[set] = []
     stress = 0
     choices: dict[str, Choice] = {}
     relax: list[Relaxation] = []
 
+    def excess(k: int, eid: str) -> tuple[int, float]:
+        """How far candidate k would push the goalie and game caps: (entries over a LINEUPS cap, fee share
+        over a DOLLARS cap). (0, 0.0) passes."""
+        f = int(fees[eid])
+        n_over, share_over = 0, 0.0
+        for g in goalies[k]:
+            if caps.goalie_lineups is not None:
+                n_over += max(0, lineups_g[g] + 1 - caps.goalie_lineups)
+            if caps.goalie_fee_share is not None:
+                share_over += max(0.0, (fee_g[g] + f) / total_fees - caps.goalie_fee_share - 1e-9)
+        if pgame[k]:
+            if caps.game_lineups is not None:
+                n_over += max(0, lineups_game[pgame[k]] + 1 - caps.game_lineups)
+            if caps.game_fee_share is not None:
+                share_over += max(0.0, (fee_game[pgame[k]] + f) / total_fees - caps.game_fee_share - 1e-9)
+        return n_over, share_over
+
     def passes(k: int, eid: str, level: int) -> bool:
-        if used[candidates[k].key] and level < 3:
+        """Levels 0 to 2 hold the goalie and game caps (B36: hard when feasible); level 3 is filtered to the
+        smallest excess by the caller; level 4 allows a repeat and drops every cap."""
+        if used[candidates[k].key] and level < 4:
             return False
-        if candidates[k].family.startswith("priors_wrong") and stress >= sleeve_max and level < 3:
+        if candidates[k].family.startswith("priors_wrong") and stress >= sleeve_max and level < 4:
+            return False
+        if level >= 3:
+            return True
+        if excess(k, eid) != (0, 0.0):
             return False
         if level >= 2:
             return True
         f = int(fees[eid])
-        if caps.goalie_fee_share is not None and any((fee_g[g] + f) / total_fees > caps.goalie_fee_share + 1e-9 for g in goalies[k]):
-            return False
-        if caps.game_fee_share is not None and pgame[k] and (fee_game[pgame[k]] + f) / total_fees > caps.game_fee_share + 1e-9:
-            return False
         if caps.captain_fee_share is not None and captains[k] and (fee_c[captains[k]] + f) / total_fees > caps.captain_fee_share + 1e-9:
             return False
         if eid in tournament:
@@ -323,9 +368,13 @@ def _greedy(kappa: float, order: list, entry_contest: Mapping[str, str], fees: M
         p80 = n80 / S
         score = mean_u - kappa * total_fees / 100.0 * p80
         se = np.sqrt(se_u ** 2 + (kappa * total_fees / 100.0) ** 2 * p80 * (1 - p80) / S)
-        pick, level = None, 0
-        for level in (0, 1, 2, 3):
+        pick, level, over = None, 0, (0, 0.0)
+        for level in (0, 1, 2, 3, 4):
             ok = [k for k in range(K) if passes(k, eid, level)]
+            if ok and level == 3:  # relax the goalie and game caps by the smallest step any candidate needs
+                ex = {k: excess(k, eid) for k in ok}
+                over = min(ex.values())
+                ok = [k for k in ok if ex[k] == over]
             if not ok:
                 continue
             items = [tiebreak.Item(candidates[k].key, float(score[k]), float(se[k]), float(st.own_pct[k]), float(st.dup[k]), k)
@@ -334,8 +383,12 @@ def _greedy(kappa: float, order: list, entry_contest: Mapping[str, str], fees: M
             break
         k = pick.item.ref
         if level:
-            kind = {1: "OVERLAP", 2: "EXPOSURE", 3: "REPEAT"}[level]
-            relax.append(Relaxation(eid, kind, f"kappa {kappa:g}: no candidate passed the caps at level {level - 1}"))
+            kind = {1: "OVERLAP", 2: "EXPOSURE", 3: "CONCENTRATION", 4: "REPEAT"}[level]
+            detail = f"kappa {kappa:g}: no candidate passed the caps at level {level - 1}"
+            if level == 3:
+                detail += (f"; goalie/game cap exceeded by {over[0]} lineup(s)" if over[0] else "") + \
+                          (f"; fee share exceeded by {over[1]:.2f}" if over[1] else "")
+            relax.append(Relaxation(eid, kind, detail))
         choices[eid] = Choice(eid, cid, st.contest.family, k, candidates[k].key, candidates[k].family, float(score[k]),
                               float(se[k]), pick.band, pick.band_index, float(st.own_pct[k]), float(st.dup[k]),
                               st.dup_name, level)
@@ -343,8 +396,10 @@ def _greedy(kappa: float, order: list, entry_contest: Mapping[str, str], fees: M
         f = int(fees[eid])
         for g in goalies[k]:
             fee_g[g] += f
+            lineups_g[g] += 1
         if pgame[k]:
             fee_game[pgame[k]] += f
+            lineups_game[pgame[k]] += 1
         if captains[k]:
             fee_c[captains[k]] += f
         if eid in tournament:
@@ -398,8 +453,29 @@ def _frontier_point(kappa: float, by_entry: dict, contests_eval: dict, scen: ob.
         reasons.append(f"game fee share {game_max:.2f} > {budget.game_fee_share_max:.2f}")
     if budget.captain_fee_share_max is not None and cap_max is not None and cap_max > budget.captain_fee_share_max + 1e-9:
         reasons.append(f"Captain fee share {cap_max:.2f} > {budget.captain_fee_share_max:.2f}")
+    g_n, game_n = lineup_counts(by_entry, pool, scen.means_tenths())
+    n = len(by_entry)
+    g_top = max(g_n.values(), default=0)
+    game_top = max(game_n.values(), default=0) if c["n_games"] > 1 else None
+    if budget.goalie_lineups_max is not None and g_top > budget.goalie_lineups_max:
+        reasons.append(f"goalie in {g_top} of {n} lineups > {budget.goalie_lineups_max}")
+    if budget.game_lineups_max is not None and game_top is not None and game_top > budget.game_lineups_max:
+        reasons.append(f"game primary in {game_top} of {n} lineups > {budget.game_lineups_max}")
     return FrontierPoint(kappa, pm.tail_utility, pm.tail_utility_se, pm.p_lose80, pm.p_lose80_se, pm.exp_payout, gmax,
-                         game_max, cap_max, not reasons, False, reasons), pm
+                         game_max, cap_max, not reasons, False, reasons, goalie_lineups_max=g_top,
+                         game_lineups_max=game_top), pm
+
+
+def lineup_counts(by_entry: Mapping[str, Sequence[str]], pool, role_mean: Mapping[str, float]) -> tuple[Counter, Counter]:
+    """(entries per goalie, entries per primary game) across every entry."""
+    games = exposure.game_of(pool)
+    g_n, game_n = Counter(), Counter()
+    for lu in by_entry.values():
+        g_n.update(exposure.goalies_in(lu, pool))
+        pg = exposure.primary_game(lu, role_mean, games, pool)
+        if pg:
+            game_n[pg] += 1
+    return g_n, game_n
 
 
 def mark_dominated(points: list[FrontierPoint]) -> None:
@@ -460,8 +536,11 @@ def select(candidates: Sequence[Candidate], role_base: ob.ScenarioSet, fields: M
                       dup_by_contest or {}, field_cal, fields)
     role_mean = role_base.means_tenths()
     n_in = Counter(entry_contest.values())
-    keep = screen(states, candidates, n_in, risk_cfg, S=cand_scores.shape[0])
-    screened = {"candidates_in": len(candidates), "kept": len(keep)}
+    goalie_of = [exposure.goalies_in(c.role_ids, pool) for c in candidates]
+    keep = screen(states, candidates, n_in, risk_cfg, S=cand_scores.shape[0], goalie_of=goalie_of)
+    screened = {"candidates_in": len(candidates), "kept": len(keep),
+                "goalies_in": len({g for gs in goalie_of for g in gs}),
+                "goalies_kept": len({g for i in keep for g in goalie_of[i]})}
     if len(keep) < len(candidates):
         candidates = [candidates[i] for i in keep]
         cand_scores = np.ascontiguousarray(cand_scores[:, keep])
@@ -505,11 +584,13 @@ def select(candidates: Sequence[Candidate], role_base: ob.ScenarioSet, fields: M
 
 
 def screen(states: Mapping[str, _ContestState], candidates: Sequence[Candidate], n_in: Mapping[str, int], risk_cfg: dict,
-           *, S: int) -> list[int]:
+           *, S: int, goalie_of: Sequence[Sequence[str]] | None = None) -> list[int]:
     """Candidates kept for the fill: per contest the best max(screen_min, screen_per_entry x its entries) by the
-    field-only family utility, plus each discovery family's best screen_per_family there (coverage), unioned."""
+    field-only family utility, plus each discovery family's best screen_per_family there and each goalie's best
+    screen_per_goalie (coverage, so the goalie cap has choices; B36), unioned."""
     sc = risk_cfg.get("selection", {})
     lo, per, fam_n = int(sc.get("screen_min", 40)), float(sc.get("screen_per_entry", 2)), int(sc.get("screen_per_family", 3))
+    g_n = int(sc.get("screen_per_goalie", 0))
     tp = float(risk_cfg["objectives"]["top_pct"])
     K = len(candidates)
     keep: set[int] = set()
@@ -528,6 +609,9 @@ def screen(states: Mapping[str, _ContestState], candidates: Sequence[Candidate],
         keep.update(order[:max(lo, int(math.ceil(per * n_in[cid])))])
         for f in set(fam_of):
             keep.update([k for k in order if fam_of[k] == f][:fam_n])
+        if goalie_of is not None and g_n > 0:
+            for g in {x for gs in goalie_of for x in gs}:
+                keep.update([k for k in order if g in goalie_of[k]][:g_n])
     return sorted(keep)
 
 
