@@ -23,6 +23,29 @@ Tracker for `BUILD_CHUNKS.md` (final, 26 September 2026). Every development sess
 | C11 | DONE | C8, C3, C0b | 2026-09-30 | 2026-09-30 | a8db7bf | PASS | Milestone 4. Both 2026-09-29 runs settled PRE_LOCK, FREEZE_CHECK=OK: 3 of 5 contests EXACT (known net -$1.00 on $1.70), 2 await Ben's winnings.csv; ownership Pearson 0.64 to 0.76; gate tier every_run, nothing tuned. Backlog B25 to B28. |
 | C12 | GATED | C11 | | | | | Gate: learn/gates.allows("field_fit") per mode. DONE on "rejected" is valid. |
 | C13 | GATED | C11, C6 | | | | | Gate: C6 calibration deficiency plus a preregistration written first. DONE on "rejected" is valid. |
+| C14 | TODO | C10 | | | | | band 0; B52, B53; R01, R02 |
+| C15 | TODO | C14 | | | | | band 0; B42 parts 2 and 3; flag 15 default in force |
+| C16 | TODO | C11 | | | | | band 1; B62, B50; flag 14 default in force |
+| C17 | TODO | C10 | | | | | band 1; B63, B20, B51, B66 |
+| C18 | TODO | C14 | | | | | band 1 (serves band 2 too); B55, B56; R04, R05 |
+| C19 | TODO | C17 | | | | | band 1; B43, B15 (first half) |
+| C20 | TODO | C18 | | | | | band 1; B37, B45; flag 13 default in force |
+| C21 | TODO | C19, C18 | | | | | band 1, experiment: DONE on rejected is valid; B44, B22 |
+| C22 | TODO | C19 | | | | | band 1, experiment: DONE on rejected is valid; B46 |
+| C23 | TODO | C20 | | | | | band 1, experiment: DONE on rejected is valid; B49; flag 12 default in force |
+| C24 | TODO | C6 | | | | | band 1; B14; flag 8 default in force |
+| C25 | TODO | C6 | | | | | band 1; B64, B6; produces C13's gate evidence |
+| C26 | TODO | C18 | | | | | band 2; B54, B41, B57, B60; R03, R06, R09 |
+| C27 | TODO | C18 | | | | | band 2; B58, B13; R07; flag 2 default in force |
+| C28 | TODO | C15 | | | | | band 2; B9 open part |
+| C29 | TODO | C11 | | | | | band 3; B47, B59; R08 |
+| C30 | TODO | C11 | | | | | band 3; B48 |
+| C31 | TODO | C26 | | | | | band 3; B38, B39 |
+| C32 | TODO | C11 | | | | | band 3; B65, B29, B32, B10, B11 |
+| C33 | TODO | C0b | | | | | band 3; B61; R10 |
+| C34 | TODO | C9 | | | | | band 3; B19 |
+| C35 | TODO | C19 | | | | | band 3; B12, B15 (second half) |
+| C36 | TODO | C11 | | | | | band 3; B67 |
 
 ## Open [BEN] flags
 
@@ -31,7 +54,7 @@ Defaults are in force until answered. Answer by editing the named config or by t
 | # | Flag | Default in force | Where it lands |
 |---|---|---|---|
 | 1 | Prior-season NHL DK standings exports exist? | Assumed none | `data/standings/history/` (C3 prefit runs only when the evidence gate allows) |
-| 2 | Risk budget | P(lose ≥80% of slate fees) ≤ 0.60; ≤40% of fees on one goalie; ≤40% on one game only when the slate has more than one game | `config/risk.yaml` (C8) |
+| 2 | Risk budget | P(lose ≥80% of slate fees) ≤ 0.60; ≤40% of fees on one goalie; ≤40% on one game only when the slate has more than one game (Ben 2026-10-02: 40% goalie and game fee share with the LINEUPS fallback; session log) | `config/risk.yaml` (C8) |
 | 3 | Typical entry mix (count, fees, contest types) | 20–150 entries across 150-max GPPs and Showdown; occasional WTA and single-entry | `config/contest_families.yaml` (C3) |
 | 4 | Claude Code host and terminal willingness near lock | Local Windows, PowerShell; terminal fast path is the documented default | `config/runtime.yaml` (C2c, C9), skills (C10) |
 | 5 | "System tunes itself" meaning | Measure, propose, promote in a dev session behind the evidence floors; nothing self-updates | `learn/gates.py` (C3, C11) |
@@ -40,6 +63,11 @@ Defaults are in force until answered. Answer by editing the named config or by t
 | 8 | Provisional leverage tie band and DTD haircut | Band = 3% of the lineup's prior mean (no Monte Carlo floor before C6, `band_floor_sims: null`); a QUESTIONABLE (DTD) person counts at 0.85 of their mean in the provisional ranking; the field fades DTD players by 2 points | `config/contest_families.yaml` `selection`, `config/ownership.yaml` `weights.questionable` (C3) |
 | 9 | DK tie settlement: are the tied places' prizes pooled, each share rounded down to the cent, and how are tied satellite tickets split? | Pooled over the tied places, floored to the cent; a tied seat is split as seats / tied count. The DK Terms of Use (checked 2026-09-29) verify only the even split | `docs/payouts.md`, `build/objectives.py` (C8) |
 | 10 | Phone push for the scheduled refresh (for example ntfy.sh)? It would send slate text to an outside service | No: Windows toast and runs/_scheduler/notifications.log only | `config/scheduled_refresh.yaml` `notify` (B23) |
+| 11 | Dev dependency group and one lockfile (B34): move pytest and pytest-timeout to a dev group and keep uv.lock or requirements.lock? | Unchanged: both lockfiles kept, pytest stays a runtime dependency | `pyproject.toml`, `uv.lock`, `requirements.lock` (deferred item) |
+| 12 | Showdown Captain policy (B49): a goalie as Captain only when the simulator's goalie ceiling ranks top-3 on the slate? | Yes, as the experiment default; C23 measures before any file changes | `config/ownership.yaml` `field.captain_rules`, `build/candidates.py` (C23) |
+| 13 | Skaters against the lineup's own goalie (B45): a hard rule for GPP families, cash exempt? | Hard rule for large_gpp, small_field and wta; cash and satellite exempt; the referee reports it | `build/candidates.py`, `build/exposure.py` (C20) |
+| 14 | Payout tables by template (B62, B50): price a contest on DraftKings' cached table for the same template name and max entries when its page answers 403? | Yes, labeled PAYOUT_SOURCE=TEMPLATE; never for satellites or resized contests | `models/contests.py`, `learn/ledger.py` (C16) |
+| 15 | Started-slate builds (B42 part 3): when a run starts after the first game, build the open games and report the started ones as excluded instead of refusing? | Yes: build the open games, exclude STARTED_GAME rows, pin started-game cells, name them in the report | `build/run.py`, `build/locks.py` (C15) |
 
 ## Milestones
 
@@ -85,3 +113,4 @@ One line per session, newest last: `YYYY-MM-DD · <chunk> · <outcome: DONE / IN
 - 2026-10-02 · follow-up to f303d33 (same session; /advisor final review) · three findings fixed or recorded: (1) the forced-goalie family tag held a person key with "|", which split the RUN_NOTES entry table; it is now portfolio.goalie_tag, "goalie:<name> (<team>)", asserted pipe-free in tests/test_portfolio.py; (2) qa-apply and overrides-apply (controller.apply_round) kept the scenario pass's RISK_BUDGET after publishing changed lineups; a published change now sets RISK_BUDGET=NOT_EVALUATED (v<n> changed <k> entries after the scenario pass), both commands print the current RISK_BUDGET line (cli._print_risk_budget), test in tests/test_controller.py; (3) new B41: QA and override changes are not checked against the goalie and game caps. LINEUPS mode on real data: the 2026-09-30 Classic rebuilt offline with a pinned 20:00Z clock and both budgets patched to 0.30 in a scratchpad script only (repo config unchanged): GOALIE_CAP=LINEUPS 1/5 (fee floor 0.33 > budget 0.30), GAME_CAP=LINEUPS 2/5 relaxed from 1 (3 games), five different goalies in five entries, no CONCENTRATION relaxation, RISK_BUDGET=OK, entry table rows 15 columns like the header.
 - 2026-10-02 · standings pull checklist (no chunk; Ben's request: a script that lists entered contests whose DraftKings results export is not pulled yet) · scripts/standings_checklist.py (stdlib plus the repo's own entries parser; reads runs/*/inputs, outputs/*, repo root, tests/fixtures/real and optional --also folders; classifies settled > filed > unrecoverable/placeholder > fixture > awaiting; there is no normalize stage; writes data/standings/CONTESTS_AWAITING_STANDINGS.{md,html} and standings_pulls_<date>.html; never touches the network; --json writes nothing), tests/test_standings_checklist.py (24 tests, stub parser, temp tree), .claude/skills/standings-checklist/SKILL.md. Real run: 4 awaiting (the 2026-09-30 Classic contests), 5 settled, 1 synthetic id excluded; the 2026-10-01 cloud slate classic-20261001-a3565a960f has no entry file on this machine and is reported UNSEEN. The export URL (draftkings.com/contest/exportfullstandingscsv/{contest_id}) is an unverified assumption, overridable with --url-template.
 - 2026-10-03 · standings synthesis (no chunk; Ben's request: synthesize the 17 exports in data/standings/inbox, file them, and turn what they show into backlog rows) · filed into inbox/2026-09-30, 2026-10-01, 2026-10-02 (zip plus extracted CSV per contest; dates from the NHL schedule and the lobby captures; 10-01 holds the 8-game main and the 4-game late slate) · settled 09-30 from run 20260930-233424-classic (SETTLE=OK, PRE_LOCK forecast from 20260930-214909, PAYOUT_SOURCE=UNKNOWN, winnings.csv template written); 10-01 and 10-02 cannot settle without a local run (B47; winnings.csv templates written by hand) · new scripts/standings_synthesis.py (names from the lobby cache, teams from NHL rosters and box scores, cohort tables for top 1% / cash / field, stack shapes, goalie pairing, captains, leverage; every lineup's points reproduced from its players' FPTS) with tests/test_standings_synthesis.py · reviews/2026-10-03_standings_synthesis.md and _detail.md · BACKLOG B43 to B51 (field stack share, stack size by slate, goalie as the top-1% factor, chalk kept, settle --no-run, checklist coverage, Showdown Captain, template payout tables, the 09-30 Colorado miss).
+- 2026-10-03 · planning session, the first ranked queue (no chunk; Ben's request: adjudicate the independent review of 7140e0a, file it, gather every documented change, rank under Ben's priority rule, cut into DEV-session chunks) · all 10 findings ACCEPTED (R06 modified to the CONFLICTED policy, R10 at Low with the scope limited to the validator) as B52 to B61; six gathered rows B62 to B67 (template payout curves, field features never wired, clean calibration, hygiene, market clip, odds grading) · chunks C14 to C36 in chunks.yaml with band, size, effort, breakpoint, needs, backlog, findings, impact; C12 and C13 moved to the end and listed under Deferred with 11 other deferred items · tools/next_chunk.py: validation of the queue fields, NEXT skips GATED and flag-BLOCKED chunks, `--render-queue` writes the Queue section of BUILD_CHUNKS.md between markers (tests added) · flags 11 to 15 appended with defaults; flag 2 records Ben's 10-02 answer; no chunk is BLOCKED on a flag · nothing under src/ or config/ changed (git diff --stat against 017d10a).

@@ -258,6 +258,166 @@ def test_start_preserves_crlf_line_endings(tmp_path: Path):
     assert b"\n" not in after_raw.replace(b"\r\n", b"")
 
 
+QUEUE_TRACKER = """# Build status
+
+## Chunks
+
+| Chunk | Status | Depends on | Started | Finished | Commit | Exit checks | Notes |
+|---|---|---|---|---|---|---|---|
+| A0 | DONE | | 2026-10-01 | 2026-10-01 | abc | PASS | |
+| Q1 | BLOCKED | A0 | | | | | Needs: flag 11 |
+| Q2 | TODO | A0 | | | | | |
+| Q3 | GATED | A0 | | | | | |
+| Q4 | TODO | Q2 | | | | | |
+
+## Open [BEN] flags
+
+| # | Flag | Default in force | Where it lands |
+|---|---|---|---|
+| 11 | Which goalie rule applies when fees are unequal? | lineup-count cap | build/exposure.py |
+"""
+
+QUEUE_YAML = """
+version: 3
+chunks:
+  - id: A0
+    title: Done already
+    depends: []
+    marker: a0
+    checks:
+      - python -c "raise SystemExit(0)"
+  - id: Q1
+    title: Needs Ben
+    depends: [A0]
+    marker: q1
+    band: 1
+    size: S
+    effort: low
+    breakpoint: after the first test
+    impact: judgment only
+    needs: [11]
+    backlog: [B45]
+    findings: [R07]
+    checks:
+      - python -c "raise SystemExit(0)"
+  - id: Q2
+    title: Ready to go
+    depends: [A0]
+    marker: q2
+    band: 0
+    size: M
+    effort: medium
+    breakpoint: commit after R01
+    impact: a legal file wins; observed on no slate yet
+    backlog: []
+    findings: [R01, R02]
+    checks:
+      - python -c "raise SystemExit(0)"
+  - id: Q3
+    title: Gated measurement
+    depends: [A0]
+    marker: q3
+    gated_on: 30 settled slates
+    checks:
+      - python -c "raise SystemExit(0)"
+  - id: Q4
+    title: Later
+    depends: [Q2]
+    marker: q4
+    band: 3
+    size: S
+    effort: low
+    breakpoint: one commit
+    impact: hygiene
+    checks:
+      - python -c "raise SystemExit(0)"
+deferred:
+  - item: B27 re-download near lock
+    trigger: a real slate re-downloaded near lock
+    backlog: [B27]
+flag_recommendations:
+  11: keep the lineup-count cap
+"""
+
+BUILD_CHUNKS = """# Build chunks
+
+Hand-written text above the markers stays.
+
+<!-- QUEUE:BEGIN -->
+old generated text
+<!-- QUEUE:END -->
+
+Hand-written text below the markers stays too.
+"""
+
+
+@pytest.fixture()
+def queue_root(tmp_path: Path) -> Path:
+    (tmp_path / "BUILD_STATUS.md").write_text(QUEUE_TRACKER, encoding="utf-8", newline="\n")
+    (tmp_path / "chunks.yaml").write_text(QUEUE_YAML, encoding="utf-8", newline="\n")
+    (tmp_path / "BUILD_CHUNKS.md").write_bytes(BUILD_CHUNKS.replace("\n", "\r\n").encode("utf-8"))
+    return tmp_path
+
+
+def test_next_skips_gated_and_flag_blocked_chunks_but_names_them(queue_root: Path):
+    result = run_next_chunk(queue_root)
+    assert result.returncode == 0
+    first = result.stdout.splitlines()[0]
+    assert first == "Q2", result.stdout
+    assert "skipped Q1" in result.stdout and "flag" in result.stdout
+    # Q3 (GATED) ranks after Q2, so it is not reported as skipped ahead of it
+    assert "skipped Q3" not in result.stdout
+
+
+def test_render_queue_rewrites_only_between_markers_and_keeps_crlf(queue_root: Path):
+    before = (queue_root / "BUILD_CHUNKS.md").read_bytes()
+    result = run_next_chunk(queue_root, "--render-queue")
+    assert result.returncode == 0, result.stderr
+    after = (queue_root / "BUILD_CHUNKS.md").read_bytes()
+    text = after.decode("utf-8")
+    assert "Hand-written text above the markers stays." in text
+    assert "Hand-written text below the markers stays too." in text
+    assert "old generated text" not in text
+    assert b"\n" not in after.replace(b"\r\n", b"")  # still CRLF throughout
+    # rank is chunks.yaml file order among queued chunks, whatever the band: Q1 (blocked), Q2, Q4; A0 DONE; Q3 deferred
+    i_q1, i_q2, i_q4 = text.index("| 1 | Q1 |"), text.index("| 2 | Q2 |"), text.index("| 3 | Q4 |")
+    assert i_q1 < i_q2 < i_q4
+    assert "DONE: A0." in text
+    assert "| 11 | Q1 (#1) |" in text and "keep the lineup-count cap" in text
+    assert "Q3: Gated measurement | 30 settled slates" in text
+    assert "B27 re-download near lock | a real slate re-downloaded near lock | B27" in text
+    # a second render is a no-op apart from nothing: idempotent
+    run_next_chunk(queue_root, "--render-queue")
+    assert (queue_root / "BUILD_CHUNKS.md").read_bytes() == after
+    assert before != after
+
+
+def test_render_queue_dry_run_prints_and_does_not_write(queue_root: Path):
+    before = (queue_root / "BUILD_CHUNKS.md").read_bytes()
+    result = run_next_chunk(queue_root, "--render-queue", "--dry-run")
+    assert result.returncode == 0
+    assert "### Ranked chunks" in result.stdout
+    assert (queue_root / "BUILD_CHUNKS.md").read_bytes() == before
+
+
+def test_render_queue_refuses_without_markers(queue_root: Path):
+    (queue_root / "BUILD_CHUNKS.md").write_text("# no markers here\n", encoding="utf-8")
+    result = run_next_chunk(queue_root, "--render-queue")
+    assert result.returncode == 1
+    assert "QUEUE:BEGIN" in result.stderr
+
+
+def test_chunks_yaml_validation_rejects_xl_and_bad_ids(queue_root: Path):
+    bad = QUEUE_YAML.replace("size: M", "size: XL", 1)
+    (queue_root / "chunks.yaml").write_text(bad, encoding="utf-8", newline="\n")
+    result = run_next_chunk(queue_root, "--status")
+    assert result.returncode == 1 and "XL must be split" in result.stderr
+    bad = QUEUE_YAML.replace("backlog: [B45]", "backlog: [B45a]", 1)
+    (queue_root / "chunks.yaml").write_text(bad, encoding="utf-8", newline="\n")
+    result = run_next_chunk(queue_root, "--status")
+    assert result.returncode == 1 and "B-row ids" in result.stderr
+
+
 def test_flip_to_todo_message_when_requires_files_now_present(fixture_root: Path):
     subprocess.run(
         [sys.executable, str(NEXT_CHUNK), "--root", str(fixture_root), "--done", "A0", "--commit", "HEAD"],

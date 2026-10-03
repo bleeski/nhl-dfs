@@ -4,17 +4,31 @@ Parses BUILD_STATUS.md by literal column order and chunks.yaml as the source
 of truth for dependencies, requires_files globs, and gated_on text. Never
 invents a rule chunks.yaml or BUILD_STATUS.md does not state.
 
-    (no args)               eligible chunk(s): deps DONE, whatever their own
-                            status; runs DONE predecessors' checks first;
-                            honors requires_files and gated_on
+    (no args)               the next chunk: the first in chunks.yaml order whose
+                            deps are DONE and that is not itself DONE; runs DONE
+                            predecessors' checks first; honors requires_files;
+                            skips GATED chunks and chunks BLOCKED on a [BEN]
+                            flag (`needs:`), naming them
     --check <id>            run that chunk's checks; exit 1 on failure
     --start <id>            set IN_PROGRESS with today's date
     --done <id> --commit H  set DONE, finish date, commit; refuses unless
                             --check passes and H resolves to a commit
     --block <id> --reason   set BLOCKED with reason
     --status                print the table and open [BEN] flags
+    --render-queue          rewrite the Queue section of BUILD_CHUNKS.md (between
+                            the QUEUE:BEGIN and QUEUE:END markers) from chunks.yaml
+                            and BUILD_STATUS.md; --dry-run prints it instead
     --root <dir>            repo root to operate on (default: repo containing
                             this script); tests point this at a fixture root
+
+chunks.yaml file order is the rank (the 2026-10-03 queue). A queued chunk carries
+`band` (0 legal file, 1 win, 2 washout, 3 other), `size` (S, M, L; XL must be
+split), `effort` (reading load), `breakpoint` (the first committable hand-off
+point), `needs` (flag numbers that block it), `backlog` (B-rows), `findings`
+(review ids) and `impact` (the rationale, with its figures labeled). A top-level
+`deferred:` list holds items whose trigger cannot fire yet; `flag_recommendations:`
+maps a flag number to the planner's recommendation. The tool validates these
+fields and never invents a rank.
 """
 
 from __future__ import annotations
@@ -174,10 +188,87 @@ def write_row(status_path: Path, lines: list[str], row: Row) -> None:
 # --- chunks.yaml --------------------------------------------------------------
 
 
-def load_graph(chunks_yaml_path: Path) -> dict[str, dict]:
+BANDS = {0: "0 legal file", 1: "1 win", 2: "2 washout", 3: "3 other"}
+SIZES = ("S", "M", "L")
+_BACKLOG_ID = re.compile(r"^B\d+$")
+_FINDING_ID = re.compile(r"^R\d{2}$")
+
+
+def load_data(chunks_yaml_path: Path) -> dict:
+    """The whole chunks.yaml, validated. Raises ValueError naming the first defect."""
     with open(chunks_yaml_path, "r", encoding="utf-8") as f:
         data = yaml.safe_load(f)
+    validate_data(data)
+    return data
+
+
+def load_graph(chunks_yaml_path: Path) -> dict[str, dict]:
+    data = load_data(chunks_yaml_path)
     return {c["id"]: c for c in data["chunks"]}
+
+
+def validate_data(data: dict) -> None:
+    chunks = data.get("chunks") or []
+    ids = [c.get("id") for c in chunks]
+    if len(ids) != len(set(ids)) or any(not i for i in ids):
+        raise ValueError("chunks.yaml: chunk ids must be present and unique")
+    known = set(ids)
+    for c in chunks:
+        cid = c["id"]
+        for dep in c.get("depends", []) or []:
+            if dep not in known:
+                raise ValueError(f"chunks.yaml: {cid} depends on unknown chunk {dep}")
+        if "band" in c:
+            if c["band"] not in BANDS:
+                raise ValueError(f"chunks.yaml: {cid} band must be one of {sorted(BANDS)}")
+            for field in ("size", "effort", "breakpoint", "impact"):
+                if not isinstance(c.get(field), str) or not c[field].strip():
+                    raise ValueError(f"chunks.yaml: {cid} needs a non-empty `{field}` (a queued chunk carries band, size, "
+                                     "effort, breakpoint, impact)")
+            if c["size"] not in SIZES:
+                raise ValueError(f"chunks.yaml: {cid} size must be S, M or L (XL must be split into chunks)")
+        if any(not isinstance(n, int) for n in c.get("needs", []) or []):
+            raise ValueError(f"chunks.yaml: {cid} needs must be flag numbers")
+        if any(not _BACKLOG_ID.match(str(b)) for b in c.get("backlog", []) or []):
+            raise ValueError(f"chunks.yaml: {cid} backlog must be B-row ids (B43, not B43a)")
+        if any(not _FINDING_ID.match(str(r)) for r in c.get("findings", []) or []):
+            raise ValueError(f"chunks.yaml: {cid} findings must be review ids like R01")
+    for d in data.get("deferred") or []:
+        if not (d.get("item") or d.get("chunk")):
+            raise ValueError("chunks.yaml: a deferred entry needs `item` or `chunk`")
+        if d.get("chunk") and d["chunk"] not in known:
+            raise ValueError(f"chunks.yaml: deferred entry names unknown chunk {d['chunk']}")
+        if not isinstance(d.get("trigger"), str) or not d["trigger"].strip():
+            raise ValueError(f"chunks.yaml: deferred entry {d.get('item') or d.get('chunk')} needs a `trigger`")
+    for k in (data.get("flag_recommendations") or {}):
+        if not isinstance(k, int):
+            raise ValueError("chunks.yaml: flag_recommendations keys must be flag numbers")
+
+
+# --- [BEN] flags (BUILD_STATUS.md) -----------------------------------------------
+
+
+def parse_flags(lines: list[str]) -> dict[int, dict]:
+    """Open [BEN] flags by number: question, default in force, where it lands (literal column order)."""
+    try:
+        start, end = find_section(lines, FLAGS_HEADING)
+    except ValueError:
+        return {}
+    out: dict[int, dict] = {}
+    header_seen = False
+    for i in range(start, end):
+        line = lines[i]
+        if not _is_table_row(line):
+            continue
+        if not header_seen:
+            header_seen = True
+            continue
+        parts = [p.strip() for p in line.strip().strip("|").split("|")]
+        if not parts or not parts[0].isdigit():
+            continue
+        out[int(parts[0])] = {"flag": parts[1] if len(parts) > 1 else "", "default": parts[2] if len(parts) > 2 else "",
+                              "lands": parts[3] if len(parts) > 3 else ""}
+    return out
 
 
 # --- check execution -----------------------------------------------------------
@@ -266,11 +357,26 @@ def find_next(graph: dict[str, dict], rows: dict[str, Row], root: Path) -> str:
     if not candidates:
         return "No eligible chunk: every chunk with satisfied dependencies is already DONE."
 
-    in_progress = [cid for cid in candidates if rows[cid].status == "IN_PROGRESS"]
-    chosen = in_progress[0] if in_progress else next(cid for cid in graph if cid in candidates)
+    # GATED chunks and chunks BLOCKED on a [BEN] flag keep their rank but are skipped (the queue rule).
+    skipped: list[str] = []
+    eligible: list[str] = []
+    for cid in candidates:
+        st = rows[cid].status
+        if st == "GATED":
+            skipped.append(f"skipped {cid}: GATED ({graph[cid].get('gated_on', '')[:90]})")
+        elif st == "BLOCKED" and graph[cid].get("needs"):
+            skipped.append(f"skipped {cid}: BLOCKED, needs flag(s) {graph[cid]['needs']} (Ben's answer)")
+        else:
+            eligible.append(cid)
+    if not eligible:
+        return "\n".join(["No eligible chunk: every candidate is GATED or BLOCKED on a [BEN] flag.", *skipped])
+
+    in_progress = [cid for cid in eligible if rows[cid].status == "IN_PROGRESS"]
+    chosen = in_progress[0] if in_progress else eligible[0]
 
     row = rows[chosen]
     lines_out.append(chosen)
+    lines_out.extend(s for s in skipped if list(graph).index(s.split()[1].rstrip(":")) < list(graph).index(chosen))
     if row.status == "IN_PROGRESS":
         lines_out.append(f"{chosen}: IN_PROGRESS, resume. Notes: {row.cells[7]}")
     elif row.status == "BLOCKED":
@@ -287,6 +393,108 @@ def find_next(graph: dict[str, dict], rows: dict[str, Row], root: Path) -> str:
     return "\n".join(lines_out)
 
 
+# --- queue rendering (BUILD_CHUNKS.md between the markers) -----------------------
+
+QUEUE_BEGIN = "<!-- QUEUE:BEGIN -->"
+QUEUE_END = "<!-- QUEUE:END -->"
+
+
+def _cell(text) -> str:
+    s = "" if text is None else str(text)
+    return s.replace("|", "/").replace("\r", " ").replace("\n", " ").strip()
+
+
+def _ids(seq) -> str:
+    return ", ".join(str(x) for x in (seq or [])) or "none"
+
+
+def render_queue(data: dict, rows: dict[str, Row], flags: dict[int, dict], today_str: str | None = None) -> list[str]:
+    """The Queue section as lines (no line endings). Rank = chunks.yaml order among queued chunks: chunks that carry a
+    `band` and are not DONE or GATED in the tracker. GATED chunks and the `deferred:` list render under Deferred."""
+    chunks = data["chunks"]
+    status_of = {cid: (rows[cid].status if cid in rows else "no tracker row") for cid in (c["id"] for c in chunks)}
+    queued = [c for c in chunks if "band" in c and status_of[c["id"]] not in ("DONE", "GATED")]
+    done = [c["id"] for c in chunks if status_of[c["id"]] == "DONE"]
+    unranked = [c["id"] for c in chunks if "band" not in c and status_of[c["id"]] not in ("DONE", "GATED")]
+    L = [f"Generated {today_str or today()} by `python tools/next_chunk.py --render-queue` from chunks.yaml and BUILD_STATUS.md. "
+         "Do not edit by hand; edit chunks.yaml and rerun.", ""]
+    L.append(f"DONE: {', '.join(done) if done else 'none'}.")
+    if unranked:
+        L.append(f"Not ranked (no band in chunks.yaml): {', '.join(unranked)}.")
+    L.append("")
+    # Decide these first: flags that block a queued chunk, in rank order of the first chunk each unblocks.
+    first_rank: dict[int, int] = {}
+    for rank, c in enumerate(queued, 1):
+        for n in c.get("needs", []) or []:
+            first_rank.setdefault(int(n), rank)
+    L.append("### Decide these first")
+    L.append("")
+    recs = data.get("flag_recommendations") or {}
+    listed = sorted(set(first_rank) | set(recs), key=lambda n: (first_rank.get(n, 10 ** 6), n))
+    if not first_rank:
+        L.append("No queued chunk is blocked on a [BEN] flag: every chunk proceeds on the default in force and records it.")
+        L.append("")
+    if listed:
+        L.append("| Flag | Blocks (rank) | Question | Default in force | Where it lands | Recommendation |")
+        L.append("|---|---|---|---|---|---|")
+        for n in listed:
+            f = flags.get(n, {})
+            who = ", ".join(c["id"] for c in queued if n in (c.get("needs") or []))
+            blocks = f"{who} (#{first_rank[n]})" if n in first_rank else "nothing (default proceeds)"
+            L.append(_row_md([n, blocks, f.get("flag", "flag not found in BUILD_STATUS.md"), f.get("default", ""),
+                              f.get("lands", ""), recs.get(n, "")]))
+    L.append("")
+    L.append("### Ranked chunks")
+    L.append("")
+    L.append("| # | Chunk | Band | Title | Size | Effort | Depends | Needs | Backlog | Findings | Status |")
+    L.append("|---|---|---|---|---|---|---|---|---|---|---|")
+    for rank, c in enumerate(queued, 1):
+        L.append(_row_md([rank, c["id"], BANDS[c["band"]], c.get("title", ""), c["size"], c["effort"], _ids(c.get("depends")),
+                          _ids(c.get("needs")), _ids(c.get("backlog")), _ids(c.get("findings")), status_of[c["id"]]]))
+    L.append("")
+    L.append("### Why each ranks where it does, and where to stop")
+    L.append("")
+    for rank, c in enumerate(queued, 1):
+        L.append(f"- **#{rank} {c['id']}** ({BANDS[c['band']]}): {_cell(c['impact'])} Breakpoint: {_cell(c['breakpoint'])}")
+    L.append("")
+    L.append("### Deferred")
+    L.append("")
+    L.append("| Item | Trigger | Backlog | Findings |")
+    L.append("|---|---|---|---|")
+    deferred = list(data.get("deferred") or [])
+    named = {d.get("chunk") for d in deferred if d.get("chunk")}
+    for c in chunks:
+        if status_of[c["id"]] == "GATED" and c["id"] not in named:
+            deferred.append({"chunk": c["id"], "trigger": c.get("gated_on", ""), "backlog": c.get("backlog"), "findings": c.get("findings")})
+    for d in deferred:
+        label = d.get("chunk") or d.get("item")
+        if d.get("chunk"):
+            title = next((c.get("title", "") for c in chunks if c["id"] == d["chunk"]), "")
+            label = f"{d['chunk']}: {title}" if title else d["chunk"]
+        L.append(_row_md([label, d.get("trigger", ""), _ids(d.get("backlog")), _ids(d.get("findings"))]))
+    if not deferred:
+        L.append("| none | | | |")
+    return L
+
+
+def _row_md(cells: list) -> str:
+    return "| " + " | ".join(_cell(c) for c in cells) + " |"
+
+
+def write_queue(build_chunks_path: Path, body: list[str]) -> None:
+    """Replace the lines between the markers (markers kept), preserving the file's line endings."""
+    raw = build_chunks_path.read_text(encoding="utf-8", newline="")
+    ending = "\r\n" if raw.count("\r\n") >= raw.count("\n") - raw.count("\r\n") and "\r\n" in raw else "\n"
+    lines = raw.split(ending) if ending in raw else raw.splitlines()
+    try:
+        b = next(i for i, l in enumerate(lines) if l.strip() == QUEUE_BEGIN)
+        e = next(i for i, l in enumerate(lines) if l.strip() == QUEUE_END and i > b)
+    except StopIteration:
+        raise ValueError(f"{build_chunks_path.name}: the markers {QUEUE_BEGIN} and {QUEUE_END} must both be present, in order")
+    new_lines = lines[: b + 1] + body + lines[e:]
+    build_chunks_path.write_text(ending.join(new_lines), encoding="utf-8", newline="")
+
+
 # --- CLI --------------------------------------------------------------------
 
 
@@ -300,12 +508,34 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--block", type=str, default=None)
     parser.add_argument("--reason", type=str, default=None)
     parser.add_argument("--status", action="store_true")
+    parser.add_argument("--render-queue", action="store_true")
+    parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
 
     root = Path(args.root).resolve() if args.root else default_root()
     status_path = root / "BUILD_STATUS.md"
     chunks_yaml_path = root / "chunks.yaml"
-    graph = load_graph(chunks_yaml_path)
+    try:
+        data = load_data(chunks_yaml_path)
+    except ValueError as exc:
+        sys.stderr.write(f"{exc}\n")
+        return 1
+    graph = {c["id"]: c for c in data["chunks"]}
+
+    if args.render_queue:
+        lines = load_tracker_lines(status_path)
+        body = render_queue(data, parse_rows(lines), parse_flags(lines))
+        if args.dry_run:
+            sys.stdout.write("\n".join(body) + "\n")
+            return 0
+        try:
+            write_queue(root / "BUILD_CHUNKS.md", body)
+        except ValueError as exc:
+            sys.stderr.write(f"{exc}\n")
+            return 1
+        print(f"BUILD_CHUNKS.md: Queue section rewritten ({sum(1 for c in data['chunks'] if 'band' in c)} ranked chunk(s), "
+              f"{len(data.get('deferred') or [])} deferred item(s))")
+        return 0
 
     if args.status:
         lines = load_tracker_lines(status_path)

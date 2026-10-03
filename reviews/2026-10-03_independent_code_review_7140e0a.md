@@ -32,16 +32,16 @@ Each row is intentionally untriaged. Record **accept**, **reject**, or **modify*
 
 | ID | Priority | Finding | Backlog relationship | Decision / reason / implementation |
 |---|---|---|---|---|
-| R01 | P1 | QA's default clock freezes, defeating its final lock check | New; C10 lock guard | Pending |
-| R02 | P1 | Initial run publishes after crossing a start boundary | Related to B42, but a separate pre-start-to-post-start failure | Pending |
-| R03 | P1 | Controller repairs can reintroduce already-OUT players | New; extends the safety scope around B17 | Pending |
-| R04 | P1 | Greedy selection credits displaced own-entry prizes | New; C8 joint portfolio objective | Pending |
-| R05 | P2 | QA counts prize transfers between owned entries as improvement | New; different from B38 proposal ordering | Pending |
-| R06 | P2 | Contradictory overrides pass batch validation | New; C7/C10 state validation | Pending |
-| R07 | P2 | LPT packing is mistaken for an infeasibility proof | Reopen/extend B36 | Pending |
-| R08 | P2 | Salary ID-set changes inflate independent slate groups | Extend B31 bookkeeping | Pending |
-| R09 | P2 | QA leaves the manifest's current export hash stale | Related to B39, with a distinct provenance failure | Pending |
-| R10 | P2 | Referee accepts byte changes outside editable cells | New; C0b exact-template checking | Pending |
+| R01 | P1 | QA's default clock freezes, defeating its final lock check | New; C10 lock guard | ACCEPT (2026-10-03): confirmed in controller.py (the default clock closes over the mutable `now`); B52; chunk C14 (band 0). |
+| R02 | P1 | Initial run publishes after crossing a start boundary | Related to B42, but a separate pre-start-to-post-start failure | ACCEPT: confirmed (`_export_and_publish` takes no clock or lock state); B53; chunk C14 (band 0); B42 part 3 rides in C15. |
+| R03 | P1 | Controller repairs can reintroduce already-OUT players | New; extends the safety scope around B17 | ACCEPT: confirmed (repair `exclude_rows` carry the batch and locks, never the CSV OUT statuses); B54; chunk C26 (band 2 by Ben's rule: a dead roster spot, not an illegal file). |
+| R04 | P1 | Greedy selection credits displaced own-entry prizes | New; C8 joint portfolio objective | ACCEPT: confirmed (`pay_total += pay_k` without recomputing placed entries); B55; chunk C18 (band 1: the selector's own arithmetic, serving band 2 too). |
+| R05 | P2 | QA counts prize transfers between owned entries as improvement | New; different from B38 proposal ordering | ACCEPT: confirmed (`idx` restricted to `changed`); B56; chunk C18. |
+| R06 | P2 | Contradictory overrides pass batch validation | New; C7/C10 state validation | ACCEPT, MODIFIED: contradictory claims become CONFLICTED under the existing evidence policy, no new certainty rule; B57; chunk C26. |
+| R07 | P2 | LPT packing is mistaken for an infeasibility proof | Reopen/extend B36 | ACCEPT: feasibility accounting only, the 40% budget and B36's decision stand; B58; chunk C27 (band 2). |
+| R08 | P2 | Salary ID-set changes inflate independent slate groups | Extend B31 bookkeeping | ACCEPT: a measurement defect; group key from slate date plus games; B59; chunk C29 (band 3). |
+| R09 | P2 | QA leaves the manifest's current export hash stale | Related to B39, with a distinct provenance failure | ACCEPT: confirmed (controller publish never sets export_sha256; verify never checks it); B60; chunk C26. |
+| R10 | P2 | Referee accepts byte changes outside editable cells | New; C0b exact-template checking | ACCEPT at Low priority, scope MODIFIED to the validator (no claim about the writer or DraftKings' tolerance); B61; chunk C33 (band 3). |
 
 ## Findings
 
@@ -254,3 +254,7 @@ The supplied evidence already identifies weak ownership/field calibration, co-ce
 - The risk budget and unverified tie/ticket details are decisions already recorded in the [BEN] flags. This review does not silently replace them.
 
 The first implementation priority is R01-R03, with unchanged-incumbent assertions at both EDIT_STOP and actual lock. R04-R05 should share a consistent joint-contest accounting primitive, while retaining independent comparison tests. The remaining findings strengthen input consistency, feasibility claims, provenance, and the measurement needed to judge future changes.
+
+## Adjudication (2026-10-03, planning session)
+
+All ten findings were accepted after reading the cited code; R06 and R10 were modified as the table says. Rows B52 to B61 carry them in BACKLOG.md and the Queue section of BUILD_CHUNKS.md places them: R01 and R02 in C14 at the head of the queue (band 0, a legal file), R04 and R05 in C18 (band 1), R03, R06 and R09 in C26 and R07 in C27 (band 2), R08 in C29 and R10 in C33 (band 3). The review's own order (R01 to R03 first) was tested against Ben's exception sentence: R01 and R02 can leave a file DraftKings rejects, so they go first; R03 leaves a legal file with a known-OUT player, a washout, so it ranks at the top of band 2 and its fix is small enough for Ben to pull forward.
