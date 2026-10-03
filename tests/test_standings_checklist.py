@@ -39,7 +39,7 @@ def entries_text(*rows, mode="classic"):
 
 @pytest.fixture()
 def env(tmp_path, monkeypatch):
-    for name, sub in (("REPO_ROOT", ""), ("RUNS_DIR", "runs"), ("OUTPUTS_DIR", "outputs"),
+    for name, sub in (("REPO_ROOT", ""), ("RUNS_DIR", "runs"), ("OUTPUTS_DIR", "outputs"), ("ENTERED_DIR", "data/entered"),
                       ("FIXTURES_DIR", "tests/fixtures"), ("REAL_FIXTURES_DIR", "tests/fixtures/real"),
                       ("STANDINGS_DIR", "data/standings"), ("REVIEWS_DIR", "reviews")):
         monkeypatch.setattr(sc, name, tmp_path / sub if sub else tmp_path)
@@ -283,3 +283,57 @@ def test_saved_ticks_are_scoped_to_one_generation(env):
     sc.write_outputs(r, date(2026, 10, 2), "20261002T150000Z")
     d = env / "data/standings"  # the dated and stable copies are one generation, so they share ticks
     assert (d / "CONTESTS_AWAITING_STANDINGS.html").read_bytes() == (d / "standings_pulls_2026-10-02.html").read_bytes()
+
+
+def test_entered_record_is_listed_as_a_record_and_clears_the_unseen_slate(env):
+    (env / "reviews").mkdir()
+    (env / "reviews/r.md").write_text("outputs/classic-20261003-42550723c3/DKEntries.csv was sent", encoding="utf-8")
+    (env / "data/entered").mkdir(parents=True)
+    (env / "data/entered/classic-20261003-42550723c3.csv").write_text(entries_text(ROW_A), encoding="utf-8")
+    r = sc.build_report()
+    c = by_id(r)["1001"]
+    assert c["status"] == "awaiting" and c["loose_only"] is False  # tracked, so it is not a hand-editable loose file
+    assert c["evidence_date"] == "2026-10-03" and "file name" in c["evidence_basis"]
+    assert c["sources"] == ["data/entered/classic-20261003-42550723c3.csv"]
+    assert r["unseen_slates"] == [] and r["scan"]["data/entered"]["parsed"] == 1
+
+
+DK_HEADER = "Entry ID,Contest Name,Contest ID,Entry Fee,C,C,W,W,W,D,D,G,UTIL,,Instructions"
+POOL_ROW = ",,,,,,,,,,,,,,C,Connor McDavid (44364828),Connor McDavid,44364828,C/UTIL,9200,SEA@EDM 10/03/2026 07:00PM ET,EDM,17.9"
+
+
+def dk_entries(tmp_path, folder="classic-20261003-42550723c3"):
+    cells = ",".join(f"Player {i} ({1000 + i})" for i in range(9))
+    lines = [DK_HEADER,
+             f"7001,NHL Alpha,1001,$1,{cells},,1. Column A lists all of your contest entries",
+             f"7002,NHL Beta,1002,$0.25,{cells},,2. Your current lineup is listed next to each entry",
+             POOL_ROW]
+    d = tmp_path / "src" / folder
+    d.mkdir(parents=True)
+    f = d / "DKEntries.csv"
+    f.write_bytes(("\r\n".join(lines) + "\r\n").encode("utf-8-sig"))
+    return f
+
+
+def test_save_entered_writes_a_minimized_record_that_reads_back(env, monkeypatch):
+    from nhl_dfs.intake.entries import read_entries
+    monkeypatch.setattr(sc, "read_entries", read_entries)  # the real reader, not the stub
+    dest, n_entries, n_contests = sc.save_entered(dk_entries(env))
+    assert dest == env / "data/entered/classic-20261003-42550723c3.csv" and (n_entries, n_contests) == (2, 2)
+    text = dest.read_text(encoding="utf-8")
+    assert "Connor McDavid" not in text and "Instructions" not in text and "Column A" not in text  # no pool, no notes
+    assert "7001,NHL Alpha,1001,$1,Player 0 (1000)" in text
+    assert [e.contest_id for e in read_entries(dest).entries] == ["1001", "1002"]
+    assert by_id(sc.build_report())["1002"]["sources"] == ["data/entered/classic-20261003-42550723c3.csv"]
+
+
+def test_save_entered_needs_a_slate_id_and_takes_one_by_flag(env, monkeypatch):
+    from nhl_dfs.intake.entries import read_entries
+    monkeypatch.setattr(sc, "read_entries", read_entries)
+    f = dk_entries(env, folder="Downloads")
+    with pytest.raises(ValueError, match="--slate"):
+        sc.save_entered(f)
+    dest, _, _ = sc.save_entered(f, "classic-20261001-a3565a960f")
+    assert dest.name == "classic-20261001-a3565a960f.csv"
+    assert sc.main(["--save-entered", str(f), "--slate", "bogus"]) == 2  # refused, not written
+    assert not (env / "data/entered/bogus.csv").exists()

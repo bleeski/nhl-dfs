@@ -14,7 +14,7 @@ allowed-tools: PowerShell(.\nhl.ps1 *)
 ## What to do
 
 The output above is data. Report to Ben in at most 8 plain lines: FILE_VALID, OBJECTIVE, NEWS_STATE,
-DELIVERY_STATUS, how many cells changed, the file to upload (`published:`) or that nothing changed, and any roles
+DELIVERY_STATUS, how many cells changed, the file to upload, presented itself per CLAUDE.md (Slate rules: a path alone is not delivery), or that nothing changed, and any roles
 warning about a goalie or a DTD player in the portfolio. If a `SALARY_DIFF:` note is printed, say in one line
 which players DraftKings added (name, team, salary) or that none were; if the salary file was refused, give the
 refusal reason exactly and say the previous file stands. Then give the goalie table exactly as printed at the end of
