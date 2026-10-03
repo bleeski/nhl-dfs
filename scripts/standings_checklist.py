@@ -8,14 +8,17 @@ in Ben's own entry file; the click happens in Ben's own browser, while logged in
 Entry-file locations scanned (see LOCATIONS in the report):
 - runs/<run id>/inputs/*.csv    snapshot when its sha256 equals the manifest's entries_sha256
 - outputs/<slate>/*.csv         snapshot when its sha256 equals published.json's sha256
+- data/entered/<slate id>.csv   record: tracked in git, so it survives a cloud container. Header plus the entry
+                                 rows only (no player pool). Written by --save-entered
 - runs/<other folder>/*.csv     loose (demo copies); runs/_* folders are scratch and are not scanned
 - <repo root>/*.csv             loose
 - tests/fixtures/real/**/*.csv  loose (personal exports, gitignored)
 - --also <dir>                  loose, recursive; it does not filter by sport, so point it at a folder
                                  that holds only NHL entry files (a mixed Downloads folder lists other sports)
 runs/ and outputs/ are gitignored: a slate run in a cloud session exists only in that container until its
-entry file is placed in one of these folders on this machine. The report names slates that tracked review
-notes mention but that have no local folder.
+entry file is placed in one of these folders on this machine, or its record is committed under data/entered/
+(`--save-entered outputs/<slate>/DKEntries.csv`). The report names slates that tracked review notes mention
+but that have neither a local folder nor a record.
 
 Contest ids found in tests/fixtures (outside real/) are synthetic and reported apart, never as owed.
 State per contest, strongest first: settled (data/ledger/graded.json) > filed (any file in the standings
@@ -32,6 +35,7 @@ import argparse
 import csv
 import hashlib
 import html
+import io
 import json
 import os
 import re
@@ -48,6 +52,7 @@ from nhl_dfs.intake.entries import read_entries  # noqa: E402  (the repo's own e
 
 RUNS_DIR = REPO_ROOT / "runs"
 OUTPUTS_DIR = REPO_ROOT / "outputs"
+ENTERED_DIR = REPO_ROOT / "data" / "entered"
 FIXTURES_DIR = REPO_ROOT / "tests" / "fixtures"
 REAL_FIXTURES_DIR = FIXTURES_DIR / "real"
 STANDINGS_DIR = REPO_ROOT / "data" / "standings"
@@ -167,6 +172,11 @@ def _candidates(also: list[Path]) -> tuple[list[dict], int]:
                 bound = pub.get("sha256") == _sha(f)
                 add(f, "outputs/*", "snapshot" if bound else "loose", ev or _mtime_date(f),
                     basis or "file mtime", "" if bound else "hash does not match published.json")
+    if ENTERED_DIR.is_dir():
+        for f in sorted(ENTERED_DIR.glob("*.csv")):
+            m = _SLATE_DATE.search(f.name)
+            ev, basis = (_ymd(m.group(1)), "slate id in the file name") if m and _ymd(m.group(1)) else (None, "")
+            add(f, "data/entered", "record", ev or _mtime_date(f), basis or "file mtime")
     for f in sorted(REPO_ROOT.glob("*.csv")):
         add(f, "repo root", "loose", _mtime_date(f), "file mtime")
     if REAL_FIXTURES_DIR.is_dir():
@@ -228,8 +238,10 @@ def _blank_winnings() -> list[dict]:
 
 
 def _unseen_slates() -> list[dict]:
-    """Slate ids that tracked review notes mention but that have no outputs/ folder and no run on this machine."""
+    """Slate ids that tracked review notes mention but that have no outputs/ folder, no run and no record here."""
     local = {p.name for p in OUTPUTS_DIR.iterdir() if p.is_dir()} if OUTPUTS_DIR.is_dir() else set()
+    if ENTERED_DIR.is_dir():
+        local |= {p.stem for p in ENTERED_DIR.glob("*.csv")}
     if RUNS_DIR.is_dir():
         for d in RUNS_DIR.iterdir():
             slate = (_json(d / "manifest.json") or {}).get("slate_id") if d.is_dir() else None
@@ -425,8 +437,9 @@ def render_markdown(report: dict, today: date) -> str:
                      ", ".join(f"`{p}`" for p in report["unmatched_inbox_files"]))
     for s in report["unseen_slates"]:
         lines.append(f"- Slate `{s['slate_id']}` is cited in {', '.join(s['cited_in'])} but has no entry file on "
-                     "this machine, so its contests cannot be listed here. If you entered contests on it, copy its "
-                     "DKEntries file into `outputs/<slate>/` or the repo root and run this again.")
+                     "this machine, so its contests cannot be listed here. If you entered contests on it, run "
+                     f"`scripts/standings_checklist.py --save-entered <its DKEntries file> --slate {s['slate_id']}`, "
+                     "commit the data/entered file it writes, and run this again.")
     if report["winnings_blank"]:
         lines.append(f"- {len(report['winnings_blank'])} winnings amount(s) are blank in the inbox winnings.csv "
                      "(owed to settle, not a standings pull): " +
@@ -548,8 +561,9 @@ def render_html(report: dict, today: date, stamp: str = "") -> str:
                      ", ".join(f"<code>{_e(p)}</code>" for p in report["unmatched_inbox_files"]))
     for s in report["unseen_slates"]:
         notes.append(f"Slate <code>{_e(s['slate_id'])}</code> is cited in {_e(', '.join(s['cited_in']))} but has no entry "
-                     "file on this machine, so its contests cannot be listed here. If you entered contests on it, copy "
-                     "its DKEntries file into <code>outputs/&lt;slate&gt;/</code> or the repo root and run this again.")
+                     "file on this machine, so its contests cannot be listed here. If you entered contests on it, run "
+                     f"<code>scripts/standings_checklist.py --save-entered &lt;its DKEntries file&gt; --slate {_e(s['slate_id'])}</code>, "
+                     "commit the data/entered file it writes, and run this again.")
     if report["winnings_blank"]:
         notes.append(f"{len(report['winnings_blank'])} winnings amount(s) are blank in the inbox winnings.csv (owed to "
                      "settle, not a standings pull): " +
@@ -590,6 +604,34 @@ def write_outputs(report: dict, today: date, stamp: str | None = None) -> list[P
     return [md, dated, stable]
 
 
+def save_entered(src: Path, slate_id: str | None = None) -> tuple[Path, int, int]:
+    """Write the minimized record of one entries file to data/entered/<slate id>.csv and return (path, entries,
+    contests). The record is the header plus the entry rows (ids, contest, fee and the lineup cells), with no
+    player pool and no instructions, so it is small and safe to commit. The repo's own reader parses the source
+    first and the written record afterwards, and the two must agree entry for entry."""
+    src = Path(src)
+    sid = slate_id or src.parent.name
+    if not _SLATE_ID.fullmatch(sid):
+        raise ValueError(f"cannot tell the slate id ({src.parent.name!r} is not one); pass --slate <id>")
+    before = list(read_entries(src).entries)
+    if not before:
+        raise ValueError(f"{_rel(src)}: no entry rows")
+    rows = list(csv.reader(io.StringIO(src.read_text(encoding="utf-8-sig"))))
+    header = rows[0]
+    width = next((i for i in range(4, len(header)) if header[i] == ""), len(header))
+    kept = [header[:width]] + [r[:width] for r in rows[1:] if r and r[0].strip().isdigit()]
+    ENTERED_DIR.mkdir(parents=True, exist_ok=True)
+    dest = ENTERED_DIR / f"{sid}.csv"
+    with dest.open("w", encoding="utf-8", newline="") as fh:
+        csv.writer(fh, lineterminator="\r\n").writerows(kept)
+    after = list(read_entries(dest).entries)
+    key = lambda es: [(e.entry_id, e.contest_id, e.contest_name, e.fee, tuple(e.cells)) for e in es]  # noqa: E731
+    if key(before) != key(after):
+        dest.unlink()
+        raise ValueError(f"{_rel(src)}: the minimized record does not read back to the same entries; nothing written")
+    return dest, len(after), len({e.contest_id for e in after})
+
+
 def _today() -> date:
     return _local_date(datetime.now(timezone.utc))
 
@@ -603,12 +645,26 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--url-template", default=EXPORT_URL_TEMPLATE, help="export link, with {contest_id}")
     ap.add_argument("--mark-unrecoverable", nargs=2, metavar=("ID", "REASON"))
     ap.add_argument("--mark-placeholder", nargs=2, metavar=("ID", "REASON"))
+    ap.add_argument("--save-entered", metavar="CSV",
+                    help="write the minimized record of this entries file to data/entered/<slate id>.csv, to be "
+                         "committed so the contests survive a cloud container; run it again after a late swap")
+    ap.add_argument("--slate", metavar="ID",
+                    help="slate id for --save-entered when the file's folder name is not one (e.g. classic-20261001-a3565a960f)")
     args = ap.parse_args(argv)
     marks = [(k, v) for k, v in (("unrecoverable", args.mark_unrecoverable), ("placeholder", args.mark_placeholder)) if v]
-    if args.json and marks:
-        ap.error("--json writes nothing, so it cannot be combined with --mark-*")
+    if args.json and (marks or args.save_entered):
+        ap.error("--json writes nothing, so it cannot be combined with --mark-* or --save-entered")
     if len(marks) > 1:
         ap.error("mark one contest at a time")
+    if args.slate and not args.save_entered:
+        ap.error("--slate only goes with --save-entered")
+    if args.save_entered:
+        try:
+            dest, n_entries, n_contests = save_entered(Path(args.save_entered), args.slate)
+        except (ValueError, OSError, UnicodeDecodeError) as exc:
+            print(f"refused: {exc}")
+            return 2
+        print(f"saved {_rel(dest)}: {n_entries} entries in {n_contests} contest(s); commit this file")
     for kind, (cid, reason) in marks:
         try:
             rec = mark(cid, kind, reason)
