@@ -243,6 +243,7 @@ def test_r02_phase_a_a_game_starting_during_the_build_publishes_nothing(tmp_path
     assert not _public(tmp_path, r).exists()
     assert any("a game started while the file was being built" in x and "late-swap" in x for x in r.messages)
     assert r.manifest["lock_stops"][0]["pass"] == "phase A publish" and r.statuses["FILE_VALID"] == "FALSE"
+    assert "late-swap" in r.manifest["recommendation"] and "rerun cannot help" in r.manifest["recommendation"]
 
 
 def test_r02_phase_a_inside_the_edit_stop_ships_with_a_warning_flag_20(tmp_path, monkeypatch):

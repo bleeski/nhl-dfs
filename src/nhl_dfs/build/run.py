@@ -433,12 +433,12 @@ def run_slate(
         public = Path(m["public_path"]) if any(v.get("public_replaced") for v in m["versions"]) else None
         return RunResult(run, slate_id, dict(m["statuses"]), public, m, mp, np_, messages)
 
-    def fail(msg: str, search: SearchStatus | None = None) -> RunResult:
+    def fail(msg: str, search: SearchStatus | None = None, recommendation: str | None = None) -> RunResult:
         messages.append(msg)
         m["failed"].append(msg)
         if search is not None:
             m["statuses"]["SEARCH_STATUS"] = search.value
-        m["recommendation"] = "fix the named input problem, then rerun"
+        m["recommendation"] = recommendation or "fix the named input problem, then rerun"
         return finish()
 
     def stopped(label: str) -> bool:
@@ -523,7 +523,9 @@ def run_slate(
                              clock=clock, runtime=runtime)
     timings["phase_a_s"] = round(time.perf_counter() - t_start, 3)
     if v1 is None:
-        return fail("phase A produced no checked file")
+        return fail("phase A produced no checked file", recommendation=(
+            "a game started while the file was being built, and a rerun cannot help: use late swap (`nhl.ps1 late-swap`) "
+            "with the entries file you have now" if m.get("lock_stops") else None))
     _set_assignment_fields(m, a, pool)
     m["statuses"]["FILE_VALID"] = FileStatus.TRUE.value
     degraded = (search.route != "milp" or any(r.kind == "REPEAT" for r in a.relaxations) or unknown
