@@ -618,15 +618,15 @@ def cmd_qa_packet(args: argparse.Namespace) -> int:
 
 
 def cmd_qa_apply(args: argparse.Namespace) -> int:
-    from datetime import datetime, timezone
-
     from nhl_dfs.build import controller
 
     if not (args.run and args.round and args.proposals):
         print("qa-apply needs --run <id> --round <k> --proposals <file saved verbatim>")
         return 2
     run, runs_root, outputs_root = _qa_run(args)
-    res = controller.apply_round(run, int(args.round), Path(args.proposals), now=_as_of(args.as_of) or datetime.now(timezone.utc),
+    as_of = _as_of(args.as_of)  # B52: only a labeled rehearsal freezes the clock; production reads the wall clock live
+    res = controller.apply_round(run, int(args.round), Path(args.proposals), now=as_of,
+                                 clock=(lambda: as_of) if as_of is not None else None,
                                  runs_root=runs_root, outputs_root=outputs_root)
     for line in res.lines():
         print(line)
@@ -669,8 +669,6 @@ def cmd_research_request(args: argparse.Namespace) -> int:
 
 
 def cmd_overrides_apply(args: argparse.Namespace) -> int:
-    from datetime import datetime, timezone
-
     from nhl_dfs.build import controller
 
     if not (args.run and args.file):
@@ -679,7 +677,8 @@ def cmd_overrides_apply(args: argparse.Namespace) -> int:
     run, runs_root, outputs_root = _qa_run(args)
     news = run.path / "news"
     k = 1 + max([int(p.stem.split("_")[1]) for p in news.glob("overrides_*_result.json")] or [0]) if news.exists() else 1
-    res = controller.apply_round(run, k, Path(args.file), now=_as_of(args.as_of) or datetime.now(timezone.utc),
+    as_of = _as_of(args.as_of)
+    res = controller.apply_round(run, k, Path(args.file), now=as_of, clock=(lambda: as_of) if as_of is not None else None,
                                  runs_root=runs_root, outputs_root=outputs_root, source="overrides")
     for line in res.lines()[:-1]:
         print(line.replace("QA round", "overrides file"))

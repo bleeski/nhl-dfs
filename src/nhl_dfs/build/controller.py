@@ -259,25 +259,35 @@ def evaluate(so, before: dict, after: dict, changed: set[str], contest_of: dict,
 
 # -- the round ----------------------------------------------------------------------------------------------
 
+def _wall_now() -> datetime:
+    """The production clock. A module-level function, looked up at every call, so the controller's default is never
+    a value captured earlier and a test can replace the provider (B52)."""
+    return datetime.now(timezone.utc)
+
+
 def apply_round(run, round_no: int, proposals, cfg: dict | None = None, *, now: datetime | None = None,
                 runs_root=None, outputs_root=None, apply_state: Callable | None = None,
                 clock: Callable[[], datetime] | None = None, source: str = "qa") -> RoundResult:
     """proposals: a path to the reply saved verbatim, or its text. source="overrides": a researcher reply
     (`overrides-apply`): every item is a correctness override, recorded as news/overrides_<k>_result.json,
-    with no round rules beyond the T-8 deadline."""
+    with no round rules beyond the T-8 deadline.
+
+    Two times (B52): `now` is the round-start timestamp (the deadline, the records, the scenario objective) and
+    is read once; `clock` is the live clock, read again for the final lock recheck under the publish lock, and
+    defaults to the wall clock whether or not `now` is given. Only a rehearsal passes `clock=lambda: as_of`."""
     from nhl_dfs.build import late_swap, swap_objective
     from nhl_dfs.build.manifest import read_manifest, write_manifest
     from nhl_dfs.build.notes import write_run_notes
     from nhl_dfs.build.objectives import load_risk_config
     from nhl_dfs.build.run import load_runtime_config, pool_without
-    from nhl_dfs.build.state import LockTimeout, PublishRefused, publish, sha256
+    from nhl_dfs.build.state import LockCrossed, LockTimeout, PublishRefused, publish, sha256
     from nhl_dfs.contracts.statuses import FieldCalibration
     from nhl_dfs.models import overrides as overrides_mod
     from nhl_dfs.referee.check_file import check_file
 
     cfg = cfg or packet_mod.load_qa_config()
     cc = cfg["controller"]
-    clock = clock or (lambda: now or datetime.now(timezone.utc))
+    clock = clock or (lambda: _wall_now())
     now = now or clock()
     runs_root = Path(runs_root) if runs_root is not None else run.path.parent
     outputs_root = Path(outputs_root) if outputs_root is not None else runs_root.parent / "outputs"
@@ -509,11 +519,17 @@ def apply_round(run, round_no: int, proposals, cfg: dict | None = None, *, now: 
     # publish the changed cells
     changes = {e: {k: r for k, r in enumerate(lu) if r != v.lineups[e][k]} for e, lu in cur.items()}
     changes = {e: ch for e, ch in changes.items() if ch}
-    if changes:
+
+    def boundary_crossed() -> str | None:
+        """The final recheck, on the live clock: a changed cell that is pinned now, or a player who may not be added now."""
         ls2 = v.locks(clock())
         crossed = [(e, k) for e, ch in changes.items() for k, r in ch.items() if ls2.cells[(e, k)].pinned or not ls2.addable(r)]
-        if crossed:
-            res.stop_reason = "a lock boundary was crossed during QA: nothing published, the checked file stands"
+        return "a lock boundary was crossed during QA: nothing published, the checked file stands" if crossed else None
+
+    if changes:
+        why = boundary_crossed()  # cheap early exit; the check that counts runs under the publish lock below
+        if why:
+            res.stop_reason = why
             return record()
         staging = run.path / "staging" / f"qa_round_{round_no}.csv"
         staging.parent.mkdir(exist_ok=True)
@@ -531,7 +547,10 @@ def apply_round(run, round_no: int, proposals, cfg: dict | None = None, *, now: 
         m = read_manifest(run)
         try:
             pub = publish(run, data, report, m["slate_id"], outputs_root=outputs_root,
-                          expect_public_sha=sha256(v.version_path.read_bytes()))
+                          expect_public_sha=sha256(v.version_path.read_bytes()), precheck=boundary_crossed)
+        except LockCrossed as exc:  # a boundary passed while the referee ran or while this process waited for the lock
+            res.stop_reason = str(exc)
+            return record()
         except (PublishRefused, LockTimeout) as exc:
             res.stop_reason = f"publish failed ({exc}): the checked file stands"
             return record()

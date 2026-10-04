@@ -33,6 +33,11 @@ class PublishRefused(Exception):
     """The export is not bound to a passing referee report; nothing was written."""
 
 
+class LockCrossed(PublishRefused):
+    """A lock boundary (a game start or the edit stop) was crossed before the new version could be committed;
+    nothing was written and the incumbent stands. Raised from `publish`'s precheck, under the publish locks."""
+
+
 class LockTimeout(Exception):
     pass
 
@@ -205,6 +210,7 @@ def publish(
     outputs_root="outputs",
     expect_public_sha: str | None = None,
     lock_timeout_s: float = 60.0,
+    precheck: Callable[[], str | None] | None = None,
 ) -> PublishResult:
     """Write the next version and replace the public file.
 
@@ -212,6 +218,9 @@ def publish(
     bytes and to the run's input copies. expect_public_sha: replace the public file only if it
     still has this hash (a later pass never clobbers a newer run's publish). A public file held
     open by another program (Excel on Windows) keeps the version and reports why.
+    precheck: called once both locks are held (so after any wait for them) and before the first byte is
+    written; a returned reason refuses the publish (LockCrossed). It must read the clock and the lock state
+    itself: a value computed before the call can be a minute stale (lock_timeout_s).
     """
     if not report.ok:
         raise PublishRefused("referee report failed: " + "; ".join(report.reasons[:5]))
@@ -225,6 +234,10 @@ def publish(
     public_dir = Path(outputs_root) / slate_id
     public = public_dir / PUBLIC_NAME
     with FileLock(public_dir / ".lock", timeout_s=lock_timeout_s), FileLock(run.lock_path, timeout_s=lock_timeout_s):
+        if precheck is not None:
+            why = precheck()
+            if why:
+                raise LockCrossed(why)
         n = (run.version_numbers() or [0])[-1] + 1
         vfile = run.version_file(n)
         atomic_write(vfile, export_bytes)
