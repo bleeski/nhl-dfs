@@ -112,18 +112,6 @@ chunks:
     checks:
       - pytest -m c11 -q
   # ---- Queue of 2026-10-03 (rank = file order) ------------------------------------------------------------------------
-  - id: C37
-    title: Delivery, the upload file itself reaches Ben and the skills agree with CLAUDE.md
-    depends: [C10]
-    marker: c37
-    band: 0
-    size: S
-    effort: "low: .claude/skills/nhl-run, nhl-late-swap and nhl-refresh SKILL.md (allowed-tools, the lines that forbid further commands), CLAUDE.md slate rules (lines 30 to 32), scripts/standings_checklist.py --save-entered usage; no src change except an optional upload line in the publish report"
-    breakpoint: "one commit per skill: each ends with verify --run, the sha256 match to out_sha256 and the attach (cloud) or full path (local) step, allowed-tools widened to exactly those commands; then tests/test_skills_delivery.py"
-    impact: "Band 0: B69 already stranded a delivered file (the 2026-10-03 cloud run gave a container path Ben could not open; the file reached him only when he asked), and the rule that landed on master is contradicted by the skills that execute it (nhl-run says never to run another command, nhl-late-swap says to do nothing else near lock, allowed-tools is limited to nhl.ps1), so the next cloud run can fail the same way. The skills also omit SEARCH_STATUS and, in late swap and refresh, most statuses CLAUDE.md requires (B76). Reach: every cloud slate. Evidence: one observed strand; the text contradiction is read, not run."
-    backlog: [B69, B76]
-    checks:
-      - pytest -m c37 -q
   - id: C14
     title: Lock-safe publishing, a live clock in QA rounds and lock-aware initial-run publish
     depends: [C10]
@@ -381,13 +369,13 @@ chunks:
       - pytest -m c28 -q
   - id: C43
     title: Cloud parity, the skills run under bash and cloud-built runs get a pre-lock refresh
-    depends: [C37]
+    depends: [C10]
     marker: c43
     band: 2
     size: M
     effort: "medium: .claude/skills/nhl-run, nhl-late-swap and nhl-refresh (shell powershell, allowed-tools), tools/cloud_bootstrap.sh, build/scheduled.py (reads local runs only), flag 4 text, nhl.sh"
     breakpoint: "the three skills run under bash with nhl.sh (checked headless on a cloud-like shell), committed; then the delivery message names the refresh command and the lock time (flag 19)"
-    impact: "Band 2 (one failure point, no correction near lock): the 10-01 and 10-03 slates ran in cloud sessions, where the run, late-swap and refresh skills are PowerShell-only and the local scheduled refresh reads only local runs, so a cloud-built file never gets the T-60 refresh; the 10-03 file shipped with an unconfirmed goalie in 2 entries. Reach: every cloud slate. Evidence: two cloud runs. Depends on C37 because both edit the same three skills."
+    impact: "Band 2 (one failure point, no correction near lock): the 10-01 and 10-03 slates ran in cloud sessions, where the run, late-swap and refresh skills are PowerShell-only and the local scheduled refresh reads only local runs, so a cloud-built file never gets the T-60 refresh; the 10-03 file shipped with an unconfirmed goalie in 2 entries. Reach: every cloud slate. Evidence: two cloud runs. C37 follows it because both edit the same three skills."
     backlog: [B77]
     checks:
       - pytest -m c43 -q
@@ -441,6 +429,18 @@ chunks:
     findings: []
     checks:
       - pytest -m c30 -q
+  - id: C37
+    title: Skills agree with CLAUDE.md, the status lists and the save-entered step
+    depends: [C43]
+    marker: c37
+    band: 3
+    size: S
+    effort: "low: .claude/skills/nhl-run, nhl-late-swap and nhl-refresh SKILL.md (allowed-tools and the lines that forbid further commands), CLAUDE.md slate rules (lines 30 to 32), scripts/standings_checklist.py --save-entered usage; no src change"
+    breakpoint: "one commit per skill: the status list from CLAUDE.md line 30 in each report step, the save-entered, commit and pull-request step allowed instead of forbidden; then tests/test_skills_delivery.py"
+    impact: "Band 3: the delivery rule already landed on master on 2026-10-03 (PR 5: the skills now present the file per CLAUDE.md and say a path alone is not delivery), so B69's stranded-file defect is addressed and only its observation on the next cloud run is open (deferred). What remains is narrower and was read, not run: nhl-run still says never to run another command while CLAUDE.md line 32 asks for scripts/standings_checklist.py --save-entered, a commit and a pull request, and no allowed-tools entry covers them; the report steps omit SEARCH_STATUS (run) and most of the statuses CLAUDE.md line 30 requires (late swap, refresh). Effect: the standings pull misses contests and reports are incomplete; no file or lineup changes. Follows C43 because both edit the same three skills."
+    backlog: [B76]
+    checks:
+      - pytest -m c37 -q
   - id: C31
     title: QA throughput and provenance, independent same-entry proposals, packet team counts, round rule, metrics for the published version
     depends: [C26, C37]
@@ -594,6 +594,9 @@ deferred:
   - item: "Playoff regime validation (flag 7: playoffs are validated separately)"
     trigger: "April 2027, once playoff games exist; model.yaml regimes is regular only"
     backlog: []
+  - item: "Delivery observed on the next cloud run (B69: the file attached with its sha256 in the caption)"
+    trigger: "the next cloud-built slate: its run, late swap and refresh each end with the upload file attached; the rule already landed in PR 5"
+    backlog: [B69]
 flag_recommendations:
   2: "Record Ben's 2026-10-02 answer in the flags table: 40% goalie and game fee share with the LINEUPS fallback (done in this plan); C27 fixes the feasibility test behind it."
   3: "Replace the placeholder mix with the observed one (5 to 10 entries per slate, 1 to 2 per contest, fees $0.10 to $1, 20-max and 150-max GPPs plus Showdown) so family priors and C21's sleeve sizes fit what Ben plays."
