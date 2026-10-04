@@ -1,5 +1,7 @@
 # Session prompts
 
+Historical: these prompts built C0a to C13. The order of work now lives in the Queue section of BUILD_CHUNKS.md; start a session with `/nhl-dev-next`.
+
 Paste-ready prompts for Claude Code development sessions. One chunk per session. Before pasting, in the repo root run `claude`, then `/advisor opus` (or `/advisor fable` if the account has Fable access; the advisor must be at least as capable as the main model, and `/advisor` with no argument shows the accepted picks). The session then shows "Advisor Tool (experimental) is on".
 
 ## C0a (first session, bootstraps the tracker tooling)

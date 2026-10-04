@@ -23,7 +23,7 @@ Seventeen chunks in objective order, each sized for one Claude Code session with
 
 **Finish.**
 
-8. Run the card's exit checks. All must pass. If one cannot pass in this session, the row becomes BLOCKED with the reason; never DONE. A chunk whose purpose is an experiment (C12, C13) completes successfully with "challenger rejected"; an improvement is never required to finish.
+8. Run the card's exit checks. All must pass. If one cannot pass in this session, the row becomes BLOCKED with the reason; never DONE. A chunk whose purpose is an experiment (C12, C13, C21 to C23) completes successfully with "challenger rejected"; an improvement is never required to finish.
 9. `python tools/next_chunk.py --done <id> --commit <hash>` sets DONE, the finish date, and the commit. Append a session-log line to `BUILD_STATUS.md` (date, chunk, outcome, deviations from the card, new `[BEN: ...]` flags, backlog IDs).
 10. Commit with explicit staging: review `git status`, `git add` the paths the card lists plus `BUILD_STATUS.md`, then `git commit -m "<id>: <title> (DONE)"`. Never `git commit -a`. Then either stop or, if context use is well under 60%, start the next eligible chunk in the same session (the rule exists to avoid compaction, not to cap chunks per session).
 
@@ -45,6 +45,8 @@ Seventeen chunks in objective order, each sized for one Claude Code session with
 
 ---
 
+Added 2026-10-03 (the queue's deferred items name them): fill `winnings.csv` under `data/standings/inbox/2026-09-29` (two contests), `2026-09-30`, `2026-10-01` and `2026-10-02` from DraftKings My Contests and settle 09-30 again; save one real post-lock entries export as `tests/fixtures/real/<date>/<mode>/DKEntries.postlock.csv`; register the scheduled refresh (`tools/register_refresh_task.ps1` or the Claude scheduled task); overturn any of flags 11 to 20 in BUILD_STATUS.md you disagree with (each has a default in force and nothing waits on it).
+
 ## Dependency graph
 
 ```
@@ -57,12 +59,139 @@ C0a ─► C0b ─┬─► C1 ──┬─────────────�
 Exact edges are in chunks.yaml. C9 needs C8, C7, C2c. C10 needs C9, C7. C13 also needs C6.
 ```
 
-**First-eligibility order:** C0a, C0b, C1 or C2a (either order), C2b, C2c, C3, C4, C5, C6 or C7 (either order), C8, C9, C10, C11, then C12 and C13 when their gates open.
+**Order (from 2026-10-03):** `chunks.yaml` file order is the rank, set by Ben's priority rule (see Queue below): band 0 a legal file, band 1 win large prizes, band 2 prevent portfolio washouts, band 3 everything else; inside a band, impact against difficulty; a prerequisite moves up to just before its first dependent; two chunks that edit the same functions are ordered with `depends:`. NEXT (`python tools/next_chunk.py`) takes the first chunk in that order whose dependencies are DONE, skipping GATED chunks and chunks BLOCKED on a [BEN] flag. The DONE chunks ran in dependency order: C0a, C0b, C1 or C2a, C2b, C2c, C3, C4, C5, C6 or C7, C8, C9, C10, C11.
 
 **Milestones.** After C2c: an uploadable legal file, offline, with lock-safe late swap. After C3: a provisional leverage-aware portfolio using ownership, duplication, and real payout metadata on priors. After C8: a scenario-based, objective-aware portfolio. After C11: the learning loop and financial ledger.
 
 ---
 
+## Queue
+
+Ben's priority rule (2026-10-03), the repo's first ranking rule. Band 0, ahead of everything: a defect that has lost, stranded or double-entered a delivered file, or that an ordinary slate is likely to reach, because a slate with no legal file wins nothing. Band 1: anything that helps win large prizes in the contests Ben enters (stack shape and size by slate size, goalie choice and share, ownership against the field and its stack mix, tail and ceiling terms reaching the solver, contests routed to the right shape, Showdown Captain choice, DTD priced as risk and leverage, controls that never reach the solver); an item that serves bands 1 and 2 ranks in band 1. Band 2: anything that prevents portfolio-level washouts (one goalie, one game, one core; caps that bind per lineup but not across the portfolio; blank, stranded or duplicate entries). Band 3: everything else by impact against difficulty. Dependencies override rank. Sizes: S under 100 changed lines, M 100 to 500, L 500 to 1,500; XL is split. Every band-1 figure below comes from one week of standings (17 contests, 52,490 Classic and 341 Showdown lineups) and is thin; a modeled figure is labeled modeled and its calibration is PRIOR or UNVALIDATED unless stated. The section between the markers is generated: edit `chunks.yaml` and run `python tools/next_chunk.py --render-queue`.
+
+<!-- QUEUE:BEGIN -->
+Generated 2026-10-04 by `python tools/next_chunk.py --render-queue` from chunks.yaml and BUILD_STATUS.md. Do not edit by hand; edit chunks.yaml and rerun.
+
+DONE: C0a, C0b, C1, C2a, C2b, C2c, C3, C4, C5, C6, C7, C8, C9, C10, C11.
+
+### Defaults taken (overturn any in one line)
+
+No queued chunk is blocked on a [BEN] flag: every chunk proceeds on the default in force and records it.
+
+| Flag | Blocks (rank) | Question | Default in force | Where it lands | Recommendation |
+|---|---|---|---|---|---|
+| 2 | nothing (default proceeds) | Risk budget | P(lose ≥80% of slate fees) ≤ 0.60; ≤40% of fees on one goalie; ≤40% on one game only when the slate has more than one game (Ben 2026-10-02: 40% goalie and game fee share with the LINEUPS fallback; session log) | `config/risk.yaml` (C8) | Record Ben's 2026-10-02 answer in the flags table: 40% goalie and game fee share with the LINEUPS fallback (done in this plan); C27 fixes the feasibility test behind it. |
+| 3 | nothing (default proceeds) | Typical entry mix (count, fees, contest types) | 20–150 entries across 150-max GPPs and Showdown; occasional WTA and single-entry | `config/contest_families.yaml` (C3) | Replace the placeholder mix with the observed one (5 to 10 entries per slate, 1 to 2 per contest, fees $0.10 to $1, 20-max and 150-max GPPs plus Showdown) so family priors and C21's sleeve sizes fit what Ben plays. |
+| 8 | nothing (default proceeds) | Provisional leverage tie band and DTD haircut | Band = 3% of the lineup's prior mean (no Monte Carlo floor before C6, `band_floor_sims: null`); a QUESTIONABLE (DTD) person counts at 0.85 of their mean in the provisional ranking; the field fades DTD players by 2 points | `config/contest_families.yaml` `selection`, `config/ownership.yaml` `weights.questionable` (C3) | Keep the 0.85 DTD haircut and the 2-point field fade until C24 measures sitting DTD players; no change recommended now. |
+| 9 | nothing (default proceeds) | DK tie settlement: are the tied places' prizes pooled, each share rounded down to the cent, and how are tied satellite tickets split? | Pooled over the tied places, floored to the cent; a tied seat is split as seats / tied count. The DK Terms of Use (checked 2026-09-29) verify only the even split | `docs/payouts.md`, `build/objectives.py` (C8) | Keep the pooled-and-floored tie rule; C16 and C18 both rely on it and no tie has involved a paid place yet. |
+| 11 | nothing (default proceeds) | Dev dependency group and one lockfile (B34): move pytest and pytest-timeout to a dev group and keep uv.lock or requirements.lock? | Unchanged: both lockfiles kept, pytest stays a runtime dependency | `pyproject.toml`, `uv.lock`, `requirements.lock` (deferred item) | Choose uv.lock as the one lockfile and a dev group for pytest and pytest-timeout (B34); nothing in the queue waits on it. |
+| 12 | nothing (default proceeds) | Showdown Captain policy (B49): a goalie as Captain only when the simulator's goalie ceiling ranks top-3 on the slate? | Yes, as the experiment default; C23 measures before any file changes | `config/ownership.yaml` `field.captain_rules`, `build/candidates.py` (C23) | Yes as the experiment default: a goalie Captain only when the simulator's goalie ceiling ranks top-3; C23 measures before any file changes. |
+| 13 | nothing (default proceeds) | Skaters against the lineup's own goalie (B45): a hard rule for GPP families, cash exempt? | Hard rule for large_gpp, small_field and wta; cash and satellite exempt; the referee reports it | `build/candidates.py`, `build/exposure.py` (C20) | A hard rule for large_gpp, small_field and wta lineups, cash and satellite exempt, reported by the referee; C20. |
+| 14 | nothing (default proceeds) | Payout tables by template (B62, B50): price a contest on DraftKings' cached table for the same template name and max entries when its page answers 403? | Yes, labeled PAYOUT_SOURCE=TEMPLATE; never for satellites or resized contests | `models/contests.py`, `learn/ledger.py` (C16) | Yes: price on the cached template table when the contest page is 403, labeled PAYOUT_SOURCE=TEMPLATE, never for satellites or resized contests; C16. |
+| 15 | nothing (default proceeds) | Started-slate builds (B42 part 3): when a run starts after the first game, build the open games and report the started ones as excluded instead of refusing? | Yes: build the open games, exclude STARTED_GAME rows, pin started-game cells, name them in the report | `build/run.py`, `build/locks.py` (C15) | Yes: when a run starts after the first game, build the open games, exclude STARTED_GAME rows, pin started-game cells and name them in the report; C15. |
+| 16 | nothing (default proceeds) | Cloud settle inputs (B68): what a cloud run persists so settle can work after the container is reclaimed | Persist only the small frozen record (contest ids and forecast fields, a few KB), never the 52 MB scenario directory; settle degrades to money and lineup match from data/entered and says so | `learn/settle.py`, `data/entered/` (C29) | Default taken: persist only the small frozen record for a cloud run (the contest ids and forecast fields, a few KB) and never the 52 MB scenario directory; settle degrades to money and lineup match from data/entered and says so (B68, C29). |
+| 17 | nothing (default proceeds) | QA relay (B81): what happens when a relayed adversary packet value is wrong | Relaunch the adversary with the exact printed packet; one reply per round; qa-apply records the packet hash it evaluated against | `build/controller.py`, `.claude/skills/nhl-run` (C31) | Default taken: when a relayed packet value is wrong, relaunch the adversary with the exact printed packet; one reply per round; qa-apply records the packet hash it evaluated against (B81, C31). |
+| 18 | nothing (default proceeds) | History store on cloud (B71): where it comes from | `tools/cloud_bootstrap.sh` starts the history backfill in the background when the store is absent; Phase A never waits for it | `tools/cloud_bootstrap.sh`, `build/run.py` (C39) | Default taken: tools/cloud_bootstrap.sh starts the history backfill in the background when the store is absent and Phase A never waits for it (B71, C39). |
+| 19 | nothing (default proceeds) | Pre-lock refresh for cloud-built runs (B77) | The delivery message names the refresh command and the lock time; no cloud scheduled routine is created until Ben registers one | `.claude/skills/nhl-run` and `nhl-refresh` (C43) | Default taken: the delivery message names the refresh command and the lock time; no cloud scheduled routine is created until Ben registers one (B77, C43). |
+| 20 | nothing (default proceeds) | First publish with a started game (B53) | A first publish with no predecessor is never blocked for EDIT_STOP cells (it warns) and never changes cells of a game that has started; with a predecessor, pinned cells are diffed against it | `build/run.py` `_export_and_publish`, `build/locks.py` (C14) | Default taken: a first publish with no predecessor is never blocked for EDIT_STOP cells (it warns) and never changes cells of a game that has started; with a predecessor, pinned cells are diffed against it (B53, C14). |
+
+### Ranked chunks
+
+| # | Chunk | Band | Title | Size | Effort | Depends | Needs | Backlog | Findings | Status |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | C14 | 0 legal file | Lock-safe publishing, a live clock in QA rounds and lock-aware initial-run publish | M | high: build/controller.py 559 (apply_round clock and publish block), build/run.py 884 (run_slate, _export_and_publish), build/scenario_pass.py 402 (publish_fn), the lock API in build/locks.py | C10 | none | B52, B53 | R01, R02 | TODO |
+| 2 | C15 | 0 legal file | Started slates, pins for started-game occupants, builds that exclude started games, a stable slate id | M | high: build/late_swap.py 771 and build/locks.py (pins), build/run.py (started-slate build), intake/salary.py (STARTED_GAME rows from B42 part 1), run.slate_id_for | C14 | none | B42 | none | TODO |
+| 3 | C16 | 1 win | Payout curves from DraftKings template tables, at build time and in settle | M | medium: models/contests.py (classification and the 403 path), the prior_curve region of build/objectives.py (about 60 of 722 lines), learn/ledger.py prize_tables, the dk_contest cache format | C11 | none | B62, B50 | none | TODO |
+| 4 | C38 | 1 win | Field size and family from the lobby row when the contest page is unavailable | S | medium: models/contests.py classify and family_prior (lines 130 to 153), data/sources/dk_public.parse_lobby (ContestSummary.field_size), config/contest_families.yaml field_size_prior, tests for the 403 and no-template cases | C16 | none | B72 | none | TODO |
+| 5 | C17 | 1 win | Inputs that move lineups reach the models, odds and roles into the field features, team rates and the market clip | M | medium: models/ownership.py and its build_fields callers (build/run.py:811, build/scenario_pass.py:208 and :370, build/provisional.py:181), sim/market.py (clip), the COL league-rate fallback traced from RUN_NOTES of run 20260930-210607-classic | C10 | none | B63, B20, B51, B66, B85 | none | TODO |
+| 6 | C39 | 1 win | History store kept current in-season and on every host | M | medium: cli.py cmd_history (--since exists), build/run.py Phase B preamble, tools/cloud_bootstrap.sh, data/history/nhl_reports.py, a store-staleness line in RUN_NOTES | C17 | none | B70, B71 | none | TODO |
+| 7 | C40 | 1 win | Daily Faceoff age gate keeps the last known lines | S | medium: config/roles.yaml max_line_age_h, models/roles.py:224 (the age gate), the Daily Faceoff adapter page stamp, tests with the CHI 28.7 h, FLA 36.9 h and COL 58.6 h cases | C7 | none | B73 | none | TODO |
+| 8 | C18 | 1 win | Joint own-entry accounting in the greedy fill and the QA evaluator | M | high: build/portfolio.py 625 (_greedy, _joint_from_states), build/objectives.py 722 (own_pairwise, metrics_from_ranks, joint_payouts), controller.evaluate (about 60 lines of build/controller.py) | C14 | none | B55, B56 | R04, R05 | TODO |
+| 9 | C19 | 1 win | Field stack mix by slate size, team4 and double-stack behaviors, mixture weights, shape report | M | medium: models/field.py 354 and models/field_fast.py (stack rules), config/ownership.yaml mixtures, the stack family report in build/packet.py, scripts/standings_synthesis.py pooled shape table as the target | C17 | none | B43, B15 | none | TODO |
+| 10 | C20 | 1 win | Goalie as the top-1% factor, unresolved goalies in research, no skater against the lineup's goalie, goalie choice with leverage | M | high: build/packet.py research request (B37), build/candidates.py 155 and build/milp.py (the constraint), build/portfolio.py and build/objectives.py (goalie term), build/exposure.py shared-failure report | C18 | none | B37, B45 | none | TODO |
+| 11 | C21 | 1 win | Stack size by slate blow-up, discovery sleeves and the shape mix (experiment) | M | high: build/portfolio.py discovery families (risk.yaml discovery.*), build/candidates.py, the saved scenario caches of the 09-29 and 09-30 runs for the study, a docs/experiments/ preregistration | C19, C18 | none | B44, B22 | none | TODO |
+| 12 | C22 | 1 win | Chalk core kept, leverage applied to the depth slots (experiment) | S | medium: build/tiebreak.py, build/provisional.py 230, the own_then_dup region of build/portfolio.py | C19 | none | B46 | none | TODO |
+| 13 | C23 | 1 win | Showdown Captain choice, skater Captains, Captain leverage, team split sleeve (experiment) | M | medium: models/field.py captain rules, the Showdown branch of build/candidates.py and build/milp.py, build/exposure.py captain cap, config/ownership.yaml captain_rules | C20 | none | B49 | none | TODO |
+| 14 | C24 | 1 win | DTD participation inside the simulator | M | high: sim/game.py 614 (dressing step), sim/outcomes.py, models/roles.py p_play, tests/test_frozen_record.py (frozen records move) | C6 | none | B14 | none | TODO |
+| 15 | C25 | 1 win | Clean calibration constants, the co-ceiling cause, and the 3+ point tail preregistration | M | high: sim/validate.py, sim/game.py (a unit-level factor, read only), docs/calibration/2026-09-29.md and .json, the history store for actual linemates | C6 | none | B64, B6 | none | TODO |
+| 16 | C41 | 1 win | Selection robust to field ownership error (low, base and high ownership) | M | high: models/ownership.py, models/field.py (sampled fields under scaled ownership), build/portfolio.py (screening and the knob loop), build/objectives.py (utility across field scenarios), config/ownership.yaml | C19 | none | B74 | none | TODO |
+| 17 | C42 | 1 win | Improvement pass after the greedy fill (experiment) | M | high: build/portfolio.py _greedy (one pass, order family, fee, file; lines 360 to 430), the saved scenario caches of the 09-29 and 09-30 runs, a docs/experiments/ preregistration | C18 | none | B75 | none | TODO |
+| 18 | C26 | 2 washout | Controller safety, known exclusions in repairs, caps after QA, transactional override batches, export hash | M | high: build/controller.py 559 (repair solves, apply_round publish), models/overrides.py 239, the caps API of build/exposure.py, cli.verify_run | C18 | none | B54, B41, B57, B60 | R03, R06, R09 | TODO |
+| 19 | C27 | 2 washout | Portfolio caps, exact fee-share feasibility, line-core and PP-unit exposure, one goalie-share key | M | medium: build/exposure.py 282 (fee_floor, concentration_cap, concentration), the caps region of build/portfolio.py, config/risk.yaml and config/exposure.yaml | C18 | none | B58, B13 | R07 | TODO |
+| 20 | C28 | 2 washout | Role state in Phase A and in simulate | M | medium: build/run.py Phase A (projection and goalie choice before the scenario pass), cli simulate, models/roles merge and apply_state | C15 | none | B9 | none | TODO |
+| 21 | C43 | 2 washout | Cloud parity, the skills run under bash and cloud-built runs get a pre-lock refresh | M | medium: .claude/skills/nhl-run, nhl-late-swap and nhl-refresh (shell powershell, allowed-tools), tools/cloud_bootstrap.sh, build/scheduled.py (reads local runs only), flag 4 text, nhl.sh | C10 | none | B77 | none | TODO |
+| 22 | C44 | 2 washout | Goalie and game caps in late swap and refresh | M | medium: build/late_swap.py:599 (assign.Caps.person_cap only), build/swap_objective.py, build/refresh.py, the caps API of build/exposure.py | C27 | none | B78 | none | TODO |
+| 23 | C45 | 2 washout | Cross-mode fee-weighted risk (Classic and Showdown on one slate) | M | medium: build/exposure.py fee shares, config/risk.yaml, build/scenario_pass.py, the RUN_NOTES risk section, plan section 7 allocation paragraph | C27 | none | B79 | none | TODO |
+| 24 | C29 | 3 other | Settle without a local run, stable slate groups | M | medium: learn/settle.py 339 (run, evidence_counts), learn/ledger.py, cli settle, scripts/standings_synthesis.py lobby_meta as the name and fee source | C11 | none | B47, B59, B68, B84 | R08 | TODO |
+| 25 | C30 | 3 other | Standings tooling, the checklist sees filed standings, the synthesis runs after each pull | S | low: scripts/standings_checklist.py (status classification), .claude/skills/standings-checklist and nhl-settle SKILL.md, the scripts/standings_synthesis.py entry point | C11 | none | B48 | none | TODO |
+| 26 | C37 | 3 other | Skills agree with CLAUDE.md, the status lists and the save-entered step | S | low: .claude/skills/nhl-run, nhl-late-swap and nhl-refresh SKILL.md (allowed-tools and the lines that forbid further commands), CLAUDE.md slate rules (lines 30 to 32), scripts/standings_checklist.py --save-entered usage; no src change | C43 | none | B76 | none | TODO |
+| 27 | C31 | 3 other | QA throughput and provenance, independent same-entry proposals, packet team counts, round rule, metrics for the published version | M | high: the proposal loop of build/controller.py, build/packet.py 411, build/notes.py, the CLAUDE.md round rule, .claude/agents/nhl-adversary.md | C26, C37 | none | B38, B39, B80, B81 | none | TODO |
+| 28 | C32 | 3 other | Hygiene, dead and v1-only config keys, docstrings, enum cleanup, apply-once, shootout shooters, raw eviction, page-age report | M | medium: config/*.yaml comments, sim/slate.py, models/roles.py page age, build/news.py NewsState, sim/game.py _shootout, data/history evict_raw; each item is small | C11 | none | B65, B29, B32, B10, B11, B83, B86 | none | TODO |
+| 29 | C33 | 3 other | Referee raw-byte check of entry lines and pinned cells | M | medium: referee/check_file.py 170, the export writer's field spans (read for the contract, never imported), the real export fixtures | C0b | none | B61 | R10 | TODO |
+| 30 | C34 | 3 other | Repair draws for large_gpp late-swap repairs | S | medium: the repair objective region of build/late_swap.py, build/swap_objective.py 630 (read for the draw count), config/runtime.yaml | C9 | none | B19 | none | TODO |
+| 31 | C35 | 3 other | Fast field sampler agreement and field resampling in the standard error | M | high: models/field_fast.py (local search), models/field.py, the standard-error region of build/objectives.py, tests/bench_field.py | C19 | none | B12, B15 | none | TODO |
+| 32 | C36 | 3 other | Odds history grading in settle | S | medium: the tools/capture.py index format, learn/grade_forecasts.py, learn/settle.py record fields, sim/market.py implied totals | C11 | none | B67 | none | TODO |
+
+### Why each ranks where it does, and where to stop
+
+- **#1 C14** (0 legal file): Band 0 by the exception rule. Two reproduced ways to publish started-game cells (review R01 and R02): a QA or override round that straddles EDIT_STOP or a start, and an initial run that crosses a start during construction (the probe published 16 started cells with FILE_VALID=TRUE). B42's evidence says an ordinary slate reaches the second: on 10-02 the salary file was downloaded after BOS@WPG had started. A file DraftKings rejects wins nothing. Reach: every slate; no live occurrence is recorded. Breakpoint: R01 first: the live clock in apply_round and at the two CLI call sites (cli.py:629 and :682), the 15 _apply test call sites moved to clock=lambda: now, tests on both call shapes, committed on its own; then R02 as one guard in _export_and_publish that diffs against the predecessor pinned cells (flag 20)
+- **#2 C15** (0 legal file): Band 0: the 10-02 slate had no engine file because run_slate refuses once any game has started (B42 part 3, observed once in four slates), and a late-swap export whose started-game cells are not pinned can lose them (B42 part 2). Depends on C14 because both edit the publish and lock path. Reach: every slate Ben opens late. Breakpoint: locks.py pins a started-game occupant (B42 part 2) with tests, committed; then run_slate builds the open games when a run starts after the first game (flag 15 default); then the slate id from the full ID set
+- **#3 C16** (1 win): Band 1: contests routed to the right shape. Every run since 09-29 priced its objective on the placeholder power law (PAYOUT_SOURCE=PRIOR; DraftKings answers 403) while the exact table for the same template and size sits in the cache: cached GPP templates pay 22.9 to 24.0% of max entries with a top-heavy ladder, the prior assumes 20% paid and rake 0.15. Deterministic; reach: every slate, since Ben's contests are all templates. How far it moves the chosen lineups is unmeasured (judgment: the top-1% utility region and the cash line both move). Flag 14 default: yes, labeled TEMPLATE. Breakpoint: the (template name, max entries) matcher with tests and the settle side (B50), committed; then the build-time curve with PAYOUT_SOURCE=TEMPLATE in the manifest and RUN_NOTES
+- **#4 C38** (1 win): Band 1: contests routed to the right shape. When DraftKings answers 403 and no cached template matches, field size comes from family priors (5,000 for both large_gpp contests and 200 for the cash contest in the 10-03 STL @ COL run) where the contest names imply about 400, under 100 and about 27 entries, and a single-entry contest under 100 entries is priced as large_gpp. Field size drives the top-1% probability, p_clear_line, the sampled field and p_lose80 for every unmatched contest, and Showdown has no cached template, so C16 does not reach it. Depends on C16 because both edit models/contests.py. Deterministic; reach: every contest the page does not answer, which is every cloud run. Evidence: one run record. Breakpoint: classify reads max entries and max per user from the lobby capture when the page answers 403 and no template matches, labels the source (FIELD_SIZE_SOURCE=LOBBY or PRIOR) and routes small single-entry contests away from large_gpp; committed
+- **#5 C17** (1 win): Band 1: controls that exist but never reach the solver. The ownership prior's implied_total, goalie_start_win, pp1, line1 and news_recent weights never see data in a run (read-only audit; line references in B63), so the field cannot know game totals, line news or PP units. On 09-30 the forecast had TOR stacks at 42% (actual 21 to 24%) and COL at 19% (actual 38 to 51%), and the engine's own portfolio held zero COL skaters after COL fell to a league-average rate (B51). Deterministic gaps, each S to M; reach: every slate. The size of the forecast gain is unmeasured (judgment). Breakpoint: odds, role state and news age wired into every build_fields call with a test per weight, committed; then the 09-30 scratch replay and the team-rate fallback (B51); then the clip rule (B66)
+- **#6 C39** (1 win): Band 1: inputs that move lineups reach the models. The history store was last written on 2026-09-28 and nothing runs history --since (B2 assumes nightly runs), so no 2026-27 game reaches the as-of features: goalie back-to-back detection (models/goalies.py:71 to 83) cannot fire and recency, rotation and role form stay at the 2025-26 close; cloud runs start with no store at all (data/features and data/raw are gitignored and cloud_bootstrap.sh builds only the .venv) and printed MODEL_STATUS=PRIOR on the 10-03 cloud Showdown. Reach: every slate, growing weekly. Magnitude unmeasured (judgment), hence the measuring first commit. Depends on C17 because both edit build/run.py. Breakpoint: first commit reports the store last game date and the as-of staleness in RUN_NOTES with no behavior change; the second adds a bounded incremental history --since in Phase B; the third the cloud bootstrap backfill in the background (flag 18)
+- **#7 C40** (1 win): Band 1 (inputs that move lineups): the age gate drops a playing team lines and PP units whenever the page stamp is over 24 h (CHI 28.7 h and FLA 36.9 h on 10-01, COL 58.6 h on 10-03: 2 of the 2 cloud late runs on record), leaving the team at role priors, and a call-up with DK average 0 became a Showdown Captain on 10-03. Whether a stale stamp means stale lines is unchecked (judgment), hence measure first. Reach: any team whose lines do not change for a day, which is most teams. Evidence: three team-days. Breakpoint: first commit measures offline on the cached pages whether the Last updated stamp moves only on edits; the second applies the decision (keep the last known lines, label them stale with their age, unless newer contrary news exists)
+- **#8 C18** (1 win): Band 1 and band 2 together, so band 1: the selector credits prizes that cannot be paid together (review R04: A+B chosen at every kappa, exact joint $67.50 against the available $90.00; the washout term p80 reads the same wrong totals) and the QA evaluator accepts a pure transfer between owned entries as a 90-point gain (R05). Deterministic. Reach: every contest where Ben holds two or more entries (his 20-max and 150-max contests; 1 to 2 entries today, so the magnitude is modest until he scales: judgment). Depends on C14 because both edit controller.py. Breakpoint: a joint-accounting primitive whose incremental totals equal joint_payouts on the review's fixtures, committed; then _greedy; then controller.evaluate
+- **#9 C19** (1 win): Band 1: ownership level against the field's stack mix. Observed in 14 contests and 52,490 lineups (one week, three slate sizes: thin): 93.5% of large-GPP lineups hold a 3+ stack and 65.7% a 4+ stack, 4-3-1 modal at 31%, while the field model gives large_gpp a 25% stacker share with team3 only. A field with too few stacks understates the opponents a stacked lineup must beat. Depends on C17 (the build_fields signature). FIELD_CALIBRATION stays PRIOR until C12; this reshapes the prior, it is not a fit. Breakpoint: team4 and double_stack behaviors with tests, committed; then mixture weights per family and slate size; then the shape mix line in RUN_NOTES
+- **#10 C20** (1 win): Band 1: the winning goalie sat in 91.8% of pooled top-1% lineups (field 54.1%); the top-1% goalie was a 9 to 15% owned starter on a favorite (Silovs, Daccord, Hofer) while the field's chalk goalies were 0% of the top 1%; top-1% lineups faced their own goalie 5.4% of the time against 11.7% for the field (14 contests, one week: thin). B37 is S and Ben approved it on 10-01. The constraint also removes a washout pattern (a lineup betting against itself). Depends on C18 (portfolio.py). Breakpoint: B37 (unresolved goalie pairs in the research request), committed; then the own-goalie constraint with its referee report (flag 13 default: hard in GPP families); then the goalie selection term as an experiment, DONE when rejected
+- **#11 C21** (1 win): Band 1: stack shape and size by slate size. Top-1% lineups held a 5+ stack in 45 to 65% on the 3-game slate (field 20 to 23%), 8 to 21% on the 8-game slate (field 14 to 18%) and 4 to 36% on the 5-game slate; 4+ stacks were 83.5% of the pooled top 1% against 65.7% of the field; bring-back 39% against 34% (one week: thin, hence an experiment first). The engine has no notion of primary stack size today. Depends on C19 so the study runs against a field with the observed stack mix; B22's measurement is the study. Breakpoint: the preregistered sim study (top-1% equity by primary stack size per slate, on saved scenario caches) committed as docs/experiments/stack_size_<date>.md; then the sleeve only if the study supports it; DONE when the challenger is rejected
+- **#12 C22** (1 win): Band 1: ownership level against the field. Top-1% lineups held the slate's top two chalk pieces at 90 to 100% (MacKinnon 47% owned; McDavid and Draisaitl 32% and 25%) and differentiated with 1 to 3 low-owned teammates; their own-sum exceeded the field's whenever the chalk hit (3 slates: thin). The read-only audit shows own and dup reorder lineups only inside the tie band, so today's penalty is small; this chunk measures before it changes anything. Breakpoint: a measurement of how often the band-only ownership tie-break moves a pick on the saved caches, committed; then the core exemption only if the tie-break moves picks away from the top-2 chalk; DONE when rejected
+- **#13 C23** (1 win): Band 1: Showdown Captain choice, on the thinnest evidence in the queue (one game, ANA@VGK, 3 contests, 341 lineups): a goalie Captain was 20 to 33% of the field and 0% of the top 1%; top-1% Captains were 3 to 11% CPT-owned skaters; our three busted Captains were the field's chalk (Hart, Stone). Last among the band-1 construction items for that reason. Depends on C20 (the goalie constraint in Showdown). Breakpoint: the Captain-share and goalie-in-lineup report per cohort on the saved Showdown standings, committed; then the skater-Captain default (flag 12) and the leverage term as an experiment; DONE when rejected
+- **#14 C24** (1 win): Band 1: DTD players priced as risk and leverage. Today a QUESTIONABLE player who sits scores 0 after the simulation, so his minutes and events are not redistributed to teammates (B14, design-time, unverified on data); the field already fades DTD by 2 points and the projection by p_play 0.85 (flag 8 default). Reach: every slate with a DTD skater (common: judgment). Low in band 1 because its evidence is design-time. Breakpoint: the participation draw inside the dressing step with conservation tests, committed; then the frozen-record and calibration updates
+- **#15 C25** (1 win): Band 1: tail and ceiling terms reaching the solver, at the bottom of the band because the evidence is one season with a disclosed flaw (the league constants include the evaluation dates). The 3+ point tail ratio 1.40 and co-ceiling 0.55 against 1.59 are diagnostics until recomputed cleanly; this chunk is the prerequisite of B6 and of C13's gate. No tuning happens here. Breakpoint: the recomputed constants and a new docs/calibration/<date>.md with machine-readable deficiencies (B64), committed; then the co-ceiling cause test; then B6's preregistration (the Gamma factor itself belongs to C13 or a later experiment)
+- **#16 C41** (1 win): Band 1: ownership level against the field. Plan section 6 asks for ownership as ranges and alternatives under low, base and high scenarios; nothing in src, config or the queue does this (C35 only resamples the field for the standard error). With per-player ownership error of 3.9 to 4.3 points and team stack shares off by 20 points on the 09-30 forecast, a selection optimal only at the base field can be badly placed when the field differs. Evidence: one graded forecast, so the measured spread comes first and selection use is conditional. Depends on C19 because that chunk changes the field model this one perturbs. Breakpoint: the ownership error band measured from the graded forecasts and committed as a function; then the field sampler draws from the low and high bands and the report prints each candidate tail spread; selection uses it only if the spread moves a pick
+- **#17 C42** (1 win): Band 1 (tail terms reaching the solver): selection is a one-pass greedy fill with no improvement pass, where plan section 7 specifies bounded local search, and the order (family, fee, file) can decide which entries get the better candidates. Unmeasured (judgment). Depends on C18 because that chunk rewrites the same accounting. Experiment: DONE on rejected is valid. Breakpoint: the preregistration committed first; then the gap between the greedy portfolio and a bounded swap-improvement pass measured on the saved caches; DONE on rejected if the gain is inside the standard error
+- **#18 C26** (2 washout): Band 2: entries sharing a failure point, and dead roster spots. A correctness repair can roster a player the salary file already marks OUT (review R03, reproduced in three entries), an accepted QA swap can breach GOALIE_CAP or GAME_CAP (B41), two contradictory goalie confirmations strip a team from every open cell (R06), and the manifest misnames the delivered bytes after QA (R09). All deterministic; R03 is reached on any slate where an override triggers a repair. Depends on C18, which edits controller.evaluate. Ben may pull this chunk ahead of the band-1 experiments: R03 is S on its own. Breakpoint: R03 (one exclusion mask for every repair path) with the review's goalie case and a skater case, committed; then R09 (export hash and verify); then B41 (caps after QA); then R06 (transactional batch)
+- **#19 C27** (2 washout): Band 2: caps that bind per lineup but not across the portfolio. The dollar cap is dropped for a lineup-count cap whenever LPT misses a feasible packing (R07, exact counterexample: 0.407 against an achievable one third), and the plan's 30% line-core cap and the line and PP-unit fee exposure are neither enforced nor reported (B13, recorded at C8). Deterministic; reach: every multi-entry slate. Breakpoint: R07 (a lower bound plus an exact small-instance check; LPT certifies feasibility only) with the review's seven-fee case, committed; then B13's line-core and PP-unit fee shares and the 20+ entry count cap; then the one-key reconciliation of the goalie share
+- **#20 C28** (2 washout): Band 2: one failure point in the baseline file. v1 (Phase A) and simulate still use the C5 table for goalies and dressing (B9 open part), so a run that stops after Phase A near lock can deliver a goalie who does not start; the 09-29 Adin Hill entry (0 points) was that pattern before C7 reached the later passes. Depends on C15 (run.py). Breakpoint: Phase A reads the merged role state (goalies and dressing) with a test that a CONFIRMED starter is used in v1, committed; then simulate
+- **#21 C43** (2 washout): Band 2 (one failure point, no correction near lock): the 10-01 and 10-03 slates ran in cloud sessions, where the run, late-swap and refresh skills are PowerShell-only and the local scheduled refresh reads only local runs, so a cloud-built file never gets the T-60 refresh; the 10-03 file shipped with an unconfirmed goalie in 2 entries. Reach: every cloud slate. Evidence: two cloud runs. C37 follows it because both edit the same three skills. Breakpoint: the three skills run under bash with nhl.sh (checked headless on a cloud-like shell), committed; then the delivery message names the refresh command and the lock time (flag 19)
+- **#22 C44** (2 washout): Band 2: caps that bind per lineup but not across the portfolio, after the first publish. Late swap and refresh apply only the per-person cap, so B17 goalie-gate repairs funnel every affected entry onto the confirmed starter (judgment: the same concentration the 10-01 report recorded at build time). Reach: any slate with a goalie change near lock. Evidence: code reading; not observed. Depends on C27 because it reuses the exact feasibility check. Breakpoint: late swap and refresh pass exposure.caps for the open cells and report GOALIE_CAP and GAME_CAP; a goalie-gate repair that would exceed the cap spreads across alternates; committed with a test on the B17 repair
+- **#23 C45** (2 washout): Band 2: entries sharing one failure point across modes. Plan section 7 asks for fee-weighted risk across all modes on the slate; each run budgets only its own mode, so one goalie can be 40% of the Classic fees and the Showdown Captain at once (Ben played both modes on 10-02). Reach: slates with both modes. Evidence: a design requirement; no loss recorded. Breakpoint: the report states the slate combined goalie fee share across the two modes (report only), committed; then the cap uses it
+- **#24 C29** (3 other): Band 3, first in it: measurement the other bands wait on. 20 of Ben's entries ($7.30 of fees, 13 contests of ownership labels) have standings but no local run and cannot be booked (B47), and the evidence counter double-counts a slate when the salary file changes (R08). Deterministic; the archive only grows through settle. Breakpoint: R08 (group key from slate date and games) with the review's two-record case, committed; then settle --no-run for money and labels; then the checklist shows the dates settled
+- **#25 C30** (3 other): Band 3: measurement coverage. The checklist read filed 4 after 17 exports were filed because 13 contests had no entries file (B48), and no skill reruns the synthesis after a pull. Small and deterministic. Breakpoint: the checklist lists contests found only in filed standings, committed; then the synthesis step in the settle skill
+- **#26 C37** (3 other): Band 3: the delivery rule already landed on master on 2026-10-03 (PR 5: the skills now present the file per CLAUDE.md and say a path alone is not delivery), so B69's stranded-file defect is addressed and only its observation on the next cloud run is open (deferred). What remains is narrower and was read, not run: nhl-run still says never to run another command while CLAUDE.md line 32 asks for scripts/standings_checklist.py --save-entered, a commit and a pull request, and no allowed-tools entry covers them; the report steps omit SEARCH_STATUS (run) and most of the statuses CLAUDE.md line 30 requires (late swap, refresh). Effect: the standings pull misses contests and reports are incomplete; no file or lineup changes. Follows C43 because both edit the same three skills. Breakpoint: one commit per skill: the status list from CLAUDE.md line 30 in each report step, the save-entered, commit and pull-request step allowed instead of forbidden; then tests/test_skills_delivery.py
+- **#27 C31** (3 other): Band 3: QA proposals reach the file more often and the notes tell the truth after QA. On 10-01 the only goalie-diversifying proposal was rejected by an ordering artifact (B38) and RUN_NOTES kept v3 figures after v4 published (B39). Observed once each; S to M items. Depends on C26 (controller.py). Breakpoint: per-entry team counts in the packet and independent evaluation of same-entry proposals, committed; then the round-rule reconciliation; then B39's metric tables by version
+- **#28 C32** (3 other): Band 3: no lineup moves. Small deterministic items (B10, B11, B29, B32, B65) that mislead config editors or leave an xfail in the suite; ordered smallest first. Breakpoint: one commit per item in this order: B29 (the xfail becomes a pass), B65 config keys and docstrings, B10, B11 apply-once, B32, the page-age line
+- **#29 C33** (3 other): Band 3: a validator blind spot (review R10). The referee compares parsed values, so quote-equivalent byte changes pass; the writer was not observed making such changes and DraftKings' tolerance is unknown, so the washout path is hypothetical (judgment). Guards the C0b contract independently. Breakpoint: a raw-span tokenizer for entry lines with quoting and BOM cases, committed; then pinned-cell byte binding
+- **#30 C34** (3 other): Band 3: determinism. On 4,000 draws the top-1% objective cannot separate minimal repairs, so the pick changes between runs and with the real clock (B19, measured once). Small. Breakpoint: one commit: more draws or the exp_payout proxy inside the band, with a determinism test across two clock values
+- **#31 C35** (3 other): Band 3: measurement quality of the field. The fast sampler matches the MILP lineup in 51% of optimizer and stacker draws (B12, measured on the 09-29 pool) and a single field sample leaves field variance out of the SE (B15, second half). Depends on C19 (new behaviors change the search). Breakpoint: 2-swap moves or several price starts with the agreement re-measured, committed; then field resampling across scenario blocks in the SE
+- **#32 C36** (3 other): Band 3: measurement. Team totals against market and goalie wins against implied cannot be graded today although the partner feed is captured hourly (B67). Value accrues one slate at a time. Breakpoint: implied totals and win probabilities from the capture nearest lock stored on the frozen record, committed; then the two calibration rows in settle
+
+### Deferred
+
+| Item | Trigger | Backlog | Findings |
+|---|---|---|---|
+| C12: Field-model fit by contest family | its gate: 30 distinct Classic slate groups with 15,000 labels (or 50 Showdown games with 5,000) plus the holdout; at 2026-10-03 the ledger holds 3 settled Classic slates, and C29 (settle without a run) and R08's group fix change the count | B15, B20 | none |
+| C13: Segment simulator challenger | its gate, read against a clean calibration: C25 recomputes the constants without the evaluation dates and names the co-ceiling cause; then the preregistration in docs/experiments/ is written before code | B6 | none |
+| B27 salary re-download near lock (READY) | a live slate on which Ben re-downloads DKSalaries.csv inside the last hour and runs refresh or late swap with --salary; the acceptance needs a real added-row file | B27 | none |
+| Native post-lock export acceptance (two tests skip loudly) | Ben saves one real post-lock DraftKings entries export as tests/fixtures/real/<date>/<mode>/DKEntries.postlock.csv (tracker C2c note); C15 proceeds on synthetic fixtures until then | B42 | none |
+| Scheduled refresh registration and a T-20 run (B23) | Ben registers tools/register_refresh_task.ps1 or the Claude scheduled task; the hourly cron gives one refresh near T-60 and none at T-20; flag 10 keeps phone push off | B23 | none |
+| Dev dependency group and one lockfile (B34 remainder) | Ben answers flag 11; the default (both lockfiles, pytest at runtime) is safe and in force | B34 | none |
+| 150-entry runtime and memory (B16) | Ben enters 20 or more entries on one slate (flag 3's default says 20 to 150; the four slates on record had 5 to 10) | B16 | none |
+| Cash leg decorrelated from the tournament stack (B21) | Ben enters cash contests regularly (one Double Up on 09-29, none since) | B21 | none |
+| Live score conditioning (B18) | a DraftKings live standings snapshot source and its format; LIVE_STATUS stays NO_SNAPSHOT | B18 | none |
+| Covers odds fallback (B5) | the NHL partner feed goes stale again (it was fresh on 10-01 and 10-02); until then C32 corrects the stale docstrings and adds B5's status note | B5 | none |
+| Score effects and OT shots (B7); per-strength SOG and block rates (B3) | C25's clean calibration names the SOG-to-goal correlation or the per-strength rates as a deficiency outside tolerance | B7, B3 | none |
+| Measured replacements for the model placeholders (model.yaml role priors, roles.yaml p_play and weights, priors.yaml buckets, history_priors.yaml, sim.yaml q_en_shape, ot_slope, so_home_p, toi_floor, pp_opps_mean, so_goal_p, pull_frac) | C25 done and a month of 2026-27 games in the history store, so each constant is measured out of sample; flag 8's DTD haircut is one of them | none | none |
+| Full history backfill after the season | after 2027-07-31 (docs/CONTRACTS.md raw-cache rule) | none | none |
+| Evidence plumbing for the gates (holdout counts, prefit label file) (B82) | C29 done and 10 settled Classic slate groups: until then no gate could open anyway; C12 needs the holdout counts and the ownership_labels producer | B82 | none |
+| Decay-window and shrinkage-strength challengers (decay_half_life_games 40, goalie start half-life 20) | C39 done and a month of 2026-27 games in the history store, so a walk-forward comparison is possible | none | none |
+| Diagnose a pasted DraftKings upload rejection and repair only the affected contract (plan section 15) | the first DraftKings rejection of an engine file; B42 showed DraftKings rejects started-game cells | none | none |
+| Measured usage table (docs/measured_usage.md), filled after each of the first ten real slates | each real slate session; /usage attribution is interactive only, so a human pastes it (optional, never blocks) | none | none |
+| Shootout winner goal assumption (sim.yaml so_adds_goal) | C36 grades team totals against the partner feed; the assumption is then checked against the feed's treatment of the shootout winner | none | none |
+| Playoff regime validation (flag 7: playoffs are validated separately) | April 2027, once playoff games exist; model.yaml regimes is regular only | none | none |
+| Delivery observed on the next cloud run (B69: the file attached with its sha256 in the caption) | the next cloud-built slate: its run, late swap and refresh each end with the upload file attached; the rule already landed in PR 5 | B69 | none |
+<!-- QUEUE:END -->
 ## Chunk cards
 
 ### C0a · Repo scaffold, contracts, exact scoring, tracker tooling
@@ -694,6 +823,442 @@ def settle(run, standings: list[Standings], contests_final: dict[int, ContestDet
 
 ---
 
+### C14 · Lock-safe publishing (band 0)
+
+**Depends on:** C10. **Read first:** this card; BACKLOG B52, B53; review R01 and R02 (`reviews/2026-10-03_independent_code_review_7140e0a.md`); plan §10 and §11; `build/controller.py` apply_round (clock lines near 280 and the publish block near 510); `build/run.py` run_slate and `_export_and_publish`; the lock API in `build/locks.py`.
+
+**Goal.** No publication path can commit cells from a game that has started or crossed EDIT_STOP: the QA and override rounds use a live clock for their final recheck, and the initial run rechecks lock state before every publish, keeping the checked predecessor when the boundary is crossed.
+
+**Create.** In `build/controller.py`: a round-start timestamp distinct from a callable live clock (an explicit fixed clock only for rehearsal). In `build/run.py` and `build/scenario_pass.py`: a lock check in `_export_and_publish` (or its caller) before optional work and again before committing a changed export, honoring the publication-lock wait; with v1 present a crossed boundary retains v1 and reports why. `tests/test_lock_safe_publish.py`.
+
+**Tests.** R01's acceptance on both call shapes (CLI-style `now=` and no `now`) with no injected clock; time advanced through EDIT_STOP and through LOCKED during the solve publishes nothing and leaves the incumbent hash and public bytes unchanged; a before-boundary control still publishes. R02's acceptance for Phase A and each later route, with a multi-game file whose early game is locked; independent of In-Progress markers.
+
+**Re-verified 2026-10-04 (R01 and R02 reproduced by a second reader).** R01: the CLI freezes the clock too (`cli.py:629` and `:682` pass `now=datetime.now()`; pass `clock=lambda: as_of` only for `--as-of`, as `late_swap.run` does); the 15 `_apply` call sites in `tests/test_controller.py` (fixtures dated 2026-10-15) move to `clock=lambda: now` or they turn wall-clock dependent after that date; evaluate the final recheck under the publish lock (`state.py:227` waits up to 60 s). R02: one guard in `_export_and_publish` covers phases A, B, P and S (only three `publish()` call sites exist: `run.py:581`, `controller.py:533`, `late_swap.py:700`); it diffs against the predecessor's pinned cells as `late_swap.py:677` does and never bans started-game cells outright; with no predecessor the first publish ships (flag 20, default taken).
+
+**Exit checks.** `pytest -m c14 -q` green; the full suite green; a rehearsal run on the late-swap fixture with the clock advanced mid-build reports the stop and keeps v1.
+
+**Do not.** Change lock semantics (C2c). Touch B42's started-slate build (C15).
+
+### C15 · Started slates (band 0)
+
+**Depends on:** C14. **Read first:** this card; BACKLOG B42 (parts 2 and 3); flag 15; `intake/salary.py` STARTED_GAME rows; `build/locks.py`; `build/late_swap.py` pin handling; `build/run.py` run_slate start check and `slate_id_for`.
+
+**Goal.** A slate that has already started still yields a legal file: late swap pins every occupant of a started game, run_slate builds the open games instead of refusing, and the slate id stays stable when started rows leave the pool.
+
+**Create.** `build/locks.py`: a started-game occupant is pinned even when its row carries no start time. `build/run.py`: when `now` is past the first start and flag 15's default holds, exclude STARTED_GAME rows, pin their cells, build the rest, and name the started games in RUN_NOTES and stdout. `slate_id_for` from the full ID set. `tests/test_started_slate.py`.
+
+**Tests.** A post-lock export with lineups in the started game: late swap keeps those cells and fills the rest; a blank-entries export builds with no started-game player; the slate id of a started-game file equals the pre-start id; the real post-lock fixture test keeps skipping loudly until Ben saves one.
+
+**Exit checks.** `pytest -m c15 -q` green; the full suite green; the 10-02 salary file (DKSalaries_127, In-Progress rows) runs `slate` to a checked file with the started game excluded.
+
+**Do not.** Add a player whose game has started. Change the referee.
+
+### C16 · Payout curves from DraftKings template tables (band 1)
+
+**Depends on:** C11. **Read first:** this card; BACKLOG B62, B50; flag 14; `models/contests.py` (classification, the 403 path); `build/objectives.py` prior_curve; `learn/ledger.py` prize_tables; `scripts/standings_synthesis.py` template_tables (the matcher prototype); `data/raw/dk_contest/` format.
+
+**Goal.** A contest whose DraftKings page is unavailable is priced on the cached table of the same template name and max entries, labeled PAYOUT_SOURCE=TEMPLATE, at build time and in settle; PRIOR remains for unmatched contests.
+
+**Create.** One matcher module (name without the game suffix plus max entries, from the lobby capture) used by `models/contests.py` and `learn/ledger.py`; `build/objectives.py` builds the curve from the matched tiers; manifest and RUN_NOTES carry the source and the table's contest id; `tests/test_template_payouts.py`.
+
+**Tests.** The 09-30 mini-MAX (11,890) matches the 09-28 table with 2,732 paid places and the 10-02 Daily Dollar (1,189) matches 195958173's saved table; a satellite or resized contest never matches; an unmatched contest reports PRIOR; settle labels the matched payouts TEMPLATE below EXACT and above UNKNOWN, with REPORTED still winning.
+
+**Exit checks.** `pytest -m c16 -q` green; `.\nhl.ps1 run --offline` on the 09-30 inputs prints PAYOUT_SOURCE=TEMPLATE for the two matched contests.
+
+**Do not.** Fetch DraftKings. Invent a table for an unmatched name.
+
+### C17 · Inputs that move lineups reach the models (band 1)
+
+**Depends on:** C10. **Read first:** this card; BACKLOG B63, B20, B51, B66; `models/ownership.py` feature_table, team_odds and utilities; the build_fields callers (`build/run.py`, `build/scenario_pass.py`, `build/provisional.py`); `sim/market.py` max_discrepancy; RUN_NOTES of run 20260930-210607-classic (the COL league-rate line).
+
+**Goal.** The ownership prior sees the slate's odds, role state and news ages on every path; the team-rate fallback that gave Colorado a league-average rate is traced and replaced by a team source; the market clip depends on the model side's status.
+
+**Create.** Wiring in the three callers with a MARKET and ROLES coverage line for the field features; a test per weight (implied_total, goalie_start_win, pp1, line1, news_recent) showing the forecast moves; a scratch replay of the 09-30 inputs recorded in `docs/experiments/` or the chunk's notes (B51); the clip rule in `sim/market.py` (B66). `tests/test_field_features.py`.
+
+**Tests.** Each weight changes ownership when its input changes and leaves it unchanged when absent; the 09-30 replay moves COL's stack frequency toward 38 to 51% and TOR's toward 21 to 24% (recorded, not asserted as a threshold); the clip is wide when the model side is PRIOR and 0.35 when it is HISTORY.
+
+**Also carried (B85).** Set the OTT DraftKings team code in `config/teams.yaml` from the lobby GameSets capture (OTT @ TOR on 10-02 and 10-03) and mark it verified, so OTT games price on the market feed; one S commit with a lobby fixture test.
+
+**Exit checks.** `pytest -m c17 -q` green; the full suite green; settle's ownership MAE on the 09-30 record does not rise when re-graded against the replay.
+
+**Do not.** Fit anything from standings (C12). Change the field behaviors (C19).
+
+### C18 · Joint own-entry accounting (band 1)
+
+**Depends on:** C14. **Read first:** this card; BACKLOG B55, B56; review R04 and R05 with their fixtures; plan §7; `build/portfolio.py` `_greedy`, `_joint_from_states`; `build/objectives.py` `own_pairwise`, `metrics_from_ranks`, `joint_payouts`; `build/controller.py` evaluate.
+
+**Goal.** Every insertion and every QA comparison scores the change to the whole owned-contest payout and utility vector; running totals never hold prizes that cannot be paid together.
+
+**Create.** A joint-accounting primitive in `build/objectives.py` (incremental rank updates allowed) used by `_greedy`, screening or local improvement where it stands for marginal value, and `controller.evaluate`; `tests/test_joint_accounting.py` with the review's two fixtures.
+
+**Tests.** The R04 counterexample selects A+C; after every insertion the incremental totals equal an independent `joint_payouts` recomputation; strict overtakes, tier ties, repeat lineups, several contests and a cash contest; own cash in a contest and scenario never exceeds its prize pool; the R05 zero-gain transfer is inconclusive, a transfer that lowers aggregate utility is rejected, a true beyond-band gain is accepted.
+
+**Re-verified 2026-10-04 (R04 and R05 reproduced).** The accounting fix costs O(placed entries) per candidate per step unless it keeps per-entry rank vectors or a sparse paid-region update: design that first, since 150-max contests times five knobs is the budget. The same omission is in `swap_objective.choose` (`swap_objective.py:447` to `481`) and `late_swap.py:619` to `625`, where a repair candidate is scored against its siblings as opponents only: include them or file the row. R05: aggregating over all entries of the touched contests moves the 3% band anchor to whole-contest utility, so choose the anchor or a paired aggregate SE deliberately, and add a per-scenario top-1% array to Metrics for a paired tail delta.
+
+**Exit checks.** `pytest -m c18 -q` green; `python tests/bench_field.py` and the C8 wall-clock measurement recorded (a miss is recorded, not a failure).
+
+**Do not.** Claim global optimality. Change the frontier's kappas or the risk budget.
+
+### C19 · Field stack mix by slate size (band 1)
+
+**Depends on:** C17. **Read first:** this card; BACKLOG B43, B15; `reviews/2026-10-03_standings_synthesis.md` §3 and §4 (the shape tables); `models/field.py` behaviors and `_stack_min`; `models/field_fast.py` `_forced`; `config/ownership.yaml` field.behaviors and mixtures; `build/packet.py` `_stack_family`.
+
+**Goal.** The sampled field carries the observed stack mix: a team4 behavior and a double-stack (4-3) behavior, mixture weights per family and slate size, and a shape-mix line in RUN_NOTES that can be compared with the synthesis table after each slate.
+
+**Create.** The two behaviors in `models/field.py` and `models/field_fast.py`; mixture tables keyed by family and game count in `config/ownership.yaml` (values from the pooled table, labeled PRIOR); the RUN_NOTES line; `tests/test_field_mix.py`.
+
+**Tests.** On the 09-30 pool the sampled field's 3+ and 4+ stack shares land within 10 points of 93.5% and 65.7%; team3 draws still exist; the fast and MILP samplers agree on the new rules within the C8 tolerance; FIELD_CALIBRATION stays PRIOR.
+
+**Exit checks.** `pytest -m c19 -q` green; `python tests/bench_field.py` within budget; the shape line prints on a rehearsal run.
+
+**Do not.** Fit mixture weights from standings (that is C12's gate). Touch selection.
+
+### C20 · Goalie as the top-1% factor (band 1)
+
+**Depends on:** C18. **Read first:** this card; BACKLOG B37, B45; flag 13; the goalie tables in `reviews/2026-10-03_standings_synthesis.md`; `build/packet.py` research request; `build/candidates.py` and `build/milp.py`; `build/exposure.py` shared failure; `build/portfolio.py` discovery per_goalie.
+
+**Goal.** Unresolved goalie pairs on slate teams enter the research request; no GPP lineup rosters a skater against its own goalie (flag 13 default); the goalie choice carries an explicit leverage term, tested as an experiment.
+
+**Create.** B37 in `build/packet.py` bounded by qa.yaml max_players; the own-goalie constraint in the candidate builder with a referee report line; a goalie term in the discovery objective behind a config key, with a preregistered sim comparison recorded in `docs/experiments/goalie_leverage_<date>.md`; `tests/test_goalie_factor.py`.
+
+**Tests.** The research request lists both goalies of an unresolved team; no candidate holds a skater facing its goalie in large_gpp, small_field or wta; cash and satellite lineups may; the experiment's acceptance (modeled top-1% equity with and without the term on saved caches) is recorded whichever way it goes.
+
+**Exit checks.** `pytest -m c20 -q` green; GOALIE_CAP and the shared-failure line still print; the experiment file exists. DONE when the leverage term is rejected is valid.
+
+**Do not.** Exclude uncertain goalies. Change GOALIE_CAP's budget.
+
+### C21 · Stack size by slate blow-up (band 1, experiment)
+
+**Depends on:** C19, C18. **Read first:** this card; BACKLOG B44, B22; the by-slate table in `reviews/2026-10-03_standings_synthesis.md` §3; `config/risk.yaml` discovery; `build/portfolio.py` discovery families; the scenario caches of runs 20260929-222125-classic and 20260930-214909-classic.
+
+**Goal.** Measure, on saved scenario caches, the modeled top-1% equity of 4-3-1, 5-2-1, 6-1-1 and 3-3-2 shapes per slate size; add a stack-size sleeve only if the study supports it.
+
+**Create.** `docs/experiments/stack_size_<date>.md` (preregistration first, result after); if supported, a shape-aware discovery family in `build/portfolio.py` sized by game count and the sim's P(team scores 6+), and a shape-mix line in RUN_NOTES; `tests/test_stack_size.py`.
+
+**Tests.** The study reproduces its numbers from the caches with a fixed seed; the sleeve, if built, never breaks the caps and reports its share; the shape mix line matches the portfolio.
+
+**Exit checks.** `pytest -m c21 -q` green; the experiment file records promote-to-shadow or rejected. DONE on rejected is valid.
+
+**Do not.** Tune from one week of standings; the sleeve stays a sized sleeve, not a rule.
+
+### C22 · Chalk core kept, leverage in the depth slots (band 1, experiment)
+
+**Depends on:** C19. **Read first:** this card; BACKLOG B46; the leverage tables in `reviews/2026-10-03_standings_synthesis.md`; `build/tiebreak.py`; `build/provisional.py` ranking; `build/portfolio.py` own_then_dup.
+
+**Goal.** Measure how often the band-only ownership tie-break moves a pick away from the slate's top two chalk pieces; exempt the core from the penalty only if it does.
+
+**Create.** A measurement script or test over the saved caches; if warranted, the exemption in `build/tiebreak.py` behind a config key with the result in `docs/experiments/chalk_core_<date>.md`; `tests/test_chalk_core.py`.
+
+**Tests.** The measurement is reproducible; with the exemption on, the top two players by projection x ownership are never displaced by the tie-break; without it, behavior is unchanged.
+
+**Exit checks.** `pytest -m c22 -q` green; the experiment file exists. DONE on rejected is valid.
+
+**Do not.** Add a new objective term; this is a tie-break change at most.
+
+### C23 · Showdown Captain choice (band 1, experiment)
+
+**Depends on:** C20. **Read first:** this card; BACKLOG B49; flag 12; the Showdown section of `reviews/2026-10-03_standings_synthesis.md`; `models/field.py` captain rules; the Showdown branch of `build/candidates.py`; `build/exposure.py` captain cap.
+
+**Goal.** Measure Captain share and goalie-in-lineup share per cohort on the saved Showdown standings, then test skater-Captain by default (flag 12) and a Captain leverage term as an experiment.
+
+**Create.** The per-cohort report in `scripts/standings_synthesis.py` (already prints Captains; add the goalie-Captain and split sleeve lines if missing); the default and the term behind config keys; `docs/experiments/captain_<date>.md`; `tests/test_captain_choice.py`.
+
+**Tests.** A goalie is Captain only when the sim's goalie ceiling ranks top-3; the captain cap still binds; the team split sleeve sizes follow the sim's goal share and report themselves.
+
+**Exit checks.** `pytest -m c23 -q` green; the experiment file exists. DONE on rejected is valid.
+
+**Do not.** Build from the one ANA@VGK game alone; the acceptance waits on the next five Showdown slates.
+
+### C24 · DTD participation inside the simulator (band 1)
+
+**Depends on:** C6. **Read first:** this card; BACKLOG B14; flag 8; `sim/game.py` dressing step; `sim/outcomes.py`; `models/roles.py` p_play; `tests/test_frozen_record.py`.
+
+**Goal.** A QUESTIONABLE player's participation is drawn inside the dressing step, once, from p_play, so a sitting player's minutes and events go to teammates instead of vanishing.
+
+**Create.** The draw in `sim/game.py` with conservation tests; frozen-record and calibration updates; `tests/test_dtd_dressing.py`.
+
+**Tests.** Team minutes and shots are conserved when a DTD player sits; the mean of the DTD player equals p_play times his dressed mean; frozen records that change are regenerated and named.
+
+**Exit checks.** `pytest -m c24 -q` green; `calibrate` rerun recorded.
+
+**Do not.** Change p_play_questionable (flag 8).
+
+### C25 · Clean calibration and the tail preregistration (band 1)
+
+**Depends on:** C6. **Read first:** this card; BACKLOG B64, B6; `docs/calibration/2026-09-29.md` and `.json`; `sim/validate.py`; the history store's linemate data.
+
+**Goal.** A calibration report whose constants exclude the evaluation dates, with the co-ceiling cause tested and the 3+ point tail preregistered for B6, so C13's gate reads clean numbers.
+
+**Create.** The constant recomputation in `sim/validate.py`; `docs/calibration/<date>.md` and `.json` with machine-readable deficiencies; the co-ceiling cause test (actual linemates against rank-built lines); `docs/experiments/tail_<date>.md` preregistration; `tests/test_calibration_clean.py`.
+
+**Tests.** The constants used exclude the held-out dates; the report lists the deficiencies in the json; the co-ceiling result names a cause or rejects both.
+
+**Exit checks.** `pytest -m c25 -q` green; the report exists.
+
+**Do not.** Tune any parameter here.
+
+### C26 · Controller safety (band 2)
+
+**Depends on:** C18. **Read first:** this card; BACKLOG B54, B41, B57, B60; review R03, R06, R09; `build/controller.py` repair solves and apply_round publish; `models/overrides.py` validate, apply_to_roles; `build/exposure.py` caps; `cli.verify_run`.
+
+**Goal.** Repairs never roster a known OUT player, accepted QA changes respect the caps, contradictory override batches become CONFLICTED, and the manifest names the delivered bytes after QA.
+
+**Create.** One exclusion mask for every controller add or repair path; cap checks with REJECTED_CAP or a re-measured budget for the published version; transactional batch validation; export_sha256 set on controller publication and verified; `tests/test_controller_safety.py`.
+
+**Tests.** The review's OUT goalie is never introduced, plus a skater, a strategic-exclude and Showdown cases; UNKNOWN controls stay available; a swap breaching GOALIE_CAP is REJECTED_CAP; the two-confirmation batch is CONFLICTED in both orders; tampering with the top-level hash fails verification.
+
+**Re-verified 2026-10-04 (R03, R06 and R09 reproduced).** R03: the repair also re-introduces DK Starting=P backup goalies (`run.dk_backup_goalies`); reuse `late_swap`'s `out_people` construction (`late_swap.py:470` to `497`) as the mask, and carry accepted OUT overrides across rounds (`apply_round` starts `excluded_people` empty each round, `controller.py:331`). R06: also validate against previously accepted overrides (`role_state()` at `controller.py:349` to `355` never reads `news/accepted_overrides.json`), and every consumer must honor CONFLICTED (`late_swap.accepted_overrides:200` to `203`, `goalies.build:177` to `180`, `swap_objective.py:178` to `179`). R09: mirror `late_swap.py:708` and `run.py:600`; the new verify check needs a tolerance for pre-fix manifests (the 10-01 v4 run); nothing reads `manifest['export_sha256']` today, so judge it provenance only.
+
+**Exit checks.** `pytest -m c26 -q` green; a rehearsal QA round on the fixture prints RISK_BUDGET for the published version.
+
+**Do not.** Exclude uncertain players. Change the round rule (C31).
+
+### C27 · Portfolio caps (band 2)
+
+**Depends on:** C18. **Read first:** this card; BACKLOG B58, B13; review R07; flag 2; `build/exposure.py` fee_floor, concentration_cap, concentration; `build/portfolio.py` caps region.
+
+**Goal.** The dollar cap is dropped only when infeasibility is proven; the plan's 30% line-core cap and the line and PP-unit fee shares are enforced and reported; the goalie share lives under one key.
+
+**Create.** A lower bound and an exact small-instance check (or HiGHS) in `fee_floor`; line-core and PP-unit shares in `concentration` with a count cap at 20+ entries; the key reconciliation in `config/risk.yaml` and `config/exposure.yaml` with comments; `tests/test_caps_feasibility.py`.
+
+**Tests.** The seven-fee case stays DOLLARS 0.40 for goalie and game; a single entry above 40% still takes the fallback; heterogeneous cases match exhaustive partitions; the line-core share prints and binds at 20 entries.
+
+**Re-verified 2026-10-04 (R07 reproduced: fee_floor 0.4074 against a brute-force optimum 0.3333; LINEUPS 3 of 7 can put 52% of fees on one goalie).** An exact check over fee classes (a DP or a small ILP) with a timeout labeled unresolved is cheap because fees take few distinct values. Other sites: `exposure.py:154` share_cap (the Showdown Captain budget uses max(budget, LPT floor)), the 'fee floor' text in `cap_status` and notes, `docs/CONTRACTS.md:142` to `146`. Judged to fire on mixed-fee slates only.
+
+**Exit checks.** `pytest -m c27 -q` green; RUN_NOTES shows the new shares on the fixture.
+
+**Do not.** Change the 40% budget (Ben's, flag 2).
+
+### C28 · Role state in Phase A and in simulate (band 2)
+
+**Depends on:** C15. **Read first:** this card; BACKLOG B9; `build/run.py` Phase A; `cli` simulate; `models/roles.py` merge and apply_state.
+
+**Goal.** v1 and simulate use the merged role state for goalies and dressing, so the baseline file never carries a goalie the role state already rules out.
+
+**Create.** The merge call before Phase A's projection and in simulate; a ROLES line in Phase A's notes; `tests/test_phase_a_roles.py`.
+
+**Tests.** A CONFIRMED starter is the v1 goalie; a ruled-out goalie never appears in v1; simulate's output matches the run's role state.
+
+**Exit checks.** `pytest -m c28 -q` green; the full suite green.
+
+**Do not.** Change the late passes (C9, C10).
+
+### C29 · Settle without a local run, stable slate groups (band 3)
+
+**Depends on:** C11. **Read first:** this card; BACKLOG B47, B59; review R08; `learn/settle.py` run and evidence_counts; `learn/ledger.py`; `scripts/standings_synthesis.py` lobby_meta; the winnings.csv templates under `data/standings/inbox/2026-10-01` and `2026-10-02`.
+
+**Goal.** Entries that exist only in standings are booked (money from standings, the lobby capture and winnings.csv; labels with forecast NONE; rows tagged NO_RUN), and independent slate groups count by date and games.
+
+**Create.** `settle --no-run --standings <folder> [--winnings <csv>]`; the group key in evidence_counts; the checklist status for settled-without-run; `tests/test_settle_no_run.py`.
+
+**Tests.** The review's two-record case counts one group; a duplicate export, a fresh-salary run and a parent and child each count once; the 10-01 and 10-02 folders settle to 20 entries with known fees and UNKNOWN or REPORTED payouts.
+
+**Re-verified 2026-10-04 (R08 reproduced: slate_groups=2 for one slate).** The group key `{slate date}|{sorted games}` needs no migration (entries already store both); B47 no-run records need a fallback from the lobby capture; consider clustering by shared games; `settle.py:88` adds a slate group before the contest loop; `models/prefit.py` `counts_for` is the same class with a separate counter. Also carried: B68 (default taken, flag 16: a cloud run persists only the small frozen record, and settle degrades to money and lineup match from `data/entered/` and says so) and B84 (complete_payout per date from the union of settled contests).
+
+**Exit checks.** `pytest -m c29 -q` green; `python scripts/standings_checklist.py` shows the two dates settled.
+
+**Do not.** Grade a forecast that does not exist.
+
+### C30 · Standings tooling (band 3)
+
+**Depends on:** C11. **Read first:** this card; BACKLOG B48; `scripts/standings_checklist.py` status classification; `.claude/skills/standings-checklist/SKILL.md`; `.claude/skills/nhl-settle/SKILL.md`.
+
+**Goal.** The checklist sees contests that exist only in filed standings, and the synthesis runs after each pull.
+
+**Create.** The filed-standings scan and `--contest <id> [<date>]` in the checklist; a synthesis step in the settle skill; `tests/test_standings_checklist.py` extensions.
+
+**Tests.** The 13 contests of 10-01 and 10-02 are listed and counted; a hand-added contest is awaited.
+
+**Exit checks.** `pytest -m c30 -q` green.
+
+**Do not.** Fetch DraftKings.
+
+### C31 · QA throughput and provenance (band 3)
+
+**Depends on:** C26. **Read first:** this card; BACKLOG B38, B39; `build/controller.py` proposal loop; `build/packet.py`; `build/notes.py`; CLAUDE.md round rule; `.claude/agents/nhl-adversary.md`.
+
+**Goal.** Same-entry proposals are judged independently against the incumbent, the packet carries per-entry team counts, the round rule reads the same in CLAUDE.md and the controller, and RUN_NOTES carries metrics for the published version with before and after for accepted swaps.
+
+**Create.** The independent evaluation or DEFERRED label; the packet field; the rule reconciliation; metric tables by version in `build/notes.py` and `versions/vN/referee.json`; `tests/test_qa_round.py` extensions.
+
+**Tests.** Two same-entry proposals are both evaluated; a conflict is DEFERRED; the packet shows team counts; after a QA swap RUN_NOTES shows v4 figures.
+
+**Also carried (B80, B81).** B80: print the signed gain and say 'worse than the incumbent' when the gain is below minus the band (`controller.py:249` and `:471`). B81 (default taken, flag 17): relaunch the adversary with the exact printed packet when a relayed value is wrong, one reply per round, and `qa-apply` records the packet hash it evaluated against.
+
+**Exit checks.** `pytest -m c31 -q` green.
+
+**Do not.** Call the LLM in tests.
+
+### C32 · Hygiene (band 3)
+
+**Depends on:** C11. **Read first:** this card; BACKLOG B65, B29, B32, B10, B11; the read-only audit table in the Queue rationale; `sim/game.py` `_shootout`; `data/history` evict_raw.
+
+**Goal.** Every config key has a reader or a comment naming the pass that reads it; docstrings describe the current odds path; the shootout never credits an undressed skater; raw bodies are evicted; NewsState has no unreachable members; apply_state runs once.
+
+**Create.** One commit per item in the breakpoint order; `tests/test_hygiene.py` where a test is missing (the B29 xfail becomes a pass).
+
+**Tests.** As each item states; the xfail-strict test passes.
+
+**Also carried (B83, B65 rider).** B83: RUN_NOTES prints the families the run used, not the `select()` defaults. B65 rider: remove the dead helpers `objectives._stack`, `swap_objective._avail`, `RoleState.participation_probs` and `dailyfaceoff.slug_for_nhl`, and correct the stale docstrings at `live.py:3`, `sim/slate.py:42` and `prefit.py:8`.
+
+**Also carried (B86).** `tools/next_chunk.py` reruns every DONE chunk's checks at each session start (819 s measured on 2026-10-04 under contention): skip a chunk whose files' git tree hash is unchanged since its last passing run, keep `--all` for the full rerun and print the skipped chunks; a bare run on an unchanged tree finishes in under 60 s.
+
+**Exit checks.** `pytest -m c32 -q` green; the full suite green with no xfail.
+
+**Do not.** Move any lineup.
+
+### C33 · Referee raw-byte check (band 3)
+
+**Depends on:** C0b. **Read first:** this card; BACKLOG B61; review R10; `referee/check_file.py`; the export writer's field spans (read, never imported).
+
+**Goal.** The referee rejects byte changes outside editable cells even when the parsed value is unchanged, and binds pinned cells to parent bytes.
+
+**Create.** A raw-span tokenizer for entry lines; the pinned-cell byte binding; `tests/test_referee_bytes.py`.
+
+**Tests.** Quote-equivalent changes to metadata and pinned cells are rejected; correctly spliced open-cell changes pass; BOM, CRLF and LF, embedded lists, quoted names and reordered headers covered.
+
+**Re-verified 2026-10-04 (R10 by code trace only).** Judged hand-edit only: the splice path (`late_swap.splice_cells`) copies unchanged bytes verbatim, pinned cells included, and only `export.writer.write_entries` re-formats roster cells (editable there); `controller.py:526` calls `check_file` without `parent_path`. Scope: the validator.
+
+**Exit checks.** `pytest -m c33 -q` green; the referee still verifies every real fixture.
+
+**Do not.** Import the writer's implementation.
+
+### C34 · Repair draws for large_gpp repairs (band 3)
+
+**Depends on:** C9. **Read first:** this card; BACKLOG B19; `build/late_swap.py` repair objective; `config/runtime.yaml`.
+
+**Goal.** A minimal repair's pick is stable between runs and clock values.
+
+**Create.** More repair draws or the exp_payout proxy inside the band; `tests/test_repair_determinism.py`.
+
+**Tests.** The same repair picks the same player at two clock values and two runs.
+
+**Exit checks.** `pytest -m c34 -q` green; the late-swap fast path stays within 30 s on the fixture.
+
+**Do not.** Change the objective family.
+
+### C35 · Fast field sampler agreement and SE resampling (band 3)
+
+**Depends on:** C19. **Read first:** this card; BACKLOG B12, B15; `models/field_fast.py`; `build/objectives.py` standard error; `tests/bench_field.py`.
+
+**Goal.** The fast sampler agrees with the MILP lineup more often, and the standard error includes field variance.
+
+**Create.** 2-swap moves or several price starts; field resampling across scenario blocks; `tests/test_field_fast.py` extensions.
+
+**Tests.** Agreement re-measured and recorded; the SE grows when the field is resampled and shrinks with draws.
+
+**Exit checks.** `pytest -m c35 -q` green; `python tests/bench_field.py` within budget.
+
+**Do not.** Change the behaviors (C19).
+
+### C36 · Odds history grading (band 3)
+
+**Depends on:** C11. **Read first:** this card; BACKLOG B67; `tools/capture.py`; `learn/grade_forecasts.py`; `learn/settle.py`.
+
+**Goal.** Settle grades team totals against the market total and goalie wins against the implied probability, from the capture nearest lock.
+
+**Create.** The implied figures on the frozen record; two calibration rows in settle; `tests/test_odds_grading.py`.
+
+**Tests.** The 09-30 record carries the figures from the nearest capture; settle prints the rows; a slate with no capture prints NOT_AVAILABLE.
+
+**Exit checks.** `pytest -m c36 -q` green.
+
+**Do not.** Fetch odds in settle.
+
 ## Tracker row format (BUILD_STATUS.md)
 
 `| Chunk | Status | Depends on | Started | Finished | Commit | Exit checks | Notes |` with Status in `TODO | IN_PROGRESS | DONE | BLOCKED | GATED`. `tools/next_chunk.py` edits only Status, Started, Finished, Commit, and Exit checks; Notes and the session log are written by the session. A handoff note in Notes has the form `HANDOFF: done=<...>; remaining=<...>; next=<command>`.
+
+### C37 · Skills agree with CLAUDE.md, the status lists and the save-entered step (band 3)
+
+**Depends on:** C43. **Read first:** this card; BACKLOG B76 and B69; `CLAUDE.md` "Slate rules" (lines 30 to 32); `.claude/skills/nhl-run/SKILL.md`, `nhl-late-swap/SKILL.md`, `nhl-refresh/SKILL.md`; `scripts/standings_checklist.py` `--save-entered`.
+
+**Goal.** The skills' own instructions and `allowed-tools` match `CLAUDE.md`: every report step lists the statuses `CLAUDE.md` requires (SEARCH_STATUS included), and the save-entered, commit and pull-request step is allowed instead of forbidden by "never run another command". PR 5 already added the present-the-file text; this chunk does not redo it, and B69's observation waits for the next cloud run (deferred).
+
+**Create.** Edit the three `SKILL.md` files; `tests/test_skills_delivery.py`.
+
+**Tests.** Parse each skill's frontmatter and body: every command the body names is covered by `allowed-tools`; the status list from `CLAUDE.md` line 30 is present in each report step; no line forbids a command another step needs.
+
+**Exit checks.** `pytest -m c37 -q`.
+
+**Do not.** Change engine code or lock semantics. Create a cloud scheduled routine (C43, flag 19).
+
+### C38 · Field size and family from the lobby row (band 1)
+
+**Depends on:** C16. **Read first:** this card; BACKLOG B72; `models/contests.py` classify and family_prior (lines 130 to 153); `data/sources/dk_public.py` parse_lobby; `config/contest_families.yaml` field_size_prior; `reviews/2026-10-03_showdown_stl_col_run_record.md` lines 63 to 67.
+
+**Goal.** When the contest page answers 403 and no template matches, the field size and family come from the lobby row (max entries, max per user), labeled FIELD_SIZE_SOURCE=LOBBY, and small single-entry contests leave large_gpp; an unseen contest keeps the prior and says PRIOR.
+
+**Exit checks.** `pytest -m c38 -q`: a 27-entry Showdown contest classifies small_field with size 27 and the LOBBY label; the full suite stays green.
+
+**Do not.** Touch the payout-table lookup (C16).
+
+### C39 · History store kept current in-season and on every host (band 1)
+
+**Depends on:** C17. **Read first:** this card; BACKLOG B70, B71 and B2; flag 18; `cli.py` cmd_history (`--since`); `data/history/nhl_reports.py`; `tools/cloud_bootstrap.sh`; `models/goalies.py:71` to `83`.
+
+**Goal.** A run says how stale the history store is; an incremental `history --since` runs in Phase B after the first publish, never blocking it; a cloud session starts the backfill in the background when the store is absent.
+
+**Exit checks.** `pytest -m c39 -q`: staleness line in RUN_NOTES on a fixture store; the back-to-back goalie flag fires on consecutive starts once the store holds the first game; the bootstrap script's dry run starts the backfill only when the store is absent. First commit is measurement only.
+
+**Do not.** Wait on the network in Phase A.
+
+### C40 · Daily Faceoff age gate keeps the last known lines (band 1)
+
+**Depends on:** C7. **Read first:** this card; BACKLOG B73; `models/roles.py:224`; `config/roles.yaml` max_line_age_h; the cached Daily Faceoff pages under `tests/fixtures/http/`.
+
+**Goal.** Measure offline whether the page's Last updated stamp moves only on edits; if it does, keep a playing team's last known lines and PP units with a stale label and age unless newer contrary news exists.
+
+**Exit checks.** `pytest -m c40 -q`: CHI at 28.7 h keeps its lines labeled stale; a team with newer contrary news loses them; the measurement result is written to `docs/sources.md`.
+
+**Do not.** Relax the gate for teams with news newer than the page.
+
+### C41 · Selection robust to field ownership error (band 1)
+
+**Depends on:** C19. **Read first:** this card; BACKLOG B74; plan section 6 (cold-start rule); `models/ownership.py`; `models/field.py`; the 09-30 forecast-versus-actual tables in `reviews/2026-10-03_standings_synthesis.md`.
+
+**Goal.** Measure the ownership error band from graded forecasts, sample the field under low and high bands, print each candidate's tail spread, and let selection use the spread only if it moves a pick.
+
+**Exit checks.** `pytest -m c41 -q`: the error-band function reproduces the 09-30 MAE on the fixture table; the report prints the spread; a pick that flips between base and low or high is named.
+
+**Do not.** Retune the base ownership prior (C19).
+
+### C42 · Improvement pass after the greedy fill (band 1, experiment)
+
+**Depends on:** C18. **Read first:** this card; BACKLOG B75; `build/portfolio.py` `_greedy` (lines 360 to 430); the saved scenario caches of the 09-29 and 09-30 runs; plan section 7.
+
+**Goal.** Write the preregistration first, then measure a bounded swap-improvement pass against the greedy portfolio on the saved caches; DONE on rejected when the gain is inside the standard error.
+
+**Exit checks.** `pytest -m c42 -q`; `docs/experiments/` holds the preregistration committed before the code, and the result.
+
+**Do not.** Change the default path unless the gain clears the standard error on both caches.
+
+### C43 · Cloud parity, skills under bash and a pre-lock refresh for cloud-built runs (band 2)
+
+**Depends on:** C10 (C37 follows it). **Read first:** this card; BACKLOG B77 and B34; flags 4 and 19; the three skills; `nhl.sh`; `tools/cloud_bootstrap.sh`; `build/scheduled.py`.
+
+**Goal.** The run, late-swap and refresh skills run under bash with `nhl.sh`; the delivery message names the refresh command and the lock time; flag 4's text matches reality.
+
+**Exit checks.** `pytest -m c43 -q`: a headless bash invocation of each skill's command on a fixture; the delivery message carries the refresh command and lock time.
+
+**Do not.** Create a cloud scheduled routine (flag 19).
+
+### C44 · Goalie and game caps in late swap and refresh (band 2)
+
+**Depends on:** C27. **Read first:** this card; BACKLOG B78 and B17; `build/late_swap.py:599`; `build/swap_objective.py`; `build/refresh.py`; the caps API of `build/exposure.py`.
+
+**Goal.** Late swap and refresh pass the exposure caps for the open cells and print GOALIE_CAP and GAME_CAP; a goalie-gate repair that would exceed the cap spreads across alternates.
+
+**Exit checks.** `pytest -m c44 -q`: a 5-entry fixture whose confirmed starter changes holds at most the capped number of entries on him and prints the cap; the C9 timing check still passes.
+
+**Do not.** Change the 40% budget (flag 2).
+
+### C45 · Cross-mode fee-weighted risk (band 2)
+
+**Depends on:** C27. **Read first:** this card; BACKLOG B79; plan section 7 (allocation paragraph); `build/exposure.py`; `config/risk.yaml`; `build/scenario_pass.py`.
+
+**Goal.** Report each slate's combined goalie and game fee share across Classic and Showdown; then apply the cap to the combination.
+
+**Exit checks.** `pytest -m c45 -q`: a fixture with a Classic and a Showdown run on one slate prints the combined share; the report-only commit lands first.
+
+**Do not.** Merge the two modes' candidate pools.

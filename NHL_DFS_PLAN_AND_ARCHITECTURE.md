@@ -507,6 +507,8 @@ Normal operation should also accept plain language plus the two uploaded files. 
 
 ## 14. Build order (revision 2) and chunking
 
+*Superseded for ordering (2026-10-04): the order of work is the Queue section of `BUILD_CHUNKS.md`, generated from `chunks.yaml`; this table records how C0a to C13 were sequenced.*
+
 The build is sequenced by objective, not by model sophistication: a legal file first, then lock-safe late swap, then the things the two objectives are defined against on priors (ownership, duplication, payout metadata, a sampled field, a provisional leverage-aware selection), then hockey features that sharpen projections, then the simulator and the scenario-based objectives, then roles and news, then the Claude Code layer and settlement, then the field-model fit, then the segment simulator as a challenger. The operational breakdown is [BUILD_CHUNKS.md](BUILD_CHUNKS.md): seventeen chunks (fifteen unconditional, two gated on data), each sized for one Claude Code session without compaction, with explicit dependencies, files, interfaces, and exit checks. [BUILD_STATUS.md](BUILD_STATUS.md) tracks them and `tools/next_chunk.py` enforces the order.
 
 | Order | Chunk | Adds | Revision 1 phase |
