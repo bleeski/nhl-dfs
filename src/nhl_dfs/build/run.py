@@ -29,6 +29,12 @@ budget and the caps (build/scenario_pass.py), and the next version is published 
 compare-and-swap. Any failure leaves the current version in place and is recorded.
 
 A run refuses to publish once any slate game has started: late swap is C2c's job.
+
+Lock safety (C14, B53): every publish above goes through `_export_and_publish`, which refuses, under the publish
+lock and on the live clock, a version that changes a cell of a game that has started or crossed the edit stop,
+judged against the predecessor version. With a predecessor the checked version stays current and the run says why;
+with none (Phase A) a started-game change publishes nothing and an edit-stop change ships with a warning (flag 20).
+The optional passes (B, provisional, scenario) do not start once a game has started or is inside the edit stop.
 """
 
 from __future__ import annotations
@@ -48,11 +54,12 @@ import yaml
 
 from nhl_dfs.build import candidates as cand_mod
 from nhl_dfs.build import feasible, milp
+from nhl_dfs.build import locks as locks_mod
 from nhl_dfs.build.assign import Assignment, Caps, assign, load_caps
 from nhl_dfs.build.candidates import Candidate
 from nhl_dfs.build.manifest import exposures_top20, write_manifest
 from nhl_dfs.build.notes import chicago, write_run_notes
-from nhl_dfs.build.state import LockTimeout, PublishRefused, RunDir, new_run, publish, sha256
+from nhl_dfs.build.state import LockCrossed, LockTimeout, PublishRefused, RunDir, new_run, publish, sha256
 from nhl_dfs.contracts.geometry import Mode, lineup_key
 from nhl_dfs.contracts.statuses import (
     DeliveryStatus,
@@ -426,13 +433,35 @@ def run_slate(
         public = Path(m["public_path"]) if any(v.get("public_replaced") for v in m["versions"]) else None
         return RunResult(run, slate_id, dict(m["statuses"]), public, m, mp, np_, messages)
 
-    def fail(msg: str, search: SearchStatus | None = None) -> RunResult:
+    def fail(msg: str, search: SearchStatus | None = None, recommendation: str | None = None) -> RunResult:
         messages.append(msg)
         m["failed"].append(msg)
         if search is not None:
             m["statuses"]["SEARCH_STATUS"] = search.value
-        m["recommendation"] = "fix the named input problem, then rerun"
+        m["recommendation"] = recommendation or "fix the named input problem, then rerun"
         return finish()
+
+    def stopped(label: str) -> bool:
+        """Baseline first; optional work stops before lock (B53). True, with the reason in the messages and m["lock_stops"],
+        when optional pass `label` must not start. The passes after Phase A rebuild whole portfolios and know nothing of
+        pinned cells, so once a game has started or is inside the edit stop their file could only be refused at publish:
+        skip them and keep the checked version. Also stops when the next open game leaves too little time (as late swap)."""
+        if run.current_version() is None:
+            return False
+        from nhl_dfs.build import swap_objective
+
+        at = clock().astimezone(timezone.utc)
+        ls = locks_mod.compute(read_entries(run.version_file(run.current_version())), pool, None, at,
+                               int(runtime["edit_stop_buffer_s"]))
+        if ls.started_games or ls.edit_stop_games:
+            why = "a game has started or is inside the edit stop (" + ", ".join(sorted(ls.started_games | ls.edit_stop_games)) + ")"
+        else:
+            ok, why = swap_objective.optional_work_ok(ls, pool, set(pool.games), at, runtime)
+            if ok:
+                return False
+        messages.append(f"{label} skipped: {why}; v{run.current_version()} stays current")
+        m.setdefault("lock_stops", []).append({"pass": label, "reason": why, "at_utc": _utc(at)})
+        return True
 
     # Phase A ---------------------------------------------------------------------------------
     if entries.mode is not pool.mode:
@@ -490,10 +519,13 @@ def run_slate(
     t = time.perf_counter()
     a = assign(search.bank, entries, work, pool.mode, caps, seed=seed, later_start_utc=starts)
     timings["assign_s"] = round(time.perf_counter() - t, 3)
-    v1 = _export_and_publish(run, entries, pool, a, slate_id, outputs_root, m, messages, phase="A", expect=None)
+    v1 = _export_and_publish(run, entries, pool, a, slate_id, outputs_root, m, messages, phase="A", expect=None,
+                             clock=clock, runtime=runtime)
     timings["phase_a_s"] = round(time.perf_counter() - t_start, 3)
     if v1 is None:
-        return fail("phase A produced no checked file")
+        return fail("phase A produced no checked file", recommendation=(
+            "a game started while the file was being built, and a rerun cannot help: use late swap (`nhl.ps1 late-swap`) "
+            "with the entries file you have now" if m.get("lock_stops") else None))
     _set_assignment_fields(m, a, pool)
     m["statuses"]["FILE_VALID"] = FileStatus.TRUE.value
     degraded = (search.route != "milp" or any(r.kind == "REPEAT" for r in a.relaxations) or unknown
@@ -507,15 +539,17 @@ def run_slate(
     after_b = {"work": work, "sha": v1["sha256"], "bank": search.bank, "details": {}, "proj": proj}
     if offline:
         m["news"]["phase_b_summary"] = "skipped (offline)"
+    elif stopped("phase B"):
+        m["news"]["phase_b_summary"] = "skipped (a lock boundary was reached); v1 stays current"
     else:
         t = time.perf_counter()
         after_b = _phase_b(run, entries, pool, work, a, objective, excluded, runtime, caps, seed, slate_id,
-                           outputs_root, v1, starts, cache, m, messages)
+                           outputs_root, v1, starts, cache, m, messages, clock=clock)
         after_b.setdefault("bank", search.bank)
         after_b["proj"] = proj
         timings["phase_b_s"] = round(time.perf_counter() - t, 3)
         save_contest_details(run, after_b.get("details") or {}, m, "Phase B contest detail")
-    if baseline_only:
+    if baseline_only or stopped("provisional and scenario passes"):
         return finish()
 
     # Role state (C7), once, before the provisional and scenario passes (backlog B9, C10) ------------
@@ -528,12 +562,12 @@ def run_slate(
     prov = None
     try:
         prov = _provisional_pass(run, entries, pool, after_b, st, starts, offline, runtime, caps, seed, slate_id,
-                                 outputs_root, cache, m, messages, out_root, rm=rm)
+                                 outputs_root, cache, m, messages, out_root, rm=rm, clock=clock)
     except Exception as exc:  # the current version stays; never raised out of the run
         m["failed"].append(f"provisional pass: {type(exc).__name__}: {str(exc)[:160]}")
         messages.append(f"provisional pass failed ({type(exc).__name__}); the previous version stays current")
     timings["provisional_s"] = round(time.perf_counter() - t, 3)
-    if not scenario:
+    if not scenario or stopped("scenario pass"):
         return finish()
 
     # Scenario pass (C8) -----------------------------------------------------------------------
@@ -567,8 +601,15 @@ def _set_assignment_fields(m: dict, a: Assignment, pool: SalaryPool) -> None:
 
 
 def _export_and_publish(run: RunDir, entries: EntriesFile, pool: SalaryPool, a: Assignment, slate_id: str,
-                        outputs_root: Path, m: dict, messages: list[str], *, phase: str, expect: str | None) -> dict | None:
-    """Write the file into the run, referee the written bytes, publish. Returns the version record."""
+                        outputs_root: Path, m: dict, messages: list[str], *, phase: str, expect: str | None,
+                        clock: Callable[[], datetime], runtime: dict) -> dict | None:
+    """Write the file into the run, referee the written bytes, publish. Returns the version record, or None when
+    nothing was published.
+
+    Lock safety (B53): under the publish lock, on `clock()` read there, the new file is diffed against the predecessor
+    version (the uploaded entries file when this is the first publish) and refused if it changes a cell of a game that
+    has started or is inside the edit stop; the incumbent then stays current. Flag 20: with no predecessor an edit-stop
+    change ships with a warning (there is no checked file to keep) and a started-game change publishes nothing."""
     staging = run.path / "staging" / f"DKEntries.{phase}.csv"
     staging.parent.mkdir(exist_ok=True)
     data = write_entries(entries, dict(a.by_entry), pool, staging)
@@ -577,8 +618,37 @@ def _export_and_publish(run: RunDir, entries: EntriesFile, pool: SalaryPool, a: 
         messages.append("referee rejected the file: " + "; ".join(report.reasons[:5]))
         m["failed"].append(f"phase {phase}: referee rejected the written file")
         return None
+    proposed = read_entries(staging)
+    buffer_s = int(runtime["edit_stop_buffer_s"])
+
+    def cells(lines) -> int:  # a cell that loses one player and gains another is two lines
+        return len({x.split(":", 1)[0] for x in lines})
+
+    def lock_check() -> str | None:
+        incumbent = run.current_version()
+        reference = read_entries(run.version_file(incumbent)) if incumbent is not None else entries
+        found = locks_mod.publish_crossings(reference, proposed, pool, clock(), buffer_s)
+        if incumbent is None:
+            if found.edit_stop:
+                messages.append(f"phase {phase}: {cells(found.edit_stop)} cell(s) are in a game inside the edit stop; "
+                                "published as built (nothing earlier to keep): " + "; ".join(found.edit_stop[:3]))
+            if found.started:
+                return (f"a game started while the file was being built: {cells(found.started)} cell(s) of a started game "
+                        "would change (" + "; ".join(found.started[:3]) + "); nothing published. Changing started entries is "
+                        "late swap (`nhl.ps1 late-swap` with the current export)")
+            return None
+        hit = found.started + found.edit_stop
+        if hit:
+            return (f"a lock boundary was crossed while phase {phase} ran: {cells(hit)} cell(s) of a started or edit-stop game "
+                    f"would change ({'; '.join(hit[:3])}); v{incumbent} stays current")
+        return None
+
     try:
-        res = publish(run, data, report, slate_id, outputs_root=outputs_root, expect_public_sha=expect)
+        res = publish(run, data, report, slate_id, outputs_root=outputs_root, expect_public_sha=expect, precheck=lock_check)
+    except LockCrossed as exc:
+        messages.append(f"phase {phase} not published: {exc}")
+        m.setdefault("lock_stops", []).append({"pass": f"phase {phase} publish", "reason": str(exc)})
+        return None
     except PublishRefused as exc:
         messages.append(f"publish refused: {exc}")
         m["failed"].append(f"phase {phase}: publish refused")
@@ -614,7 +684,7 @@ def _fetch_draftables(entries: EntriesFile, cache, pool: SalaryPool, box: dict |
 
 
 def _phase_b(run, entries, pool, work, a, objective, excluded_a, runtime, caps, seed, slate_id, outputs_root,
-             v1, starts, cache, m, messages) -> dict:
+             v1, starts, cache, m, messages, *, clock) -> dict:
     """Returns the state the provisional pass builds on: the pool after any new exclusions
     (even when the re-solve failed), the last published sha, and any contest detail fetched."""
     budget = float(runtime["network_pass_budget_s"])
@@ -683,7 +753,8 @@ def _phase_b(run, entries, pool, work, a, objective, excluded_a, runtime, caps, 
         return state
     fixed = {e: v for e, v in a.by_entry.items() if e not in affected}
     a2 = assign(search.bank, entries, work2, pool.mode, caps, seed=seed, later_start_utc=starts, fixed=fixed)
-    v2 = _export_and_publish(run, entries, pool, a2, slate_id, outputs_root, m, messages, phase="B", expect=v1["sha256"])
+    v2 = _export_and_publish(run, entries, pool, a2, slate_id, outputs_root, m, messages, phase="B", expect=v1["sha256"],
+                             clock=clock, runtime=runtime)
     if v2 is None:
         m["news"]["phase_b_summary"] = "v2 failed its checks; v1 stays current"
         return state
@@ -767,7 +838,7 @@ def _role_model(pool, after_b, st, offline, cache, clock, runtime, m, messages):
 
 
 def _provisional_pass(run, entries, pool, after_b, st, starts, offline, runtime, caps, seed, slate_id,
-                      outputs_root, cache, m, messages, out_root, rm=None) -> dict:
+                      outputs_root, cache, m, messages, out_root, rm=None, *, clock) -> dict:
     """Returns what the scenario pass (C8) builds on: contexts, fields, FIELD_CALIBRATION, the
     provisional assignment and the candidate bank (also when its own publish failed)."""
     import json
@@ -869,7 +940,7 @@ def _provisional_pass(run, entries, pool, after_b, st, starts, offline, runtime,
     state = {"contexts": contexts, "fb": fb, "field_cal": field_cal, "assignment": a_p, "bank": bank,
              "own_cfg": own_cfg, "statuses": statuses}
     vp = _export_and_publish(run, entries, pool, a_p, slate_id, outputs_root, m, messages, phase="P",
-                             expect=after_b["sha"])
+                             expect=after_b["sha"], clock=clock, runtime=runtime)
     if vp is None:
         m["failed"].append("provisional pass: its file was not published; the previous version stays current")
         return state

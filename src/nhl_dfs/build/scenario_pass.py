@@ -322,7 +322,8 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
                                      "scenario": prior_persons(by_entry, work, proj)}
     sec["relaxations"] = [{"entry_id": r.entry_id, "kind": r.kind, "detail": r.detail} for r in sel.relaxations]
     a_s = assignment_from(by_entry, work, sel.relaxations)
-    vs = publish_fn(run, entries, pool, a_s, slate_id, outputs_root, m, messages, phase="S", expect=expect_sha)
+    vs = publish_fn(run, entries, pool, a_s, slate_id, outputs_root, m, messages, phase="S", expect=expect_sha,
+                    clock=clock, runtime=runtime)
     timings["total_s"] = round(time.perf_counter() - t0, 3)
     timings["peak_working_set_mb"] = peak_mb()
     sec["timings"] = timings

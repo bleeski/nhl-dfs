@@ -46,6 +46,7 @@ def _current(run):
 
 
 def _apply(run, runs, outs, text, now=BEFORE, rnd=1, **kw):
+    kw.setdefault("clock", lambda: now)  # B52: the live clock is explicit here; the fixtures are dated 2026-10-15
     return controller.apply_round(run, rnd, text, now=now, runs_root=runs, outputs_root=outs, **kw)
 
 
