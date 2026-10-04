@@ -28,20 +28,20 @@ For the end-to-end probes, the starting fixture was `tests/fixtures/late_swap/cl
 
 ## Triage index
 
-Each row is intentionally untriaged. Record **accept**, **reject**, or **modify**, with the reason and eventual implementation/test reference.
+Triaged 2026-10-03 and re-verified at HEAD on 2026-10-04: all ten accepted (one modified in scope, one at Low priority); each finding below carries its Decision line.
 
 | ID | Priority | Finding | Backlog relationship | Decision / reason / implementation |
 |---|---|---|---|---|
-| R01 | P1 | QA's default clock freezes, defeating its final lock check | New; C10 lock guard | ACCEPT (2026-10-03): confirmed in controller.py (the default clock closes over the mutable `now`); B52; chunk C14 (band 0). |
-| R02 | P1 | Initial run publishes after crossing a start boundary | Related to B42, but a separate pre-start-to-post-start failure | ACCEPT: confirmed (`_export_and_publish` takes no clock or lock state); B53; chunk C14 (band 0); B42 part 3 rides in C15. |
-| R03 | P1 | Controller repairs can reintroduce already-OUT players | New; extends the safety scope around B17 | ACCEPT: confirmed (repair `exclude_rows` carry the batch and locks, never the CSV OUT statuses); B54; chunk C26 (band 2 by Ben's rule: a dead roster spot, not an illegal file). |
-| R04 | P1 | Greedy selection credits displaced own-entry prizes | New; C8 joint portfolio objective | ACCEPT: confirmed (`pay_total += pay_k` without recomputing placed entries); B55; chunk C18 (band 1: the selector's own arithmetic, serving band 2 too). |
-| R05 | P2 | QA counts prize transfers between owned entries as improvement | New; different from B38 proposal ordering | ACCEPT: confirmed (`idx` restricted to `changed`); B56; chunk C18. |
-| R06 | P2 | Contradictory overrides pass batch validation | New; C7/C10 state validation | ACCEPT, MODIFIED: contradictory claims become CONFLICTED under the existing evidence policy, no new certainty rule; B57; chunk C26. |
-| R07 | P2 | LPT packing is mistaken for an infeasibility proof | Reopen/extend B36 | ACCEPT: feasibility accounting only, the 40% budget and B36's decision stand; B58; chunk C27 (band 2). |
-| R08 | P2 | Salary ID-set changes inflate independent slate groups | Extend B31 bookkeeping | ACCEPT: a measurement defect; group key from slate date plus games; B59; chunk C29 (band 3). |
-| R09 | P2 | QA leaves the manifest's current export hash stale | Related to B39, with a distinct provenance failure | ACCEPT: confirmed (controller publish never sets export_sha256; verify never checks it); B60; chunk C26. |
-| R10 | P2 | Referee accepts byte changes outside editable cells | New; C0b exact-template checking | ACCEPT at Low priority, scope MODIFIED to the validator (no claim about the writer or DraftKings' tolerance); B61; chunk C33 (band 3). |
+| R01 | P1 | QA's default clock freezes, defeating its final lock check | New; C10 lock guard | ACCEPT (2026-10-03): confirmed in controller.py (the default clock closes over the mutable `now`); B52; chunk C14 (band 0). Re-verified 2026-10-04 (see the Decision line). |
+| R02 | P1 | Initial run publishes after crossing a start boundary | Related to B42, but a separate pre-start-to-post-start failure | ACCEPT: confirmed (`_export_and_publish` takes no clock or lock state); B53; chunk C14 (band 0); B42 part 3 rides in C15. Re-verified 2026-10-04 (see the Decision line). |
+| R03 | P1 | Controller repairs can reintroduce already-OUT players | New; extends the safety scope around B17 | ACCEPT: confirmed (repair `exclude_rows` carry the batch and locks, never the CSV OUT statuses); B54; chunk C26 (band 2 by Ben's rule: a dead roster spot, not an illegal file). Re-verified 2026-10-04 (see the Decision line). |
+| R04 | P1 | Greedy selection credits displaced own-entry prizes | New; C8 joint portfolio objective | ACCEPT: confirmed (`pay_total += pay_k` without recomputing placed entries); B55; chunk C18 (band 1: the selector's own arithmetic, serving band 2 too). Re-verified 2026-10-04 (see the Decision line). |
+| R05 | P2 | QA counts prize transfers between owned entries as improvement | New; different from B38 proposal ordering | ACCEPT: confirmed (`idx` restricted to `changed`); B56; chunk C18. Re-verified 2026-10-04 (see the Decision line). |
+| R06 | P2 | Contradictory overrides pass batch validation | New; C7/C10 state validation | ACCEPT, MODIFIED: contradictory claims become CONFLICTED under the existing evidence policy, no new certainty rule; B57; chunk C26. Re-verified 2026-10-04 (see the Decision line). |
+| R07 | P2 | LPT packing is mistaken for an infeasibility proof | Reopen/extend B36 | ACCEPT: feasibility accounting only, the 40% budget and B36's decision stand; B58; chunk C27 (band 2). Re-verified 2026-10-04 (see the Decision line). |
+| R08 | P2 | Salary ID-set changes inflate independent slate groups | Extend B31 bookkeeping | ACCEPT: a measurement defect; group key from slate date plus games; B59; chunk C29 (band 3). Re-verified 2026-10-04 (see the Decision line). |
+| R09 | P2 | QA leaves the manifest's current export hash stale | Related to B39, with a distinct provenance failure | ACCEPT: confirmed (controller publish never sets export_sha256; verify never checks it); B60; chunk C26. Re-verified 2026-10-04 (see the Decision line). |
+| R10 | P2 | Referee accepts byte changes outside editable cells | New; C0b exact-template checking | ACCEPT at Low priority, scope MODIFIED to the validator (no claim about the writer or DraftKings' tolerance); B61; chunk C33 (band 3). Re-verified 2026-10-04 by code trace only. |
 
 ## Findings
 
@@ -68,6 +68,8 @@ All three lock computations received `22:50:00Z`. The controller published v2 re
 
 **Confidence:** high; end-to-end reproduction. No occurrence on a live slate is asserted.
 
+**Decision (2026-10-04):** ACCEPT (band 0; B52; chunk C14). Re-verified 2026-10-04 by a second reader at HEAD (src and config unchanged since 7140e0a): reproduced; the wall clock advanced to 23:00:01Z inside the repair solve and v2 still published, while a control with an injected clock published nothing. Corrections: the CLI freezes the clock too (cli.py:629 and :682), the 15 `_apply` test call sites dated 2026-10-15 need migrating, and the final recheck belongs under the publish lock.
+
 ### R02 [P1] Recheck lock time at every initial-run publish
 
 **Location:** `src/nhl_dfs/build/run.py:440-448`, `493`, `569-583`; later passes use the same publication helper, including `src/nhl_dfs/build/scenario_pass.py:325`.
@@ -86,6 +88,8 @@ This uses ordinary timestamped salary rows. It is distinct from B42's `In-Progre
 
 **Confidence:** high; end-to-end reproduction.
 
+**Decision (2026-10-04):** ACCEPT (band 0; B53; chunk C14). Re-verified 2026-10-04: reproduced; v1 published at 23:00:01Z with 12 started-game cells (the review says 16, immaterial), FILE_VALID=TRUE and DELIVERY_STATUS=CHECKED. One guard in `_export_and_publish` covers phases A, B, P and S (three publish call sites exist); it diffs against the predecessor's pinned cells, and flag 20 (default taken) decides the no-predecessor case: ship and warn.
+
 ### R03 [P1] Carry all known exclusions into controller repair solves
 
 **Location:** `src/nhl_dfs/build/controller.py:452-456`, `485-498`; full-pool loading at `src/nhl_dfs/build/packet.py:70-79`.
@@ -103,6 +107,8 @@ The high synthetic projection is not the defect; it demonstrates that the hard e
 **Acceptance:** reproduce the case above and assert the already-OUT goalie is never introduced. Add an analogous skater case, a strategic-exclude case, and Showdown CPT/FLEX exclusion coverage. Include UNKNOWN controls that remain available and pinned-OUT controls that stay unchanged with the correct warning.
 
 **Confidence:** high; end-to-end reproduction. This is not a proposal to exclude uncertain players.
+
+**Decision (2026-10-04):** ACCEPT (band 2 by Ben's rule: a dead roster spot, not an illegal file; B54; chunk C26). Re-verified 2026-10-04: reproduced in 1 to 3 entries. Broader than reported: DK Starting=P backup goalies are re-introduced too, and rounds 2 and 3 forget round 1's accepted OUT override; reuse late_swap's out_people construction as the mask.
 
 ### R04 [P1] Score each candidate's change to total owned-contest utility
 
@@ -131,6 +137,8 @@ The final frontier recomputation is joint and does correct the displayed complet
 
 **Confidence:** high; production selector and payout functions reproduced the counterexample. It says nothing about which live lineup has the best true winning probability.
 
+**Decision (2026-10-04):** ACCEPT (band 1, serving band 2; B55; chunk C18). Re-verified 2026-10-04: reproduced (A+B chosen at all five kappas; exact joint $67.50 against $90.00 for A+C). The fix needs per-entry rank vectors or a sparse update to stay cheap at 150-max, and swap_objective.choose and late_swap.py:619 to 625 share the omission. Judgment: modest where entries sit in different large contests, large in WTA and small fields.
+
 ### R05 [P2] Evaluate QA gains across all affected owned entries
 
 **Location:** `src/nhl_dfs/build/controller.py:233-239`, especially the restriction to indices in `changed`.
@@ -149,6 +157,8 @@ The controller accepted the change and reported **`utility_gain=90.0` on both se
 
 **Confidence:** high; direct reproduction through the production evaluator.
 
+**Decision (2026-10-04):** ACCEPT (band 1 as a ride-along of C18, which shares the joint-accounting primitive; B56). Re-verified 2026-10-04: reproduced (a pure transfer scores +90.0; in a 70/30 mix a +36.0 gain coincides with all-entry utility falling from $90 to $63). Caveat: aggregating over the touched contests moves the 3% band anchor, so choose it or a paired aggregate SE deliberately.
+
 ### R06 [P2] Validate overrides as a consistent batch, not against an unchanged original state
 
 **Location:** `src/nhl_dfs/build/controller.py:387-404`; `src/nhl_dfs/models/overrides.py:156-157`, `220-237`.
@@ -165,6 +175,8 @@ The controller accepted the change and reported **`utility_gain=90.0` on both se
 
 **Confidence:** high; controller and subsequent role-model application reproduced the inconsistency. Source truth itself was not verified by these synthetic claims.
 
+**Decision (2026-10-04):** ACCEPT, MODIFIED (band 2; B57; chunk C26): contradictory claims become CONFLICTED under the existing evidence policy, no new certainty rule. Re-verified 2026-10-04: reproduced (both goalies of a team leave every entry); also validate against previously accepted overrides, which role_state() never reads, and make every consumer honor CONFLICTED.
+
 ### R07 [P2] Do not treat an LPT packing result as the minimum achievable fee share
 
 **Location:** `src/nhl_dfs/build/exposure.py:99-108`, `168-186`.
@@ -180,6 +192,8 @@ The controller accepted the change and reported **`utility_gain=90.0` on both se
 **Acceptance:** the fees above remain in DOLLARS mode at 0.40 for both goalie and game caps. A single entry genuinely exceeding 40% of total fees still triggers the documented fallback. Check heterogeneous-fee examples against exhaustive small-instance partitions. This changes feasibility accounting, not Ben's budget.
 
 **Confidence:** high; exact counterexample and production cap-function reproduction.
+
+**Decision (2026-10-04):** ACCEPT (band 2; B58; chunk C27): feasibility accounting only, the 40% budget and B36's decision stand. Re-verified 2026-10-04: reproduced (fee_floor 0.4074 against a brute-force optimum 0.3333; LINEUPS 3 of 7 can put 52% of fees on one goalie). Judged to fire on mixed-fee slates only; an exact check over fee classes is cheap.
 
 ### R08 [P2] Count sporting slate groups independently of salary-file revisions
 
@@ -198,6 +212,8 @@ The controller accepted the change and reported **`utility_gain=90.0` on both se
 **Limit:** this reproduction does not show an actual fit or promotion being improperly allowed. Other gate requirements, including holdout counts, remain separate and can still block it. The demonstrated defect is the reported evidence count.
 
 **Confidence:** high; direct evidence-counter reproduction.
+
+**Decision (2026-10-04):** ACCEPT (band 3, a measurement defect; B59; chunk C29). Re-verified 2026-10-04: reproduced (two slate groups for one slate); group key {slate date}|{sorted games}; models/prefit.py counts_for has the same flaw.
 
 ### R09 [P2] Update and verify the top-level export hash after QA publication
 
@@ -223,6 +239,8 @@ The exact hash values are fixture-specific; the inequality is the assertion. The
 
 **Confidence:** high; publication and verification reproduced together.
 
+**Decision (2026-10-04):** ACCEPT (band 3, provenance only; B60; chunk C26). Re-verified 2026-10-04: reproduced (verify still passes after zeroing export_sha256); nothing reads the field today, so a pre-fix tolerance is needed rather than urgency.
+
 ### R10 [P2] Check raw byte preservation in the independent referee
 
 **Location:** `src/nhl_dfs/referee/check_file.py:63-79`, `128-131`.
@@ -240,6 +258,8 @@ The exact hash values are fixture-specific; the inequality is the assertion. The
 **Limit:** the probe demonstrates a validator blind spot. I did not observe the current splicing writer itself making these byte changes, nor establish that DraftKings would reject quote-equivalent CSV. The defect is failure to enforce the repository's exact-byte contract independently.
 
 **Confidence:** high; direct final-byte referee reproduction.
+
+**Decision (2026-10-04):** ACCEPT at Low priority, scope MODIFIED to the validator (band 3; B61; chunk C33). Re-verified 2026-10-04 by code trace only, not by execution: the engine's splice path copies unchanged bytes verbatim, so only a hand-edited or re-saved file reaches it.
 
 ## Existing issues and interpretation boundaries
 

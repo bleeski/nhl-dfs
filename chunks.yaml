@@ -112,6 +112,18 @@ chunks:
     checks:
       - pytest -m c11 -q
   # ---- Queue of 2026-10-03 (rank = file order) ------------------------------------------------------------------------
+  - id: C37
+    title: Delivery, the upload file itself reaches Ben and the skills agree with CLAUDE.md
+    depends: [C10]
+    marker: c37
+    band: 0
+    size: S
+    effort: "low: .claude/skills/nhl-run, nhl-late-swap and nhl-refresh SKILL.md (allowed-tools, the lines that forbid further commands), CLAUDE.md slate rules (lines 30 to 32), scripts/standings_checklist.py --save-entered usage; no src change except an optional upload line in the publish report"
+    breakpoint: "one commit per skill: each ends with verify --run, the sha256 match to out_sha256 and the attach (cloud) or full path (local) step, allowed-tools widened to exactly those commands; then tests/test_skills_delivery.py"
+    impact: "Band 0: B69 already stranded a delivered file (the 2026-10-03 cloud run gave a container path Ben could not open; the file reached him only when he asked), and the rule that landed on master is contradicted by the skills that execute it (nhl-run says never to run another command, nhl-late-swap says to do nothing else near lock, allowed-tools is limited to nhl.ps1), so the next cloud run can fail the same way. The skills also omit SEARCH_STATUS and, in late swap and refresh, most statuses CLAUDE.md requires (B76). Reach: every cloud slate. Evidence: one observed strand; the text contradiction is read, not run."
+    backlog: [B69, B76]
+    checks:
+      - pytest -m c37 -q
   - id: C14
     title: Lock-safe publishing, a live clock in QA rounds and lock-aware initial-run publish
     depends: [C10]
@@ -119,7 +131,7 @@ chunks:
     band: 0
     size: M
     effort: "high: build/controller.py 559 (apply_round clock and publish block), build/run.py 884 (run_slate, _export_and_publish), build/scenario_pass.py 402 (publish_fn), the lock API in build/locks.py"
-    breakpoint: "R01 first: the live clock in apply_round with tests on both call shapes, committed on its own; then R02 for Phase A; then the later publication routes"
+    breakpoint: "R01 first: the live clock in apply_round and at the two CLI call sites (cli.py:629 and :682), the 15 _apply test call sites moved to clock=lambda: now, tests on both call shapes, committed on its own; then R02 as one guard in _export_and_publish that diffs against the predecessor pinned cells (flag 20)"
     impact: "Band 0 by the exception rule. Two reproduced ways to publish started-game cells (review R01 and R02): a QA or override round that straddles EDIT_STOP or a start, and an initial run that crosses a start during construction (the probe published 16 started cells with FILE_VALID=TRUE). B42's evidence says an ordinary slate reaches the second: on 10-02 the salary file was downloaded after BOS@WPG had started. A file DraftKings rejects wins nothing. Reach: every slate; no live occurrence is recorded."
     backlog: [B52, B53]
     findings: [R01, R02]
@@ -151,6 +163,18 @@ chunks:
     findings: []
     checks:
       - pytest -m c16 -q
+  - id: C38
+    title: Field size and family from the lobby row when the contest page is unavailable
+    depends: [C16]
+    marker: c38
+    band: 1
+    size: S
+    effort: "medium: models/contests.py classify and family_prior (lines 130 to 153), data/sources/dk_public.parse_lobby (ContestSummary.field_size), config/contest_families.yaml field_size_prior, tests for the 403 and no-template cases"
+    breakpoint: "classify reads max entries and max per user from the lobby capture when the page answers 403 and no template matches, labels the source (FIELD_SIZE_SOURCE=LOBBY or PRIOR) and routes small single-entry contests away from large_gpp; committed"
+    impact: "Band 1: contests routed to the right shape. When DraftKings answers 403 and no cached template matches, field size comes from family priors (5,000 for both large_gpp contests and 200 for the cash contest in the 10-03 STL @ COL run) where the contest names imply about 400, under 100 and about 27 entries, and a single-entry contest under 100 entries is priced as large_gpp. Field size drives the top-1% probability, p_clear_line, the sampled field and p_lose80 for every unmatched contest, and Showdown has no cached template, so C16 does not reach it. Depends on C16 because both edit models/contests.py. Deterministic; reach: every contest the page does not answer, which is every cloud run. Evidence: one run record."
+    backlog: [B72]
+    checks:
+      - pytest -m c38 -q
   - id: C17
     title: Inputs that move lineups reach the models, odds and roles into the field features, team rates and the market clip
     depends: [C10]
@@ -160,10 +184,34 @@ chunks:
     effort: "medium: models/ownership.py and its build_fields callers (build/run.py:811, build/scenario_pass.py:208 and :370, build/provisional.py:181), sim/market.py (clip), the COL league-rate fallback traced from RUN_NOTES of run 20260930-210607-classic"
     breakpoint: "odds, role state and news age wired into every build_fields call with a test per weight, committed; then the 09-30 scratch replay and the team-rate fallback (B51); then the clip rule (B66)"
     impact: "Band 1: controls that exist but never reach the solver. The ownership prior's implied_total, goalie_start_win, pp1, line1 and news_recent weights never see data in a run (read-only audit; line references in B63), so the field cannot know game totals, line news or PP units. On 09-30 the forecast had TOR stacks at 42% (actual 21 to 24%) and COL at 19% (actual 38 to 51%), and the engine's own portfolio held zero COL skaters after COL fell to a league-average rate (B51). Deterministic gaps, each S to M; reach: every slate. The size of the forecast gain is unmeasured (judgment)."
-    backlog: [B63, B20, B51, B66]
+    backlog: [B63, B20, B51, B66, B85]
     findings: []
     checks:
       - pytest -m c17 -q
+  - id: C39
+    title: History store kept current in-season and on every host
+    depends: [C17]
+    marker: c39
+    band: 1
+    size: M
+    effort: "medium: cli.py cmd_history (--since exists), build/run.py Phase B preamble, tools/cloud_bootstrap.sh, data/history/nhl_reports.py, a store-staleness line in RUN_NOTES"
+    breakpoint: "first commit reports the store last game date and the as-of staleness in RUN_NOTES with no behavior change; the second adds a bounded incremental history --since in Phase B; the third the cloud bootstrap backfill in the background (flag 18)"
+    impact: "Band 1: inputs that move lineups reach the models. The history store was last written on 2026-09-28 and nothing runs history --since (B2 assumes nightly runs), so no 2026-27 game reaches the as-of features: goalie back-to-back detection (models/goalies.py:71 to 83) cannot fire and recency, rotation and role form stay at the 2025-26 close; cloud runs start with no store at all (data/features and data/raw are gitignored and cloud_bootstrap.sh builds only the .venv) and printed MODEL_STATUS=PRIOR on the 10-03 cloud Showdown. Reach: every slate, growing weekly. Magnitude unmeasured (judgment), hence the measuring first commit. Depends on C17 because both edit build/run.py."
+    backlog: [B70, B71]
+    checks:
+      - pytest -m c39 -q
+  - id: C40
+    title: Daily Faceoff age gate keeps the last known lines
+    depends: [C7]
+    marker: c40
+    band: 1
+    size: S
+    effort: "medium: config/roles.yaml max_line_age_h, models/roles.py:224 (the age gate), the Daily Faceoff adapter page stamp, tests with the CHI 28.7 h, FLA 36.9 h and COL 58.6 h cases"
+    breakpoint: "first commit measures offline on the cached pages whether the Last updated stamp moves only on edits; the second applies the decision (keep the last known lines, label them stale with their age, unless newer contrary news exists)"
+    impact: "Band 1 (inputs that move lineups): the age gate drops a playing team lines and PP units whenever the page stamp is over 24 h (CHI 28.7 h and FLA 36.9 h on 10-01, COL 58.6 h on 10-03: 2 of the 2 cloud late runs on record), leaving the team at role priors, and a call-up with DK average 0 became a Showdown Captain on 10-03. Whether a stale stamp means stale lines is unchecked (judgment), hence measure first. Reach: any team whose lines do not change for a day, which is most teams. Evidence: three team-days."
+    backlog: [B73]
+    checks:
+      - pytest -m c40 -q
   - id: C18
     title: Joint own-entry accounting in the greedy fill and the QA evaluator
     depends: [C14]
@@ -268,6 +316,30 @@ chunks:
     findings: []
     checks:
       - pytest -m c25 -q
+  - id: C41
+    title: Selection robust to field ownership error (low, base and high ownership)
+    depends: [C19]
+    marker: c41
+    band: 1
+    size: M
+    effort: "high: models/ownership.py, models/field.py (sampled fields under scaled ownership), build/portfolio.py (screening and the knob loop), build/objectives.py (utility across field scenarios), config/ownership.yaml"
+    breakpoint: "the ownership error band measured from the graded forecasts and committed as a function; then the field sampler draws from the low and high bands and the report prints each candidate tail spread; selection uses it only if the spread moves a pick"
+    impact: "Band 1: ownership level against the field. Plan section 6 asks for ownership as ranges and alternatives under low, base and high scenarios; nothing in src, config or the queue does this (C35 only resamples the field for the standard error). With per-player ownership error of 3.9 to 4.3 points and team stack shares off by 20 points on the 09-30 forecast, a selection optimal only at the base field can be badly placed when the field differs. Evidence: one graded forecast, so the measured spread comes first and selection use is conditional. Depends on C19 because that chunk changes the field model this one perturbs."
+    backlog: [B74]
+    checks:
+      - pytest -m c41 -q
+  - id: C42
+    title: Improvement pass after the greedy fill (experiment)
+    depends: [C18]
+    marker: c42
+    band: 1
+    size: M
+    effort: "high: build/portfolio.py _greedy (one pass, order family, fee, file; lines 360 to 430), the saved scenario caches of the 09-29 and 09-30 runs, a docs/experiments/ preregistration"
+    breakpoint: "the preregistration committed first; then the gap between the greedy portfolio and a bounded swap-improvement pass measured on the saved caches; DONE on rejected if the gain is inside the standard error"
+    impact: "Band 1 (tail terms reaching the solver): selection is a one-pass greedy fill with no improvement pass, where plan section 7 specifies bounded local search, and the order (family, fee, file) can decide which entries get the better candidates. Unmeasured (judgment). Depends on C18 because that chunk rewrites the same accounting. Experiment: DONE on rejected is valid."
+    backlog: [B75]
+    checks:
+      - pytest -m c42 -q
   - id: C26
     title: Controller safety, known exclusions in repairs, caps after QA, transactional override batches, export hash
     depends: [C18]
@@ -307,6 +379,42 @@ chunks:
     findings: []
     checks:
       - pytest -m c28 -q
+  - id: C43
+    title: Cloud parity, the skills run under bash and cloud-built runs get a pre-lock refresh
+    depends: [C37]
+    marker: c43
+    band: 2
+    size: M
+    effort: "medium: .claude/skills/nhl-run, nhl-late-swap and nhl-refresh (shell powershell, allowed-tools), tools/cloud_bootstrap.sh, build/scheduled.py (reads local runs only), flag 4 text, nhl.sh"
+    breakpoint: "the three skills run under bash with nhl.sh (checked headless on a cloud-like shell), committed; then the delivery message names the refresh command and the lock time (flag 19)"
+    impact: "Band 2 (one failure point, no correction near lock): the 10-01 and 10-03 slates ran in cloud sessions, where the run, late-swap and refresh skills are PowerShell-only and the local scheduled refresh reads only local runs, so a cloud-built file never gets the T-60 refresh; the 10-03 file shipped with an unconfirmed goalie in 2 entries. Reach: every cloud slate. Evidence: two cloud runs. Depends on C37 because both edit the same three skills."
+    backlog: [B77]
+    checks:
+      - pytest -m c43 -q
+  - id: C44
+    title: Goalie and game caps in late swap and refresh
+    depends: [C27]
+    marker: c44
+    band: 2
+    size: M
+    effort: "medium: build/late_swap.py:599 (assign.Caps.person_cap only), build/swap_objective.py, build/refresh.py, the caps API of build/exposure.py"
+    breakpoint: "late swap and refresh pass exposure.caps for the open cells and report GOALIE_CAP and GAME_CAP; a goalie-gate repair that would exceed the cap spreads across alternates; committed with a test on the B17 repair"
+    impact: "Band 2: caps that bind per lineup but not across the portfolio, after the first publish. Late swap and refresh apply only the per-person cap, so B17 goalie-gate repairs funnel every affected entry onto the confirmed starter (judgment: the same concentration the 10-01 report recorded at build time). Reach: any slate with a goalie change near lock. Evidence: code reading; not observed. Depends on C27 because it reuses the exact feasibility check."
+    backlog: [B78]
+    checks:
+      - pytest -m c44 -q
+  - id: C45
+    title: Cross-mode fee-weighted risk (Classic and Showdown on one slate)
+    depends: [C27]
+    marker: c45
+    band: 2
+    size: M
+    effort: "medium: build/exposure.py fee shares, config/risk.yaml, build/scenario_pass.py, the RUN_NOTES risk section, plan section 7 allocation paragraph"
+    breakpoint: "the report states the slate combined goalie fee share across the two modes (report only), committed; then the cap uses it"
+    impact: "Band 2: entries sharing one failure point across modes. Plan section 7 asks for fee-weighted risk across all modes on the slate; each run budgets only its own mode, so one goalie can be 40% of the Classic fees and the Showdown Captain at once (Ben played both modes on 10-02). Reach: slates with both modes. Evidence: a design requirement; no loss recorded."
+    backlog: [B79]
+    checks:
+      - pytest -m c45 -q
   - id: C29
     title: Settle without a local run, stable slate groups
     depends: [C11]
@@ -316,7 +424,7 @@ chunks:
     effort: "medium: learn/settle.py 339 (run, evidence_counts), learn/ledger.py, cli settle, scripts/standings_synthesis.py lobby_meta as the name and fee source"
     breakpoint: "R08 (group key from slate date and games) with the review's two-record case, committed; then settle --no-run for money and labels; then the checklist shows the dates settled"
     impact: "Band 3, first in it: measurement the other bands wait on. 20 of Ben's entries ($7.30 of fees, 13 contests of ownership labels) have standings but no local run and cannot be booked (B47), and the evidence counter double-counts a slate when the salary file changes (R08). Deterministic; the archive only grows through settle."
-    backlog: [B47, B59]
+    backlog: [B47, B59, B68, B84]
     findings: [R08]
     checks:
       - pytest -m c29 -q
@@ -335,14 +443,14 @@ chunks:
       - pytest -m c30 -q
   - id: C31
     title: QA throughput and provenance, independent same-entry proposals, packet team counts, round rule, metrics for the published version
-    depends: [C26]
+    depends: [C26, C37]
     marker: c31
     band: 3
     size: M
     effort: "high: the proposal loop of build/controller.py, build/packet.py 411, build/notes.py, the CLAUDE.md round rule, .claude/agents/nhl-adversary.md"
     breakpoint: "per-entry team counts in the packet and independent evaluation of same-entry proposals, committed; then the round-rule reconciliation; then B39's metric tables by version"
     impact: "Band 3: QA proposals reach the file more often and the notes tell the truth after QA. On 10-01 the only goalie-diversifying proposal was rejected by an ordering artifact (B38) and RUN_NOTES kept v3 figures after v4 published (B39). Observed once each; S to M items. Depends on C26 (controller.py)."
-    backlog: [B38, B39]
+    backlog: [B38, B39, B80, B81]
     findings: []
     checks:
       - pytest -m c31 -q
@@ -355,7 +463,7 @@ chunks:
     effort: "medium: config/*.yaml comments, sim/slate.py, models/roles.py page age, build/news.py NewsState, sim/game.py _shootout, data/history evict_raw; each item is small"
     breakpoint: "one commit per item in this order: B29 (the xfail becomes a pass), B65 config keys and docstrings, B10, B11 apply-once, B32, the page-age line"
     impact: "Band 3: no lineup moves. Small deterministic items (B10, B11, B29, B32, B65) that mislead config editors or leave an xfail in the suite; ordered smallest first."
-    backlog: [B65, B29, B32, B10, B11]
+    backlog: [B65, B29, B32, B10, B11, B83, B86]
     findings: []
     checks:
       - pytest -m c32 -q
@@ -468,6 +576,24 @@ deferred:
   - item: "Full history backfill after the season"
     trigger: "after 2027-07-31 (docs/CONTRACTS.md raw-cache rule)"
     backlog: []
+  - item: "Evidence plumbing for the gates (holdout counts, prefit label file) (B82)"
+    trigger: "C29 done and 10 settled Classic slate groups: until then no gate could open anyway; C12 needs the holdout counts and the ownership_labels producer"
+    backlog: [B82]
+  - item: "Decay-window and shrinkage-strength challengers (decay_half_life_games 40, goalie start half-life 20)"
+    trigger: "C39 done and a month of 2026-27 games in the history store, so a walk-forward comparison is possible"
+    backlog: []
+  - item: "Diagnose a pasted DraftKings upload rejection and repair only the affected contract (plan section 15)"
+    trigger: "the first DraftKings rejection of an engine file; B42 showed DraftKings rejects started-game cells"
+    backlog: []
+  - item: "Measured usage table (docs/measured_usage.md), filled after each of the first ten real slates"
+    trigger: "each real slate session; /usage attribution is interactive only, so a human pastes it (optional, never blocks)"
+    backlog: []
+  - item: "Shootout winner goal assumption (sim.yaml so_adds_goal)"
+    trigger: "C36 grades team totals against the partner feed; the assumption is then checked against the feed's treatment of the shootout winner"
+    backlog: []
+  - item: "Playoff regime validation (flag 7: playoffs are validated separately)"
+    trigger: "April 2027, once playoff games exist; model.yaml regimes is regular only"
+    backlog: []
 flag_recommendations:
   2: "Record Ben's 2026-10-02 answer in the flags table: 40% goalie and game fee share with the LINEUPS fallback (done in this plan); C27 fixes the feasibility test behind it."
   3: "Replace the placeholder mix with the observed one (5 to 10 entries per slate, 1 to 2 per contest, fees $0.10 to $1, 20-max and 150-max GPPs plus Showdown) so family priors and C21's sleeve sizes fit what Ben plays."
@@ -478,3 +604,8 @@ flag_recommendations:
   13: "A hard rule for large_gpp, small_field and wta lineups, cash and satellite exempt, reported by the referee; C20."
   14: "Yes: price on the cached template table when the contest page is 403, labeled PAYOUT_SOURCE=TEMPLATE, never for satellites or resized contests; C16."
   15: "Yes: when a run starts after the first game, build the open games, exclude STARTED_GAME rows, pin started-game cells and name them in the report; C15."
+  16: "Default taken: persist only the small frozen record for a cloud run (the contest ids and forecast fields, a few KB) and never the 52 MB scenario directory; settle degrades to money and lineup match from data/entered and says so (B68, C29)."
+  17: "Default taken: when a relayed packet value is wrong, relaunch the adversary with the exact printed packet; one reply per round; qa-apply records the packet hash it evaluated against (B81, C31)."
+  18: "Default taken: tools/cloud_bootstrap.sh starts the history backfill in the background when the store is absent and Phase A never waits for it (B71, C39)."
+  19: "Default taken: the delivery message names the refresh command and the lock time; no cloud scheduled routine is created until Ben registers one (B77, C43)."
+  20: "Default taken: a first publish with no predecessor is never blocked for EDIT_STOP cells (it warns) and never changes cells of a game that has started; with a predecessor, pinned cells are diffed against it (B53, C14)."

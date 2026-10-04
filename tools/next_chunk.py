@@ -424,12 +424,12 @@ def render_queue(data: dict, rows: dict[str, Row], flags: dict[int, dict], today
     if unranked:
         L.append(f"Not ranked (no band in chunks.yaml): {', '.join(unranked)}.")
     L.append("")
-    # Decide these first: flags that block a queued chunk, in rank order of the first chunk each unblocks.
+    # Defaults taken: flags that block a queued chunk, in rank order of the first chunk each unblocks.
     first_rank: dict[int, int] = {}
     for rank, c in enumerate(queued, 1):
         for n in c.get("needs", []) or []:
             first_rank.setdefault(int(n), rank)
-    L.append("### Decide these first")
+    L.append("### Defaults taken (overturn any in one line)")
     L.append("")
     recs = data.get("flag_recommendations") or {}
     listed = sorted(set(first_rank) | set(recs), key=lambda n: (first_rank.get(n, 10 ** 6), n))
