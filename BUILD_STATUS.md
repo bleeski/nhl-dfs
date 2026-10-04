@@ -23,7 +23,7 @@ Tracker for `BUILD_CHUNKS.md` (final, 26 September 2026). Every development sess
 | C11 | DONE | C8, C3, C0b | 2026-09-30 | 2026-09-30 | a8db7bf | PASS | Milestone 4. Both 2026-09-29 runs settled PRE_LOCK, FREEZE_CHECK=OK: 3 of 5 contests EXACT (known net -$1.00 on $1.70), 2 await Ben's winnings.csv; ownership Pearson 0.64 to 0.76; gate tier every_run, nothing tuned. Backlog B25 to B28. |
 | C12 | GATED | C11 | | | | | Gate: learn/gates.allows("field_fit") per mode. DONE on "rejected" is valid. |
 | C13 | GATED | C11, C6 | | | | | Gate: C6 calibration deficiency plus a preregistration written first. DONE on "rejected" is valid. |
-| C14 | TODO | C10 | | | | | band 0; B52, B53; R01, R02 |
+| C14 | IN_PROGRESS | C10 | 2026-10-04 |  |  |  | band 0; B52, B53; R01, R02 |
 | C15 | TODO | C14 | | | | | band 0; B42 parts 2 and 3; flag 15 default in force |
 | C16 | TODO | C11 | | | | | band 1; B62, B50; flag 14 default in force |
 | C17 | TODO | C10 | | | | | band 1; B63, B20, B51, B66 |
