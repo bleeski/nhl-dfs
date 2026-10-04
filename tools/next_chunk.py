@@ -15,6 +15,8 @@ invents a rule chunks.yaml or BUILD_STATUS.md does not state.
                             --check passes and H resolves to a commit
     --block <id> --reason   set BLOCKED with reason
     --status                print the table and open [BEN] flags
+    --lint                  check that chunks.yaml, BUILD_STATUS.md, BACKLOG.md, pytest.ini and
+                            the Queue block of BUILD_CHUNKS.md agree; exit 1 on any defect
     --render-queue          rewrite the Queue section of BUILD_CHUNKS.md (between
                             the QUEUE:BEGIN and QUEUE:END markers) from chunks.yaml
                             and BUILD_STATUS.md; --dry-run prints it instead
@@ -495,6 +497,153 @@ def write_queue(build_chunks_path: Path, body: list[str]) -> None:
     build_chunks_path.write_text(ending.join(new_lines), encoding="utf-8", newline="")
 
 
+# --- lint: the queue, the backlog and the tracker agree --------------------------
+
+BACKLOG_STATUSES = ("NEW", "SHADOW", "READY", "DONE", "REJECTED")
+OPEN_BACKLOG = ("NEW", "SHADOW", "READY")
+# A DONE row may still be named by a live chunk when its Result cell says part of the work remains.
+_PARTIAL_WORDS = ("partial", "remainder", "open part", "later", "follow-up", "deferred", "not done")
+_BACKLOG_LINE = re.compile(r"^\|\s*(B\d+)\s*\|")
+_GENERATED = re.compile(r"^Generated (\d{4}-\d{2}-\d{2}) by ")
+_STATUS_CELL = re.compile(r"\|\s*(NEW|SHADOW|READY|DONE|REJECTED)\s*\|")
+
+
+def read_backlog(path: Path) -> tuple[dict[str, dict], list[str]]:
+    """BACKLOG.md rows by id: {status, result}. The second value lists defects (duplicate id, unreadable status)."""
+    rows: dict[str, dict] = {}
+    problems: list[str] = []
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        m = _BACKLOG_LINE.match(raw)
+        if not m:
+            continue
+        bid = m.group(1)
+        parts = [p.strip() for p in raw.strip().strip("|").split("|")]
+        cell = parts[8] if len(parts) == 10 else ""
+        m2 = re.match(r"(NEW|SHADOW|READY|DONE|REJECTED)\b", cell)
+        if m2 is None:
+            found = _STATUS_CELL.findall(raw)
+            m2 = re.match(r"(NEW|SHADOW|READY|DONE|REJECTED)\b", found[-1]) if found else None
+        if m2 is None:
+            problems.append(f"BACKLOG.md: {bid} has no readable status")
+            status, qualified = "?", False
+        else:
+            status, qualified = m2.group(1), "(" in cell  # "DONE (partial)": a qualified status keeps work open
+        if bid in rows:
+            problems.append(f"BACKLOG.md: {bid} appears twice")
+        rows[bid] = {"status": status, "qualified": qualified, "result": parts[9] if len(parts) == 10 else ""}
+    return rows, problems
+
+
+def _registered_markers(pytest_ini: Path) -> set[str]:
+    out: set[str] = set()
+    in_markers = False
+    for line in pytest_ini.read_text(encoding="utf-8").splitlines():
+        if line.strip().startswith("markers"):
+            in_markers = True
+            continue
+        if in_markers:
+            if line.startswith((" ", "\t")) and ":" in line:
+                out.add(line.strip().split(":", 1)[0])
+            elif line.strip():
+                in_markers = False
+    return out
+
+
+def lint_queue(root: Path) -> tuple[list[str], list[str]]:
+    """(problems, notes). Every check reads tracked files only; nothing is written."""
+    problems: list[str] = []
+    notes: list[str] = []
+    try:
+        data = load_data(root / "chunks.yaml")
+    except ValueError as exc:
+        return [str(exc)], notes
+    chunks = data["chunks"]
+    ids = [c["id"] for c in chunks]
+    lines = load_tracker_lines(root / "BUILD_STATUS.md")
+    rows = parse_rows(lines)
+    flags = parse_flags(lines)
+
+    for cid in ids:
+        if cid not in rows:
+            problems.append(f"{cid}: no row in BUILD_STATUS.md")
+
+    backlog, bproblems = read_backlog(root / "BACKLOG.md")
+    problems.extend(bproblems)
+
+    # Who carries each B-row: a chunk id, or "deferred: <item>" for a deferred item that is not a chunk.
+    owners: dict[str, list[str]] = {}
+
+    def own(bid: str, owner: str) -> None:
+        if owner not in owners.setdefault(bid, []):
+            owners[bid].append(owner)
+
+    for c in chunks:
+        for b in c.get("backlog") or []:
+            own(b, c["id"])
+    for d in data.get("deferred") or []:
+        owner = d.get("chunk") or f"deferred: {d.get('item')}"
+        for b in d.get("backlog") or []:
+            own(b, owner)
+
+    for bid, row in backlog.items():
+        if row["status"] in OPEN_BACKLOG and bid not in owners:
+            problems.append(f"{bid} is {row['status']} but no chunk or deferred item carries it")
+    for bid, who in owners.items():
+        row = backlog.get(bid)
+        if row is None:
+            problems.append(f"{bid} (carried by {', '.join(who)}) is not a BACKLOG.md row")
+            continue
+        live = [w for w in who if not (w in rows and rows[w].status == "DONE")]
+        if not live:
+            continue
+        if row["status"] == "REJECTED":
+            problems.append(f"{bid} is REJECTED but {', '.join(live)} still carries it")
+        elif row["status"] == "DONE" and not row["qualified"] and not any(w in row["result"].lower() for w in _PARTIAL_WORDS):
+            problems.append(f"{bid} is DONE (not qualified, and its Result does not say part remains) but {', '.join(live)} still carries it")
+        if len(who) > 1:
+            notes.append(f"{bid} is split across {', '.join(who)}")
+
+    for c in chunks:
+        for n in c.get("needs") or []:
+            if n not in flags:
+                problems.append(f"{c['id']} needs flag {n}, which is not in the Open [BEN] flags table")
+    for n in (data.get("flag_recommendations") or {}):
+        if n not in flags:
+            problems.append(f"flag_recommendations names flag {n}, which is not in the Open [BEN] flags table")
+
+    pytest_ini = root / "pytest.ini"
+    if pytest_ini.exists():
+        registered = _registered_markers(pytest_ini)
+        for c in chunks:
+            if c.get("marker") and c["marker"] not in registered:
+                problems.append(f"{c['id']}: marker {c['marker']} is not registered in pytest.ini (--strict-markers)")
+
+    build_chunks = root / "BUILD_CHUNKS.md"
+    text = build_chunks.read_text(encoding="utf-8") if build_chunks.exists() else ""
+    for c in chunks:
+        if "band" in c and not re.search(rf"^### {re.escape(c['id'])} [·-]", text, re.M):
+            problems.append(f"{c['id']}: no card heading '### {c['id']} · ...' in BUILD_CHUNKS.md")
+
+    body = text.replace("\r\n", "\n").split("\n")
+    try:
+        b = next(i for i, l in enumerate(body) if l.strip() == QUEUE_BEGIN)
+        e = next(i for i, l in enumerate(body) if l.strip() == QUEUE_END and i > b)
+    except StopIteration:
+        problems.append("BUILD_CHUNKS.md: the QUEUE:BEGIN and QUEUE:END markers are missing")
+    else:
+        committed = [l.rstrip() for l in body[b + 1:e]]
+        m = _GENERATED.match(committed[0]) if committed else None
+        if not m:
+            problems.append("BUILD_CHUNKS.md: the Queue block does not start with its 'Generated <date> by' line")
+        else:
+            fresh = [l.rstrip() for l in render_queue(data, rows, flags, today_str=m.group(1))]
+            if fresh != committed:
+                first = next((i for i, (x, y) in enumerate(zip(fresh, committed)) if x != y), min(len(fresh), len(committed)))
+                problems.append(f"BUILD_CHUNKS.md: the Queue block is stale (first difference at block line {first + 1}); "
+                                "rerun --render-queue")
+    return problems, notes
+
+
 # --- CLI --------------------------------------------------------------------
 
 
@@ -509,6 +658,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--reason", type=str, default=None)
     parser.add_argument("--status", action="store_true")
     parser.add_argument("--render-queue", action="store_true")
+    parser.add_argument("--lint", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
 
@@ -521,6 +671,15 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write(f"{exc}\n")
         return 1
     graph = {c["id"]: c for c in data["chunks"]}
+
+    if args.lint:
+        problems, notes = lint_queue(root)
+        for n in notes:
+            print(f"note: {n}")
+        for p in problems:
+            print(f"LINT: {p}")
+        print("LINT=OK" if not problems else f"LINT=FAIL ({len(problems)} problem(s))")
+        return 0 if not problems else 1
 
     if args.render_queue:
         lines = load_tracker_lines(status_path)

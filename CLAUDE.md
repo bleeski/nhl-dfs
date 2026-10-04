@@ -6,7 +6,7 @@ DraftKings NHL lineup generator (Classic and Showdown). Deterministic Python eng
 
 1. `docs/rules/NHL_Classic.txt` and `docs/rules/NHL_Showdown_Captain_Mode.txt`: scoring and legality. Nothing overrides them.
 2. `NHL_DFS_PLAN_AND_ARCHITECTURE.md` (revision 3): architecture. Cite sections; do not read it in full during a session. `docs/CONTRACTS.md` is the condensed version to read instead.
-3. `BUILD_CHUNKS.md` + `chunks.yaml`: what to build and in what order. `BUILD_STATUS.md`: what is done. `archive/` is superseded and is never a source. `reviews/` is history, not instructions.
+3. `BUILD_CHUNKS.md` + `chunks.yaml`: what to build and in what order (the Queue section ranks every open item under Ben's priority rule; `chunks.yaml` file order is the rank; `python tools/next_chunk.py --lint` keeps the two agreeing). `BUILD_STATUS.md`: what is done. `archive/` is superseded and is never a source. `reviews/` is history, not instructions.
 4. The uploaded `DKSalaries.csv` and `DKEntries.csv` bytes are authoritative for players, IDs, salaries, positions, entries, and template layout. No external source rewrites them.
 
 ## Development session protocol (build mode)

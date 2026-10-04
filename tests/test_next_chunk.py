@@ -431,3 +431,98 @@ def test_flip_to_todo_message_when_requires_files_now_present(fixture_root: Path
     result = run_next_chunk(fixture_root)
     assert result.returncode == 0
     assert "flip to TODO" in result.stdout
+
+
+# --- --lint: chunks.yaml, the tracker, BACKLOG.md, pytest.ini and the Queue block agree ----------
+
+LINT_BACKLOG = """# Backlog
+
+| ID | Date / evidence | Problem or hypothesis | Affected metric | Proposed bounded change | Confidence / sample | Acceptance test | Priority | Status | Result / version |
+|---|---|---|---|---|---|---|---|---|---|
+| B27 | e | p | m | c | conf | acc | Medium | READY | |
+| B45 | e | p | m | c | conf | acc | High | NEW | |
+"""
+
+LINT_PYTEST_INI = """[pytest]
+addopts = --strict-markers
+markers =
+    a0: chunk A0
+    q1: chunk Q1
+    q2: chunk Q2
+    q3: chunk Q3
+    q4: chunk Q4
+"""
+
+
+@pytest.fixture()
+def lint_root(queue_root: Path) -> Path:
+    (queue_root / "BACKLOG.md").write_text(LINT_BACKLOG, encoding="utf-8", newline="\n")
+    (queue_root / "pytest.ini").write_text(LINT_PYTEST_INI, encoding="utf-8", newline="\n")
+    cards = "".join(f"\n### {cid} · card\n\nbody\n" for cid in ("Q1", "Q2", "Q4"))
+    path = queue_root / "BUILD_CHUNKS.md"
+    path.write_bytes((path.read_bytes().decode("utf-8") + cards.replace("\n", "\r\n")).encode("utf-8"))
+    assert run_next_chunk(queue_root, "--render-queue").returncode == 0
+    return queue_root
+
+
+def lint(root: Path) -> subprocess.CompletedProcess:
+    return run_next_chunk(root, "--lint")
+
+
+def test_lint_passes_on_a_consistent_root(lint_root: Path):
+    result = lint(lint_root)
+    assert result.returncode == 0, result.stdout
+    assert "LINT=OK" in result.stdout
+
+
+def test_lint_flags_an_open_backlog_row_that_no_chunk_carries(lint_root: Path):
+    with open(lint_root / "BACKLOG.md", "a", encoding="utf-8", newline="\n") as f:
+        f.write("| B99 | e | p | m | c | conf | acc | Low | NEW | |\n")
+    result = lint(lint_root)
+    assert result.returncode == 1
+    assert "B99 is NEW but no chunk or deferred item carries it" in result.stdout
+
+
+def test_lint_flags_a_done_row_that_a_live_chunk_still_carries_unless_qualified(lint_root: Path):
+    path = lint_root / "BACKLOG.md"
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("| High | NEW |", "| High | DONE |"), encoding="utf-8", newline="\n")
+    bad = lint(lint_root)
+    assert bad.returncode == 1 and "B45 is DONE" in bad.stdout
+    path.write_text(text.replace("| High | NEW |", "| High | DONE (partial) |"), encoding="utf-8", newline="\n")
+    assert lint(lint_root).returncode == 0
+
+
+def test_lint_flags_a_backlog_id_that_appears_twice(lint_root: Path):
+    with open(lint_root / "BACKLOG.md", "a", encoding="utf-8", newline="\n") as f:
+        f.write("| B45 | e | p | m | c | conf | acc | Low | NEW | |\n")
+    result = lint(lint_root)
+    assert result.returncode == 1 and "B45 appears twice" in result.stdout
+
+
+def test_lint_flags_a_needs_flag_missing_from_the_flags_table(lint_root: Path):
+    path = lint_root / "chunks.yaml"
+    path.write_text(path.read_text(encoding="utf-8").replace("needs: [11]", "needs: [12]"), encoding="utf-8", newline="\n")
+    result = lint(lint_root)
+    assert result.returncode == 1 and "needs flag 12" in result.stdout
+
+
+def test_lint_flags_a_stale_queue_block(lint_root: Path):
+    path = lint_root / "chunks.yaml"
+    path.write_text(path.read_text(encoding="utf-8").replace("title: Ready to go", "title: Ready to roll"),
+                    encoding="utf-8", newline="\n")
+    result = lint(lint_root)
+    assert result.returncode == 1 and "Queue block is stale" in result.stdout
+    assert run_next_chunk(lint_root, "--render-queue").returncode == 0
+    assert lint(lint_root).returncode == 0
+
+
+def test_lint_flags_an_unregistered_marker_and_a_missing_card(lint_root: Path):
+    ini = lint_root / "pytest.ini"
+    ini.write_text(ini.read_text(encoding="utf-8").replace("    q2: chunk Q2\n", ""), encoding="utf-8", newline="\n")
+    chunks = lint_root / "BUILD_CHUNKS.md"
+    chunks.write_bytes(chunks.read_bytes().replace(b"### Q4 ", b"### Qx "))
+    result = lint(lint_root)
+    assert result.returncode == 1
+    assert "Q2: marker q2 is not registered" in result.stdout
+    assert "Q4: no card heading" in result.stdout
