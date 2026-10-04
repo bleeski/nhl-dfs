@@ -149,3 +149,57 @@ def compute(entries_current: EntriesFile, pool: SalaryPool, draftables: Draftabl
         unreadable_entries=frozenset(unreadable),
         not_addable=started | edit_stop | unswappable | no_start,
     )
+
+
+@dataclass(frozen=True)
+class Crossings:
+    """Changed cells a lock boundary forbids a new version to contain: one line per cell, by the state of the game of
+    the player removed or added (see publish_crossings)."""
+
+    started: tuple[str, ...] = ()
+    edit_stop: tuple[str, ...] = ()
+
+    def __bool__(self) -> bool:
+        return bool(self.started or self.edit_stop)
+
+
+def publish_crossings(reference: EntriesFile, proposed: EntriesFile, pool: SalaryPool, now_utc: datetime,
+                      buffer_s: int) -> Crossings:
+    """B53: the cells `proposed` changes against `reference` (the predecessor version, or the uploaded entries file when
+    there is none) that touch a game which has started or is inside the edit stop at `now_utc`: the player removed or
+    the player added. A cell left as it was is never reported, so a started game's lineup cells may stay in a new
+    version and only changing them, or adding a player from such a game, is a crossing (the pinned-cell diff late
+    swap makes before it writes). Unlike late swap's `not_addable` this does not treat a row with no known start time
+    as unaddable and ignores DK swappability: an initial run's salary file can carry neither and must still publish."""
+    ls = compute(reference, pool, None, now_utc, buffer_s)
+    buffer = timedelta(seconds=buffer_s)
+    in_edit_stop = frozenset(rid for rid, t in ls.start_utc.items() if t - buffer <= ls.now_utc < t)
+    perm = template_permutation(reference.roster_labels, reference.mode)
+    proposed_by_id = {e.entry_id: e for e in proposed.entries}
+
+    def role_of(text: str) -> str | None:
+        try:
+            return cell_role_id(text)
+        except ValueError:
+            return None  # an unreadable old cell is not a started game's cell
+
+    started: list[str] = []
+    edit_stop: list[str] = []
+    for e in reference.entries:
+        new_entry = proposed_by_id.get(e.entry_id)
+        if new_entry is None:
+            continue
+        for col, old_text in enumerate(e.cells):
+            old, new = role_of(old_text), role_of(new_entry.cells[col])
+            if old == new:
+                continue
+            for rid, verb in ((old, "replaces"), (new, "adds")):
+                row = pool.by_role_id.get(rid) if rid is not None else None
+                if row is None:
+                    continue
+                line = f"entry {e.entry_id} slot {perm[col]}: {verb} {row.name} ({row.team})"
+                if rid in ls.started_role_ids:
+                    started.append(line)
+                elif rid in in_edit_stop:
+                    edit_stop.append(line)
+    return Crossings(tuple(started), tuple(edit_stop))
