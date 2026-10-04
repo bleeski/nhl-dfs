@@ -158,6 +158,22 @@ coerced to a known value (CLAUDE.md); other vocabularies here that have no
 - Contest details (B24): every DK contest detail that answers during `run` (Phase B, provisional pass) is saved to
   `runs/<id>/contests/dk_contest_<id>.json` with `sources.json`, before lock.
 
+## Publication lock safety (C14, `build/state.py`, `locks.py`, `run.py`, `controller.py`)
+
+- Three `publish()` call sites exist (`run._export_and_publish`, `controller.apply_round`, `late_swap.run`). A boundary is a
+  game start or the edit-stop buffer. `publish(precheck=...)` runs the last lock check with both publish locks held, so a
+  wait for them (up to 60 s) is covered; a refusal raises `LockCrossed` (a `PublishRefused`) and writes nothing.
+- Controller (B52): `now` is the round-start time (deadline, records); `clock` is the live callable and defaults to the wall
+  clock whether or not `now` is given. Only a labeled rehearsal (`--as-of`) passes a fixed clock.
+- Initial run (B53): `_export_and_publish` (phases A, B, P, S; `clock` and `runtime` are required) diffs the new file against
+  the predecessor version, or the uploaded entries file for a first publish, with `locks.publish_crossings`. A changed cell
+  whose old or new occupant is in a started or edit-stop game refuses the version: the incumbent stays current, RUN_NOTES
+  and the manifest (`lock_stops`) say why. Unchanged cells of a started game are never a crossing, and a row with no known
+  start time is not "unaddable" here (late swap's `not_addable` is). Flag 20: a first publish ships with a warning on an
+  edit-stop change and publishes nothing on a started-game change.
+- The optional passes (phase B, provisional, scenario) do not start once a game has started, is inside the edit stop, or the
+  next open game is inside late swap's optional-work margin (`swap_objective.optional_work_ok`).
+
 ## Late swap and refresh objective (C9, `build/swap_objective.py`, `scenario_cache.py`, `live.py`)
 
 - Lock semantics are C2c's, unchanged: pinned cells (LOCKED, EDIT_STOP) byte-identical, no started or edit-stop
