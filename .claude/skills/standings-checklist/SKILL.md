@@ -21,7 +21,8 @@ DraftKings, log in, or read account state. Relay it to Ben in plain English, in 
    0 bytes, and drop it unmodified in `data/standings/inbox/`.
 4. Anything the scan cannot see: each `UNSEEN slate` line (a slate a review note mentions but whose entry file is
    not on this machine, for example one run in a cloud session). Say that those contests are owed but unlisted
-   until the DKEntries file is copied into `outputs/<slate>/` or the repo root. Never invent contest ids.
+   until its DKEntries file is saved with `scripts/standings_checklist.py --save-entered <file> --slate <slate id>`
+   and the `data/entered/` file it writes is committed. Never invent contest ids.
 5. Blank winnings amounts, if listed, as a separate settle task, not a standings pull.
 
 Never say "nothing awaiting" without also saying what the scan covered (the `scanned` lines) and what it could not see.
