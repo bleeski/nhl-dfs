@@ -619,22 +619,25 @@ def _export_and_publish(run: RunDir, entries: EntriesFile, pool: SalaryPool, a: 
     proposed = read_entries(staging)
     buffer_s = int(runtime["edit_stop_buffer_s"])
 
+    def cells(lines) -> int:  # a cell that loses one player and gains another is two lines
+        return len({x.split(":", 1)[0] for x in lines})
+
     def lock_check() -> str | None:
         incumbent = run.current_version()
         reference = read_entries(run.version_file(incumbent)) if incumbent is not None else entries
         found = locks_mod.publish_crossings(reference, proposed, pool, clock(), buffer_s)
         if incumbent is None:
             if found.edit_stop:
-                messages.append(f"phase {phase}: {len(found.edit_stop)} cell(s) are in a game inside the edit stop; "
+                messages.append(f"phase {phase}: {cells(found.edit_stop)} cell(s) are in a game inside the edit stop; "
                                 "published as built (nothing earlier to keep): " + "; ".join(found.edit_stop[:3]))
             if found.started:
-                return (f"a game started while the file was being built: {len(found.started)} cell(s) of a started game "
+                return (f"a game started while the file was being built: {cells(found.started)} cell(s) of a started game "
                         "would change (" + "; ".join(found.started[:3]) + "); nothing published. Changing started entries is "
                         "late swap (`nhl.ps1 late-swap` with the current export)")
             return None
         hit = found.started + found.edit_stop
         if hit:
-            return (f"a lock boundary was crossed while phase {phase} ran: {len(hit)} cell(s) of a started or edit-stop game "
+            return (f"a lock boundary was crossed while phase {phase} ran: {cells(hit)} cell(s) of a started or edit-stop game "
                     f"would change ({'; '.join(hit[:3])}); v{incumbent} stays current")
         return None
 

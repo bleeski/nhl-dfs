@@ -357,6 +357,7 @@ def test_r02_a_changed_started_game_cell_is_refused_but_started_cells_left_alone
     rec, m, msgs = _publish_phase_b(run, outs, sid, lineups, T_STARTED)  # AAA@BBB has started; the change is in AAA@BBB
     assert rec is None and _state(run, outs, sid) == before
     assert m["lock_stops"][0]["pass"] == "phase B publish" and any("v1 stays current" in x for x in msgs)
+    assert any("1 cell(s) of a started or edit-stop game" in x for x in msgs)  # one cell, though it loses and gains a player
     # the same moment, a change confined to the two later games: AAA@BBB's cells ride along unchanged and it publishes
     lineups, eid, k, old, new = _one_cell_change(run, OPEN_GAMES)
     rec, m, msgs = _publish_phase_b(run, outs, sid, lineups, T_STARTED)
