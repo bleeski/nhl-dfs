@@ -2,8 +2,7 @@ name: CI
 
 # Runs the full test suite on every pull request and on every push to master.
 # Tests that need Ben's real DK exports (tests/fixtures/real/, gitignored) skip loudly here, as they
-# do in a fresh cloud session. The tracker lint (python tools/next_chunk.py --lint) is not run yet:
-# it fails on master today (B87, B88, stale Queue block); add it once that is clean.
+# do in a fresh cloud session. The tracker lint runs first so BUILD_CHUNKS.md and chunks.yaml cannot drift.
 
 on:
   pull_request:
@@ -32,6 +31,9 @@ jobs:
 
       - name: Install (frozen lockfile)
         run: uv sync --frozen
+
+      - name: Tracker lint
+        run: uv run --frozen python tools/next_chunk.py --lint
 
       - name: Tests
         run: uv run --frozen pytest -q --durations=10
