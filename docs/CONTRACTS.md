@@ -174,6 +174,37 @@ coerced to a known value (CLAUDE.md); other vocabularies here that have no
 - The optional passes (phase B, provisional, scenario) do not start once a game has started, is inside the edit stop, or the
   next open game is inside late swap's optional-work margin (`swap_objective.optional_work_ok`).
 
+## Started slates (C15, `intake/salary.py`, `build/locks.py`, `run.py`, `late_swap.py`, `packet.py`)
+
+- A game is in progress when DraftKings writes the In-Progress marker in Game Info (salary file "In-Progress", entries
+  file's embedded list "In Progress"; the entries reader takes IDs only), or, for a run, when its Game Info start has
+  passed at the run's first clock read (`salary.mark_started`). Those rows live in `SalaryPool.started_rows` and are never
+  in `rows`, `by_role_id`, `persons` or `games` (flag 24). `salary.with_started_rows(pool)` is a copy that adds them back
+  to resolve, write, score and pin the cells a lineup already holds; every caller keeps them in its exclusion set, so a
+  started player is never a candidate or an addition. A started game is named by its teams ("BOS (in progress)") when only
+  the marker is known: the marker carries no opponent, so no AWAY@HOME is written for it.
+- Locks: a cell whose occupant is a started row is LOCKED "started" by the marker alone (no start time needed, the clock is
+  not consulted), the entry stays readable (not "unreadable"), and the ID is in `started_role_ids` and `not_addable`.
+  `publish_crossings` resolves such an ID through `started_rows`, so C14's guard (flag 20, unchanged) sees a changed
+  started-game cell although its row left the pool.
+- Late swap (B42 part 2): a fresh In-Progress salary file passed as the third file is a re-download of the same slate
+  (`added_rows_diff` accepts a row that is now In-Progress when ID, name, team, positions and salary are unchanged; a changed
+  salary is still refused). Pinned started cells go through `with_started_rows` for the re-solve, the scenario scorer
+  (`swap_objective.resolve(score_pool=...)`) and the exposure counts, and stay byte for byte.
+- Initial run (B42 part 3, flag 15): `run_slate` builds the open games. An entry that holds started-game players is solved
+  on its own with those cells pinned in their slots (late swap's repair under the baseline objective; started and DK-OUT
+  rows are not candidates); the other entries are filled from the bank with these counted as fixed. An entry no rebuild can
+  complete keeps its current cells if they are a complete legal lineup (DELIVERY_STATUS=DEGRADED_REVIEW), else the run
+  publishes nothing. A slate with no open game is refused (late swap). Leaving a started game out does not degrade
+  DELIVERY_STATUS (flag 26). The manifest's `started_slate`, RUN_NOTES and the printed notes name the started teams, the
+  excluded players, the open games built and the pinned cells. The written pinned cell is the writer's `Name (ID)` (ID and
+  slot unchanged); late swap keeps the original bytes. The optional passes stay off once a game has started (C14), so a
+  started-slate run is baseline-only (B89).
+- Slate id: the hash is over the selectable IDs plus the started rows' IDs (not other excluded rows), so a file made after a
+  game started has the id of the file made before it, and no existing slate's id changed.
+- `RunView` (QA packet, research request, controller) carries the started rows for lookups and locks only; they are never a
+  status, a research target or an alternative.
+
 ## Late swap and refresh objective (C9, `build/swap_objective.py`, `scenario_cache.py`, `live.py`)
 
 - Lock semantics are C2c's, unchanged: pinned cells (LOCKED, EDIT_STOP) byte-identical, no started or edit-stop
