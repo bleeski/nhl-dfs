@@ -25,7 +25,7 @@ Tracker for `BUILD_CHUNKS.md` (final, 26 September 2026). Every development sess
 | C13 | GATED | C11, C6 | | | | | Gate: C6 calibration deficiency plus a preregistration written first. DONE on "rejected" is valid. |
 | C14 | DONE | C10 | 2026-10-04 | 2026-10-04 | dd6c59c | PASS | band 0; B52, B53; R01, R02 |
 | C15 | DONE | C14 | 2026-10-05 | 2026-10-05 | d8d3ba9 | PASS | band 0; B42 parts 2 and 3; flag 15 default in force |
-| C16 | TODO | C11 | | | | | band 1; B62, B50; flag 14 default in force |
+| C16 | IN_PROGRESS | C11 | 2026-10-05 |  |  |  | band 1; B62, B50; flag 14 default in force |
 | C17 | TODO | C10 | | | | | band 1; B63, B20, B51, B66 |
 | C18 | TODO | C14 | | | | | band 1 (serves band 2 too); B55, B56; R04, R05 |
 | C19 | TODO | C17 | | | | | band 1; B43, B15 (first half) |
