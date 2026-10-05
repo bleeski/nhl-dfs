@@ -80,7 +80,10 @@ def _game_starts(pool: SalaryPool, draftables: Draftables | None) -> tuple[dict[
     starts: dict[str, datetime] = {}
     source: dict[str, str] = {}
     game_of: dict[str, str] = {}
+    marker = pool.started_by_role_id  # a pool that carries its started rows (with_started_rows): the marker decides, below
     for r in pool.rows:
+        if r.role_id in marker:
+            continue
         try:
             key, info = parse_game_info(r.game_info)
         except ValueError:

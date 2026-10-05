@@ -371,3 +371,21 @@ def test_a_showdown_slate_with_one_game_started_builds_the_other(tmp_path):
     teams = {x.role_id: x.team for x in read_salary(SD / "DKSalaries.csv").rows}
     assert not {teams[x] for lu in _lineups(r.public_path).values() for x in lu} & STARTED_TEAMS
     assert r.manifest["started_slate"]["open_games"] == ["CCC@DDD"]
+
+
+def test_the_qa_packet_and_research_request_work_on_a_run_that_holds_started_players(tmp_path):
+    """`slate` builds both after the run. They read the published file, whose pinned cells hold started-game players
+    that are not in the pool: the cells resolve, and nobody from the started game is a research target or an alternative."""
+    from nhl_dfs.build import packet
+    from nhl_dfs.build.state import open_run
+
+    r = _start(tmp_path, _in_progress(tmp_path), LS / "DKEntries.current.csv")
+    assert r.public_path is not None
+    run = open_run(tmp_path / "runs", r.run.run_id)
+    started = _started_ids()
+    req = packet.research_request(run, now=EARLY, runs_root=tmp_path / "runs")
+    assert not {p["role_id"] for p in req["players"]} & started
+    pk = packet.build(run, 1, now=EARLY, runs_root=tmp_path / "runs")
+    assert pk["locks"]["counts"]["LOCKED"] == r.manifest["started_slate"]["pinned_cells"]
+    assert pk["locks"]["started_games"] == ["AAA (in progress)", "BBB (in progress)"]
+    assert not {a["alt"]["role_id"] for a in pk.get("alternatives", [])} & started
