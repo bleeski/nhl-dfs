@@ -82,7 +82,7 @@ from nhl_dfs.contracts.statuses import (
 from nhl_dfs.data.sources import dk_public
 from nhl_dfs.export.writer import write_entries
 from nhl_dfs.intake.entries import EntriesFile, read_entries
-from nhl_dfs.intake.salary import PersonRows, SalaryPool, mark_started, parse_game_info, read_salary, with_started_rows
+from nhl_dfs.intake.salary import PersonRows, SalaryPool, mark_started, parse_game_info, read_salary, row_start, with_started_rows
 from nhl_dfs.models.projection import PriorProjection, objective as objective_from
 from nhl_dfs.referee.check_file import check_file
 
@@ -177,10 +177,15 @@ def slate_id_for(pool: SalaryPool) -> str:
 
     Neither DK file carries the draft group ID, and the slate lock is taken before any network
     call, so the key comes from the ID set: stable across re-downloads of the same group.
+    The set is the selectable rows plus the rows of games already in progress (C15, B42 part 3): DK's marker moves
+    those out of the pool but not out of the draft group, so a file downloaded after a game started has the id of the
+    file downloaded before it. Rows excluded for a data conflict stay out, as they always did; adding them would
+    change the id of every existing slate. (If every game has started and none carries a start time the date is
+    "nodate".)
     """
-    ids = ",".join(sorted(pool.by_role_id))
+    ids = ",".join(sorted(set(pool.by_role_id) | set(pool.started_by_role_id)))
     digest = hashlib.sha256(ids.encode("ascii")).hexdigest()[:10]
-    starts = sorted(g.start_utc for g in pool.games.values())
+    starts = sorted([g.start_utc for g in pool.games.values()] + [t for t in map(row_start, pool.started_rows) if t is not None])
     day = starts[0].astimezone(ZoneInfo("America/New_York")).strftime("%Y%m%d") if starts else "nodate"
     return f"{pool.mode.value}-{day}-{digest}"
 

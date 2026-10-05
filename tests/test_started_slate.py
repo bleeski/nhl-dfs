@@ -389,3 +389,62 @@ def test_the_qa_packet_and_research_request_work_on_a_run_that_holds_started_pla
     assert pk["locks"]["counts"]["LOCKED"] == r.manifest["started_slate"]["pinned_cells"]
     assert pk["locks"]["started_games"] == ["AAA (in progress)", "BBB (in progress)"]
     assert not {a["alt"]["role_id"] for a in pk.get("alternatives", [])} & started
+
+
+# -- the stable slate id --------------------------------------------------------------------------------------------
+
+# Literal ids of the fixtures as origin/master (a4c45e7) computes them: a pool with no game in progress must keep its id,
+# or every outputs/<slate>/, data/entered/<slate>.csv and settle record of an existing slate would be orphaned.
+PRE_START_IDS = {
+    "late_swap/classic": "classic-20261015-9bbe797c4e",
+    "late_swap/showdown2": "showdown-20261015-bbde96aa67",
+    "mini/classic": "classic-20260929-868f7d8a0d",
+    "mini/showdown": "showdown-20260929-ff72be646a",
+}
+
+
+@pytest.mark.parametrize("fixture", sorted(PRE_START_IDS))
+def test_a_pool_with_no_started_game_keeps_the_id_it_always_had(fixture):
+    from nhl_dfs.build.run import slate_id_for
+
+    assert slate_id_for(read_salary(TESTS / "fixtures" / fixture / "DKSalaries.csv")) == PRE_START_IDS[fixture]
+
+
+@pytest.mark.parametrize("marker", MARKERS)
+@pytest.mark.parametrize("fixture", ["late_swap/classic", "late_swap/showdown2"])
+def test_the_slate_id_of_a_started_game_file_equals_the_pre_start_id(tmp_path, fixture, marker):
+    from nhl_dfs.build.run import slate_id_for
+
+    pre = read_salary(TESTS / "fixtures" / fixture / "DKSalaries.csv")
+    post = read_salary(_mark(TESTS / "fixtures" / fixture / "DKSalaries.csv", tmp_path / "DKSalaries.csv", marker=marker))
+    assert post.started_rows and len(post.by_role_id) < len(pre.by_role_id)  # rows really left the pool
+    assert slate_id_for(post) == slate_id_for(pre) == PRE_START_IDS[fixture]
+
+
+def test_the_id_follows_the_whole_draft_group_not_the_rows_left_in_the_pool(tmp_path):
+    """Two different groups never share an id because of the marker: one more game started leaves a different set."""
+    from nhl_dfs.build.run import slate_id_for
+
+    one = read_salary(_mark(LS / "DKSalaries.csv", tmp_path / "one.csv"))
+    other = read_salary(_mark(LS / "DKSalaries.csv", tmp_path / "other.csv", game="CCC@DDD"))
+    assert slate_id_for(one) == slate_id_for(other)  # the same draft group, a different game in progress
+    swapped = tmp_path / "different.csv"
+    records = list(csv.reader(io.StringIO((LS / "DKSalaries.csv").read_bytes().decode("utf-8-sig"), newline="")))
+    records[1][records[0].index("ID")] = "99999999"
+    out = io.StringIO()
+    csv.writer(out, lineterminator="\r\n").writerows(records)
+    swapped.write_bytes(out.getvalue().encode("utf-8"))
+    assert slate_id_for(read_salary(swapped)) != slate_id_for(read_salary(LS / "DKSalaries.csv"))
+
+
+def test_a_started_slate_run_publishes_under_the_pre_start_slate_id(tmp_path):
+    """The file made after the game started lands in the same outputs/<slate>/ as the one made before it, so the
+    entered-contest list, settle and the added-rows diff all find one slate."""
+    for d in ("pre", "post", "clock"):
+        (tmp_path / d).mkdir()
+    before = _start(tmp_path / "pre", LS / "DKSalaries.csv", LS / "DKEntries.template.csv")
+    after = _start(tmp_path / "post", _in_progress(tmp_path), LS / "DKEntries.template.csv")
+    assert before.slate_id == after.slate_id == PRE_START_IDS["late_swap/classic"]
+    assert after.public_path == tmp_path / "post" / "outputs" / before.slate_id / "DKEntries.csv"
+    by_clock = _start(tmp_path / "clock", LS / "DKSalaries.csv", LS / "DKEntries.template.csv", clock=G1 + timedelta(minutes=10))
+    assert by_clock.slate_id == before.slate_id
