@@ -67,6 +67,8 @@ def render(m: dict[str, Any]) -> str:
         lines += _scenario_lines(m["scenario"])
     if m.get("objective"):
         lines += _objective_lines(m)
+    if m.get("started_slate"):
+        lines += _started_lines(m["started_slate"])
     if m.get("goalies"):
         from nhl_dfs.build.goalies import notes_lines
 
@@ -74,6 +76,25 @@ def render(m: dict[str, Any]) -> str:
     if m.get("messages"):
         lines += ["", "## Messages", ""] + [f"- {x}" for x in m["messages"]]
     return "\n".join(lines) + "\n"
+
+
+def _started_lines(s: dict[str, Any]) -> list[str]:
+    """C15 section: the games in progress, the players left out, the open games built, the cells that stayed."""
+    out = [
+        "",
+        "## Started slate (flag 15)",
+        "",
+        f"- Games in progress (teams): {', '.join(s['started_teams'])}; {s['excluded_rows']} player row(s) excluded and "
+        f"never added ({s['how']}).",
+        f"- Open games built: {', '.join(s['open_games']) or 'none'}.",
+        f"- Pinned cells (a started-game player the entries file already held, left as it is): {s['pinned_cells']} in "
+        f"{len(s['pinned_entries'])} entr{'y' if len(s['pinned_entries']) == 1 else 'ies'}.",
+    ]
+    if s.get("unrepaired_entries"):
+        out.append("- Entries kept as they were (no legal rebuild around the pinned cells): " + ", ".join(s["unrepaired_entries"]))
+    out.append("- Excluded players:")
+    out += [f"  - {team}: {', '.join(names)}" for team, names in s["excluded_players"].items()]
+    return out
 
 
 def _provisional_lines(p: dict[str, Any]) -> list[str]:

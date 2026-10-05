@@ -536,8 +536,10 @@ def provisional_linear(pool, rm: RoleModel) -> dict[str, float]:
 def resolve(requested: str, *, pool, work, st, started_games, dk_rec, runs_root, run_id: str, offline: bool, cache,
             clock, now: datetime, runtime: dict, fast: bool, optional_ok: tuple[bool, str], live=None,
             entry_ids=(), odds_snapshot=None, apply_state: Callable | None = None, persist_to=None,
-            overrides: list | None = None, goalie_inputs: tuple | None = None) -> Resolved:
-    """Try the objectives in the documented order from `requested`; never raises."""
+            overrides: list | None = None, goalie_inputs: tuple | None = None, score_pool=None) -> Resolved:
+    """Try the objectives in the documented order from `requested`; never raises. score_pool (C15): the pool whose
+    role rows the scenario scorer maps, `pool` plus the rows of games in progress, so a lineup that holds a pinned
+    started-game player is scored (default: `pool`)."""
     if requested not in ORDER:
         raise ValueError(f"objective must be one of auto, scenario, provisional, baseline (got {requested!r})")
     cfg = runtime.get("late_swap", {})
@@ -577,13 +579,13 @@ def resolve(requested: str, *, pool, work, st, started_games, dk_rec, runs_root,
             try:
                 n_use = int(cfg.get("fast_scenarios", 4000) if fast else cfg.get("full_scenarios", 8000))
                 notes: list[str] = []
-                so = ScenarioObjective(got, pool=pool, work=work, rm=rm, st=st, started_games=started_games, n_use=n_use,
+                so = ScenarioObjective(got, pool=score_pool or pool, work=work, rm=rm, st=st, started_games=started_games, n_use=n_use,
                                        now=now, odds_snapshot=odds_snapshot, live=None, notes=notes,
                                        persist_to=persist_to)
                 if live is not None:
                     from nhl_dfs.build import live as live_mod
 
-                    cond = live_mod.condition(so.sets["selection"], live, pool=pool, contests=got.contests, now=now,
+                    cond = live_mod.condition(so.sets["selection"], live, pool=score_pool or pool, contests=got.contests, now=now,
                                               needed_entries=entry_ids,
                                               max_age_min=float(runtime.get("live", {}).get("max_age_min", 15)))
                     notes += cond.notes
