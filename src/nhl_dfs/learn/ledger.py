@@ -5,7 +5,11 @@ Own entries are joined to their final rank by Entry ID; the payout comes from, i
 2. EXACT: the contest's payout table with the DK tie rule (the tied places' prizes pooled, split evenly,
    each share rounded down to the cent: build.objectives.split_tie). A table is used only when it is final:
    the contest filled (standings entries = maximum entries) or its prize pool is guaranteed;
-3. UNKNOWN: nothing is invented. The entry's fee is counted, its payout is null, and the slate is incomplete.
+3. TEMPLATE (C16, B50, flag 14): no table carries the contest's own id, but DraftKings' table for the same template
+   (same name without the game suffix, same max entries, same fee and prize pool: models/payout_templates) is on disk.
+   It is final by the contest's OWN facts (its lobby row's IsGuaranteed, or standings entries = max entries), never
+   for a satellite or a possibly resized contest. Labeled TEMPLATE, below EXACT, above UNKNOWN;
+4. UNKNOWN: nothing is invented. The entry's fee is counted, its payout is null, and the slate is incomplete.
 When both a reported amount and a table exist, the reported amount is booked and the table is a cross-check
 (a mismatch is flagged). Prize-table sources, each labeled: a file Ben saved from the browser
 (`dk_contest_<id>.json` beside the standings), an explicit `--prize-table` path, or the raw DK cache
@@ -32,7 +36,7 @@ from nhl_dfs.build.objectives import exact_curve, split_tie, to_cents
 from nhl_dfs.data.sources.dk_public import ContestDetail, parse_contest_detail
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-REPORTED, EXACT, UNKNOWN = "REPORTED", "EXACT", "UNKNOWN"
+REPORTED, EXACT, TEMPLATE, UNKNOWN = "REPORTED", "EXACT", "TEMPLATE", "UNKNOWN"
 WINNINGS_FIELDS = ["contest_id", "contest_name", "entry_id", "rank", "fee", "winnings_usd", "source", "noted_utc"]
 ET = ZoneInfo("America/New_York")
 
@@ -58,6 +62,8 @@ class PrizeTable:
     source: str
     final: bool
     final_note: str
+    kind: str = EXACT  # EXACT, or TEMPLATE: the table of another contest of the same template (C16)
+    template: dict | None = None  # a TEMPLATE table's record: the template contest id, tiers sha256, lobby snapshot
 
 
 def _load_json(path: Path) -> ContestDetail:
@@ -76,12 +82,37 @@ def _cached(contest_id: int, cache_root: Path) -> tuple[ContestDetail, str] | No
     return None
 
 
+def template_table(cid: int, templates, *, name: str = "", fee=None, satellite: bool = False,
+                   entries_n: int | None = None) -> tuple[PrizeTable | None, str]:
+    """(a TEMPLATE PrizeTable, "") for a contest no table carries, or (None, why not). Final only by the contest's own
+    facts: its lobby row's IsGuaranteed, or the standings count reaching its max entries. A not-final template table
+    is returned with final=False so settle names the reason on each entry instead of guessing a payout."""
+    m = templates.match(cid, satellite=satellite, fee=fee)
+    if isinstance(m, str):
+        return None, m
+    row = m.lobby
+    guaranteed = bool(row.guaranteed)  # the contest's own flag; a row that does not say is treated as not guaranteed
+    filled = entries_n is not None and entries_n >= row.max_entries
+    final = guaranteed or filled
+    if final:
+        note = ("guaranteed prize pool (lobby row)" if guaranteed else "") + ("; " if guaranteed and filled else "") + \
+               (f"filled ({entries_n} of {row.max_entries})" if filled else "")
+    else:
+        note = (f"not guaranteed and not filled ({entries_n} of {row.max_entries}): the contest may have been resized, "
+                f"so the template table is not used")
+    source = f"TEMPLATE: {m.label()}" + (f"; {m.note}" if m.note else "")
+    return PrizeTable(int(cid), m.table.detail, source, final, note.strip("; "), TEMPLATE, m.record()), ""
+
+
 def prize_tables(contest_ids, *, entries_n: dict[int, int], search_dirs=(), paths=(), cache_root: Path | None = None,
-                 saved_dir: Path | None = None, run_dirs=()) -> tuple[dict[int, PrizeTable], list[str]]:
+                 saved_dir: Path | None = None, run_dirs=(), templates=None,
+                 contest_meta: dict[int, tuple[str, str, bool]] | None = None) -> tuple[dict[int, PrizeTable], list[str]]:
     """contest id -> the final prize table from the first source that has one: an explicit path, the copy the run
     (or a run it descends from) saved before lock (run_dirs: runs/<id>/contests, backlog B24), a browser-saved file
     beside the standings, the copy an earlier settle saved in the run (saved_dir, with its original source), then the
-    raw DK cache."""
+    raw DK cache. A contest none of those cover gets, below every EXACT table, the cached table of its template
+    (C16, B50) when `templates` (models.payout_templates.TemplateStore) holds one; `contest_meta` is contest id ->
+    (name, fee as written, is a satellite) from the entries file."""
     cache_root = cache_root if cache_root is not None else REPO_ROOT / "data" / "raw"
     found: dict[int, tuple[ContestDetail, str]] = {}
     notes: list[str] = []
@@ -128,6 +159,14 @@ def prize_tables(contest_ids, *, entries_n: dict[int, int], search_dirs=(), path
     for cid in contest_ids:
         got = found.get(int(cid)) or _cached(int(cid), cache_root)
         if got is None:
+            if templates is not None:
+                name, fee, sat = (contest_meta or {}).get(int(cid), ("", None, False))
+                t, why = template_table(int(cid), templates, name=name, fee=fee, satellite=sat,
+                                        entries_n=entries_n.get(int(cid)))
+                if t is not None:
+                    out[int(cid)] = t
+                else:
+                    notes.append(f"contest {cid}: no template table ({why})")
             continue
         d, src = got
         n = entries_n.get(int(cid))
@@ -152,6 +191,8 @@ def save_tables(tables: dict[int, PrizeTable], saved_dir: Path) -> None:
     lp = saved_dir / "sources.json"
     labels = json.loads(lp.read_text(encoding="utf-8")) if lp.exists() else {}
     for cid, t in tables.items():
+        if t.kind == TEMPLATE:
+            continue  # another contest's table: saved as dk_contest_<cid>.json it would read back as this contest's EXACT one
         p = saved_dir / f"dk_contest_{cid}.json"
         if not p.exists():
             p.write_text(json.dumps(t.detail.raw, ensure_ascii=False), encoding="utf-8")
@@ -348,7 +389,7 @@ def settle(run, standings: list, contests_final: dict[int, PrizeTable], *, repor
         elif se is None:
             payout, src, detail = None, UNKNOWN, "no standings row for this entry (contest not in the standings supplied)"
         elif t_cents is not None:
-            payout, src, detail = t_cents, EXACT, t_detail
+            payout, src, detail = t_cents, table.kind, t_detail  # EXACT, or TEMPLATE (C16): below EXACT, above UNKNOWN
         else:
             payout, src, detail = None, UNKNOWN, (t_detail or "no prize table: DraftKings contest pages answer HTTP 403 "
                                                   "here; see the winnings template")

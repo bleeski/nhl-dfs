@@ -75,8 +75,9 @@ class CellLock(Enum):
 
 
 class PayoutSource(Enum):
-    EXACT = "EXACT"
-    PRIOR = "PRIOR"
+    EXACT = "EXACT"  # the contest's own table from the DraftKings contest endpoint
+    TEMPLATE = "TEMPLATE"  # DraftKings' cached table for the same template and max entries (C16, flag 14)
+    PRIOR = "PRIOR"  # the declared family prior in config/contest_families.yaml
 
 
 class OutcomeCalibration(Enum):

@@ -116,7 +116,7 @@ def _provisional_lines(p: dict[str, Any]) -> list[str]:
         out.append("- Contest detail problems: " + "; ".join(p["network"]))
     out += ["", "| Contest | Family (source) | PAYOUT_SOURCE | Field size (source) |", "|---|---|---|---|"]
     for c in p["contests"]:
-        out.append(f"| {c['contest_id']} {c['name']} | {c['family']} ({c['family_source']}) | {c['PAYOUT_SOURCE']} "
+        out.append(f"| {c['contest_id']} {c['name']} | {c['family']} ({c['family_source']}) | {_payout_cell(c)} "
                    f"| {c['field_size']} ({c['field_size_source']}) |")
     out += ["", "| Entry | Contest | Family | Projected mean pts, DTD-adjusted (provisional) | Lineup own % sum "
             "(provisional) | Dup proxy (provisional) | Field dup est. (provisional) | Band pts | DTD |",
@@ -128,6 +128,27 @@ def _provisional_lines(p: dict[str, Any]) -> list[str]:
             "likely duplicated. Field dup est.: sampled copies of the lineup scaled to the field size. Both are "
             "uncalibrated scenario proxies, not measured facts."]
     return out
+
+
+def _payout_cell(c: dict[str, Any]) -> str:
+    """PAYOUT_SOURCE cell: a TEMPLATE contest names the table it was priced on (C16), a PRIOR one the reason it has none."""
+    t = c.get("payout_template")
+    if t:
+        return f"TEMPLATE (table of contest {t['template_contest_id']}, {t['paid_places']:,} paid)"
+    if c["PAYOUT_SOURCE"] == "PRIOR" and c.get("payout_note"):
+        return f"PRIOR ({c['payout_note']})"
+    return c["PAYOUT_SOURCE"]
+
+
+def _prior_note(ev: dict[str, Any], contests: list[dict[str, Any]]) -> str:
+    """Overall PRIOR is the weakest contest: say which contests are PRIOR when others were priced on a table."""
+    if ev.get("PAYOUT_SOURCE") != "PRIOR":
+        return ""
+    prior = [c["contest_id"] for c in contests if c.get("PAYOUT_SOURCE") == "PRIOR"]
+    if prior and len(prior) < len(contests):
+        return (f" (PRIOR payout curves for contest(s) {', '.join(prior)}: their dollar figures are an uncalibrated "
+                "scenario proxy; the other contests were priced on a DraftKings table, see PAYOUT_SOURCE per contest)")
+    return " (PRIOR payout curves: every dollar figure is an uncalibrated scenario proxy)"
 
 
 def _pm(x, se, nd=3) -> str:
@@ -146,7 +167,7 @@ def _scenario_lines(s: dict[str, Any]) -> list[str]:
     out += [
         f"- {s['label']}. Version: {ver}.",
         "- Evidence on every figure below: " + " ".join(f"{k}={v}" for k, v in ev.items())
-        + (" (PRIOR payout curves: every dollar figure is an uncalibrated scenario proxy)" if ev.get("PAYOUT_SOURCE") == "PRIOR" else ""),
+        + _prior_note(ev, s.get("contests", [])),
         "- Scenarios: " + "; ".join(f"{p} {v['n']} (seed {v['seed']}, spec {v['spec_sha256']})" for p, v in s["scenarios"].items())
         + ". Discovery used design, the choice used selection, the figures below use referee.",
         "- Games (odds source per game; MODEL is the hockey model, never a market price): "
@@ -165,7 +186,7 @@ def _scenario_lines(s: dict[str, Any]) -> list[str]:
                    + ". Ownership in this section is read off these fields.")
     out += ["", "| Contest | Family | PAYOUT_SOURCE | Field size | Fee | Paid / cash line | First prize | Field |", "|---|---|---|---:|---:|---|---:|---|"]
     for c in s.get("contests", []):
-        out.append(f"| {c['contest_id']} {c['name']} | {c['family']} ({c['family_source']}) | {c['PAYOUT_SOURCE']} | {c['field_size']} "
+        out.append(f"| {c['contest_id']} {c['name']} | {c['family']} ({c['family_source']}) | {_payout_cell(c)} | {c['field_size']} "
                    f"| {c['fee']:.2f} | {c['paid_positions']} / {c['cash_line']} | {c['first_prize']:.2f} | {c['field']} |")
     out += ["", "Frontier (selection scenarios; dominated points removed; knobs that chose the same portfolio share a row):", "",
             "| Knobs (kappa) | Tail utility / fees | P(lose >= 80% of fees) | E[payout] $ | Max goalie fee share | Max game fee share "
