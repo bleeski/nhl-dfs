@@ -1,0 +1,39 @@
+name: CI
+
+# Runs the full test suite on every pull request and on every push to master.
+# Tests that need Ben's real DK exports (tests/fixtures/real/, gitignored) skip loudly here, as they
+# do in a fresh cloud session. The tracker lint runs first so BUILD_CHUNKS.md and chunks.yaml cannot drift.
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      # Same install path as tools/cloud_bootstrap.sh: uv.lock is authoritative.
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          python-version: "3.13"
+
+      - name: Install (frozen lockfile)
+        run: uv sync --frozen
+
+      - name: Tracker lint
+        run: uv run --frozen python tools/next_chunk.py --lint
+
+      - name: Tests
+        run: uv run --frozen pytest -q --durations=10

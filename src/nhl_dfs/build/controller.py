@@ -265,6 +265,20 @@ def _wall_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _is_path_arg(proposals) -> bool:
+    """True when `proposals` names a saved reply rather than carrying its text. A reply pasted inline is JSON that
+    can be longer than 255 bytes with no separator: Linux raises ENAMETOOLONG from exists() on it, Windows says
+    False, so any OS error here means "not a path"."""
+    if isinstance(proposals, Path):
+        return True
+    if not isinstance(proposals, str) or len(proposals) >= 400:
+        return False
+    try:
+        return Path(proposals).exists()
+    except (OSError, ValueError):
+        return False
+
+
 def apply_round(run, round_no: int, proposals, cfg: dict | None = None, *, now: datetime | None = None,
                 runs_root=None, outputs_root=None, apply_state: Callable | None = None,
                 clock: Callable[[], datetime] | None = None, source: str = "qa") -> RoundResult:
@@ -291,7 +305,7 @@ def apply_round(run, round_no: int, proposals, cfg: dict | None = None, *, now: 
     now = now or clock()
     runs_root = Path(runs_root) if runs_root is not None else run.path.parent
     outputs_root = Path(outputs_root) if outputs_root is not None else runs_root.parent / "outputs"
-    if isinstance(proposals, Path) or (isinstance(proposals, str) and len(proposals) < 400 and Path(proposals).exists()):
+    if _is_path_arg(proposals):
         path = Path(proposals)
         raw = path.read_bytes()
         text = raw.decode("utf-8-sig", errors="replace")
