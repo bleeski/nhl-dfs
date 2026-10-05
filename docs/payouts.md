@@ -40,6 +40,9 @@ settled contest when one is available (a tie in a standings export would settle 
 
 - `PAYOUT_SOURCE=EXACT`: the contest detail's payout table (cash per position; a tier with non-cash
   text is a ticket; a ticket's face value is read from a dollar amount in that text, else missing).
+- `PAYOUT_SOURCE=TEMPLATE` (C16, flag 14): DraftKings' cached table for the same template (name without the game suffix,
+  same max entries, fee and prize pool as the contest's lobby row), used when the contest page is unavailable. Never for a
+  satellite or a resized contest; the field size is the lobby's max entries. See docs/CONTRACTS.md, Payout templates.
 - `PAYOUT_SOURCE=PRIOR`: the declared family prior in `config/contest_families.yaml`
   (`payout_priors`): rake, paid fraction, a flat cash curve, a WTA single prize, satellite seats
   (face value = pool / seats) or a top-heavy power-law GPP curve whose last paid place gets

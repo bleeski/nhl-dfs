@@ -579,6 +579,12 @@ deferred:
   - item: "Settle's PRE_LOCK test on a started-slate run (B90)"
     trigger: "the first started-slate run Ben enters and settles (its manifest carries started_slate); a strict xfail in tests/test_started_slate.py flips when fixed"
     backlog: [B90]
+  - item: "Template payouts in cloud sessions (B91)"
+    trigger: "Ben answers flag 16 (B68, what a cloud run persists); a small committed store of DraftKings' tables and lobby facts would give cloud runs TEMPLATE instead of PRIOR"
+    backlog: [B91]
+  - item: "C16 exit-check wording and a run --as-of rehearsal flag (B92)"
+    trigger: "Ben saves the 10-02 DKSalaries_127 and a 10-02 DKEntries.csv under tests/fixtures/real (the same rehearsal should then print TEMPLATE for the 10-02 Daily Dollar); the flag waits for B88's rehearsal-output separation"
+    backlog: [B92]
   - item: "Score effects and OT shots (B7); per-strength SOG and block rates (B3)"
     trigger: "C25's clean calibration names the SOG-to-goal correlation or the per-strength rates as a deficiency outside tolerance"
     backlog: [B7, B3]

@@ -78,7 +78,7 @@ buffer, game not yet started), `LOCKED` (game has started).
 
 ## Evidence states
 
-- `PayoutSource`: `EXACT` | `PRIOR`
+- `PayoutSource`: `EXACT` | `TEMPLATE` | `PRIOR` (C16: TEMPLATE sits between; see Payout templates below)
 - `OutcomeCalibration`: `UNVALIDATED` | `SHADOW` | `VALIDATED`
 - `FieldCalibration`: `PRIOR` | `FITTED`
 
@@ -204,6 +204,36 @@ coerced to a known value (CLAUDE.md); other vocabularies here that have no
   game started has the id of the file made before it, and no existing slate's id changed.
 - `RunView` (QA packet, research request, controller) carries the started rows for lookups and locks only; they are never a
   status, a research target or an alternative.
+
+## Payout templates (C16, `models/payout_templates.py`, B62, B50, flag 14)
+
+- A contest whose DraftKings page is unavailable (403, offline) is priced on the cached table of the same template and
+  labeled `PAYOUT_SOURCE=TEMPLATE`; PRIOR stays for every contest with no match. One matcher serves the build
+  (`models/contests.resolve`) and settle (`learn/ledger.prize_tables`); it reads local files only and never fetches.
+- Template = name without the " (AAA @ BBB)" game suffix and stray spaces, plus max entries ("(Late)" stays: another
+  template). The lobby capture (`<cache root>/dk_lobby`, newest capture that lists the contest) gives the contest's name,
+  size, fee, prize pool, own `IsGuaranteed` and DraftKings' template id (`tmpl`); tables come from `<cache root>/dk_contest`,
+  every run's `contests/` and `settle/prize_tables/` copies and browser-saved `dk_contest_*.json`. Roots are read at call
+  time (tests point the cache root at an empty folder).
+- A match needs: a lobby row; not a satellite (name pattern or any ticket tier); same (name key, max entries); lobby fee equal
+  to the table's fee (and the entries file's); lobby prize pool equal to the table's `totalPayouts`; when both lobby rows
+  carry `tmpl` they are equal (a veto and a note, never a wider match). A table that was resized (`wasResized`,
+  `isResizable`), holds a ticket tier or whose tiers do not sum to `totalPayouts` is refused. Several tables of one key that
+  differ: the newest start wins and the note says so. Off-switch: `config/contest_families.yaml payout_templates.enabled`.
+- Build: a TEMPLATE contest takes its field size from the lobby row (`field_size_source=lobby`; the table's positions are in
+  terms of max entries) and its family from the matched table. Overall `PAYOUT_SOURCE` is the weakest contest: EXACT, TEMPLATE
+  (every contest EXACT or TEMPLATE, one TEMPLATE) or PRIOR; the same rule in `run` and late swap
+  (`contests.combine_payout_sources`). One printed line per contest: `PAYOUT_SOURCE=TEMPLATE contest <id> (table of contest
+  <id> ...)` or `PAYOUT_SOURCE=PRIOR contest <id> (<reason>)`. The manifest (`provisional.contests[*]`, `scenario.contests[*]`)
+  and RUN_NOTES carry the template contest id, paid places, tiers sha256 and lobby capture.
+- Settle: REPORTED > EXACT > TEMPLATE > UNKNOWN. A TEMPLATE table is final only by the contest's own facts (its lobby row's
+  `IsGuaranteed`, or standings entries >= max entries); otherwise the entries stay UNKNOWN with the reason (a possibly
+  resized contest). Not saved as `dk_contest_<settled id>.json` (it would read back as EXACT). TEMPLATE money counts as known
+  in net, drawdown and `complete_payout`; `winnings.csv` rows are still written for TEMPLATE entries (Ben's reported amount
+  is the only check that the template holds, REPORTED wins and a mismatch is noted); a settle notes when the table's tiers
+  sha256 differs from the one the run priced on.
+- Cloud sessions: `data/raw/` and `runs/` are gitignored, so a cloud container has no lobby capture and no tables and stays
+  PRIOR (reported per contest). Persisting them is B68's question (flag 16), not C16's.
 
 ## Late swap and refresh objective (C9, `build/swap_objective.py`, `scenario_cache.py`, `live.py`)
 
