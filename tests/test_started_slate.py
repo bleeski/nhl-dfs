@@ -466,3 +466,32 @@ def test_late_swap_scores_pinned_started_players_under_the_scenario_objective(tm
     assert r.manifest["changed_cells"]
     for c in r.manifest["changed_cells"]:
         assert pool.by_role_id[c["to"]].team not in STARTED_TEAMS
+
+
+def test_a_correctness_round_on_a_started_slate_run_keeps_the_pinned_cells(tmp_path):
+    """qa-apply and overrides-apply read the run's own salary file, where the started rows are not in the pool: the
+    pinned cells still resolve, stay, and the replacement for a player ruled out comes from the open games."""
+    import json
+
+    from nhl_dfs.build import controller
+    from nhl_dfs.build.state import open_run
+
+    r = _start(tmp_path, _in_progress(tmp_path), LS / "DKEntries.current.csv")
+    run = open_run(tmp_path / "runs", r.run.run_id)
+    started = _started_ids()
+    v1 = _lineups(r.public_path)
+    eid = r.manifest["started_slate"]["pinned_entries"][0]
+    victim = next(x for x in v1[eid] if x not in started)
+    reply = json.dumps({"overrides": [{
+        "type": "override", "role_id": victim, "nhl_id": None, "game_id": None, "field": "participation",
+        "old": "PLAYING", "new": "OUT", "effective_utc": (EARLY - timedelta(hours=1)).isoformat(),
+        "expiry_utc": (EARLY + timedelta(hours=6)).isoformat(), "source_url": "https://www.dailyfaceoff.com/teams/ccc/line-combinations",
+        "claim": "ruled out of tonight's game", "confidence": 0.95}]})
+    res = controller.apply_round(run, 1, reply, now=EARLY, clock=lambda: EARLY, runs_root=tmp_path / "runs",
+                                 outputs_root=tmp_path / "outputs", source="overrides")
+    assert res.published_version == 2, (res.stop_reason, res.decisions)
+    v2 = _lineups(run.version_file(2))
+    assert victim not in v2[eid]
+    for e, lu in v1.items():
+        assert [x for x in v2[e] if x in started] == [x for x in lu if x in started]
+        assert all(v2[e][k] == x for k, x in enumerate(lu) if x in started)  # each pinned cell in its slot
