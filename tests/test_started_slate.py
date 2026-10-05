@@ -495,3 +495,32 @@ def test_a_correctness_round_on_a_started_slate_run_keeps_the_pinned_cells(tmp_p
     for e, lu in v1.items():
         assert [x for x in v2[e] if x in started] == [x for x in lu if x in started]
         assert all(v2[e][k] == x for k, x in enumerate(lu) if x in started)  # each pinned cell in its slot
+
+
+def test_late_swap_of_a_run_built_from_the_in_progress_file_needs_no_third_file(tmp_path):
+    """The likeliest sequence: the started-slate run is the parent, and its own salary copy (In-Progress rows) is the one
+    late swap reads. The export's started-game cells stay and no started player is added."""
+    b = _start(tmp_path, _in_progress(tmp_path), LS / "DKEntries.template.csv")
+    cur = LS / "DKEntries.current.csv"
+    r = late_swap.run(b.run.run_id, cur, runs_root=tmp_path / "runs", as_of=G1 + timedelta(minutes=10), offline=True)
+    assert r.statuses["FILE_VALID"] == "TRUE", r.messages[:4]
+    started, pool = _started_ids(), read_salary(LS / "DKSalaries.csv")
+    before, after = _cells(cur), _cells(r.run.version_file(1))
+    for eid, row in before.items():
+        for k, text in enumerate(row):
+            if cell_role_id(text) in started:
+                assert after[eid][k] == text
+    assert {c["entry_id"] for c in r.manifest["changed_cells"]} == {"7100000001", "7100000005"}
+    assert all(pool.by_role_id[c["to"]].team not in STARTED_TEAMS for c in r.manifest["changed_cells"])
+    assert not any("not in the salary pool" in m for m in r.messages)
+
+
+@pytest.mark.xfail(strict=True, reason="B90: settle.forecast_status takes the first game from the pool, which has no row for the "
+                                       "started game, so a run built after it started can be called PRE_LOCK")
+def test_settle_calls_a_run_built_after_a_game_started_post_lock(tmp_path):
+    from nhl_dfs.build.manifest import read_manifest
+    from nhl_dfs.learn.settle import forecast_status
+
+    r = _start(tmp_path, _in_progress(tmp_path), LS / "DKEntries.template.csv", clock=G1 + timedelta(minutes=10))
+    status, _ = forecast_status(r.run, read_manifest(r.run), read_salary(r.run.inputs / "DKSalaries.csv"))
+    assert status == "POST_LOCK"
