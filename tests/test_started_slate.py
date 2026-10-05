@@ -448,3 +448,21 @@ def test_a_started_slate_run_publishes_under_the_pre_start_slate_id(tmp_path):
     assert after.public_path == tmp_path / "post" / "outputs" / before.slate_id / "DKEntries.csv"
     by_clock = _start(tmp_path / "clock", LS / "DKSalaries.csv", LS / "DKEntries.template.csv", clock=G1 + timedelta(minutes=10))
     assert by_clock.slate_id == before.slate_id
+
+
+def test_late_swap_scores_pinned_started_players_under_the_scenario_objective(tmp_path):
+    """The scenario scorer maps lineups to simulated columns by role id. A lineup that holds a pinned player whose row
+    left the pool needs that row in the scorer's pool (score_pool), or the repair of any other entry would raise."""
+    small = {"design": 300, "selection": 800, "referee": 800, "field_target": 400}
+    b = run_slate(LS / "DKSalaries.csv", LS / "DKEntries.template.csv", offline=True, baseline_only=False, scenario=True,
+                  scenario_n=small, out_root=tmp_path / "runs", clock=lambda: EARLY)
+    assert b.statuses["FILE_VALID"] == "TRUE" and b.run.path.joinpath("scenario").exists()
+    cur = LS / "DKEntries.current.csv"
+    r = late_swap.run(b.run.run_id, cur, runs_root=tmp_path / "runs", as_of=EARLY, offline=True,
+                      salary_path=_in_progress(tmp_path), objective="scenario")
+    assert r.statuses["FILE_VALID"] == "TRUE", r.messages[:5]
+    assert r.manifest["objective"]["kind"] == "scenario", r.manifest["objective"]
+    pool = read_salary(LS / "DKSalaries.csv")
+    assert r.manifest["changed_cells"]
+    for c in r.manifest["changed_cells"]:
+        assert pool.by_role_id[c["to"]].team not in STARTED_TEAMS
