@@ -69,7 +69,7 @@ from nhl_dfs.contracts.statuses import (
 from nhl_dfs.data.sources import dk_public
 from nhl_dfs.export.writer import field_spans, format_cell
 from nhl_dfs.intake.entries import EntriesFile, cell_role_id, physical_lines, read_entries, template_permutation
-from nhl_dfs.intake.salary import SalaryPool, added_rows_diff, read_salary
+from nhl_dfs.intake.salary import SalaryPool, added_rows_diff, read_salary, with_started_rows
 from nhl_dfs.referee.check_file import check_file
 
 KEEP_BONUS = 1000.0  # points; larger than any lineup's objective, so fewer changes always win
@@ -372,6 +372,9 @@ def swap_core(
     slate_id = parent_m["slate_id"]
     salary_file = Path(salary_path) if salary_path else parent.inputs / "DKSalaries.csv"
     pool = read_salary(salary_file)
+    # C15 (B42): occupants of a game in progress are pinned cells whose rows are not selectable; the solver, the scorer
+    # and the exposure counts resolve them through spool, and ls.not_addable keeps them out of every free cell.
+    spool = with_started_rows(pool)
     current = read_entries(current_path)
     # A rehearsal clock drives locks only; the run id and created time are always real.
     real_clock = (lambda: datetime.now(timezone.utc)) if rehearsal is not None else clock
@@ -530,7 +533,7 @@ def swap_core(
         open_ids = [rid for k, rid in enumerate(before) if k not in pin]
         if any(rid is None or rid in excluded_rows for rid in open_ids):
             return True
-        return not check_lineup([pool.by_role_id[r] for r in before], mode).ok
+        return not check_lineup([spool.by_role_id[r] for r in before], mode).ok
 
     targets = []
     for e in current.entries:
@@ -570,6 +573,7 @@ def swap_core(
         ok = swap_objective.optional_work_ok(ls, pool, open_games, clock(), runtime)
         resolved = swap_objective.resolve(
             objective, pool=pool, work=pool_without(pool, excluded_rows), st=st, started_games=ls.started_games,
+            score_pool=spool,
             dk_rec=rec, runs_root=runs_root, run_id=parent.run_id, offline=offline, cache=cache, clock=clock, now=clock(),
             runtime=runtime, fast=fast, optional_ok=ok, live=standings, entry_ids=entry_ids, apply_state=apply_state,
             persist_to=run.path if eager_objective else None, odds_snapshot=odds_snapshot, overrides=overrides,
@@ -595,7 +599,7 @@ def swap_core(
     person_n: Counter[str] = Counter()
     for eid, lineup in final.items():
         keep = lineup if eid not in targets else [pins[eid].get(k) for k in range(size)]
-        person_n.update(pool.by_role_id[r].person_key for r in keep if r is not None and r in pool.by_role_id)
+        person_n.update(spool.by_role_id[r].person_key for r in keep if r is not None and r in spool.by_role_id)
     cap = caps.person_cap(len(current.entries))
     outcomes: dict[str, EntryOutcome] = {}
     decided: list[list[str]] = [lu for eid, lu in final.items() if eid not in targets and all(lu)]
@@ -606,17 +610,17 @@ def swap_core(
     t_sc = time.perf_counter()
     for eid in targets:
         before, pin = befores[eid], pins[eid]
-        pinned_people = {pool.by_role_id[r].person_key for r in pin.values()}
+        pinned_people = {spool.by_role_id[r].person_key for r in pin.values()}
         capped = frozenset(r.role_id for r in pool.rows if person_n[r.person_key] >= cap and r.person_key not in pinned_people)
         overlaps = [] if fast else [(lu, size - 2) for lu in decided]
         steps: list = []
         lineup, route, relax, detail = _solve_entry(
-            pool, mode, linear, before, pin, fast=fast,
+            spool, mode, linear, before, pin, fast=fast,
             exclude_rows=excluded_rows | ls.not_addable, capped_rows=capped, overlaps=overlaps, time_limit_s=time_limit,
             steps=steps)
         if lineup is not None and so is not None and route == "milp" and so.has_contest(contest_of[eid]):
             if time.perf_counter() - t_sc < budget:
-                cands = _alternatives(pool, mode, linear, before, pin, lineup, fast=fast,
+                cands = _alternatives(spool, mode, linear, before, pin, lineup, fast=fast,
                                       exclude_rows=excluded_rows | ls.not_addable, step=steps[-1], k=k_alt,
                                       time_limit_s=time_limit)
                 others = [final[x] for x in final if x != eid and contest_of[x] == contest_of[eid] and all(final[x])]
@@ -632,7 +636,7 @@ def swap_core(
             if all(before):
                 decided.append(list(before))
             continue
-        placed = _place(before, pin, list(lineup), pool, mode)
+        placed = _place(before, pin, list(lineup), spool, mode)
         for k, rid in enumerate(placed):
             if k not in pin:
                 person_n[pool.by_role_id[rid].person_key] += 1
@@ -667,8 +671,8 @@ def swap_core(
         messages.append(f"entry {o.entry_id}: {o.detail}; cells kept{tail}")
 
     # Pinned exposures over cap (never removed; reported).
-    pinned_n = Counter(pool.by_role_id[r].person_key for p in pins.values() for r in p.values())
-    names = {r.person_key: r.name for r in pool.rows}
+    pinned_n = Counter(spool.by_role_id[r].person_key for p in pins.values() for r in p.values())
+    names = {r.person_key: r.name for r in spool.rows}
     m["pinned_over_cap"] = [{"name": names[pk], "entries": n, "cap": cap} for pk, n in pinned_n.most_common() if n > cap]
     if m["pinned_over_cap"]:
         messages.append("pinned exposure over cap (locked, cannot be removed): "
@@ -717,13 +721,13 @@ def swap_core(
     m["statuses"]["DELIVERY_STATUS"] = (DeliveryStatus.DEGRADED_REVIEW if degraded else DeliveryStatus.CHECKED).value
     assignment = Assignment(
         by_entry={eid: tuple(lu) for eid, lu in final.items()},
-        exposures=dict(Counter(lineup_key([pool.by_role_id[r] for r in lu], mode) for lu in final.values() if all(lu))),
-        person_exposures=dict(Counter(pool.by_role_id[r].person_key for lu in final.values() for r in lu if r)),
-        captain_exposures=dict(Counter(pool.by_role_id[lu[0]].person_key for lu in final.values() if lu[0]))
+        exposures=dict(Counter(lineup_key([spool.by_role_id[r] for r in lu], mode) for lu in final.values() if all(lu))),
+        person_exposures=dict(Counter(spool.by_role_id[r].person_key for lu in final.values() for r in lu if r)),
+        captain_exposures=dict(Counter(spool.by_role_id[lu[0]].person_key for lu in final.values() if lu[0]))
         if mode is Mode.SHOWDOWN else {},
         overlap_max=0,
     )
-    m["exposures_top20"] = exposures_top20(assignment, pool)
+    m["exposures_top20"] = exposures_top20(assignment, spool)
     m["goalies"] = goalies.record(board, goalies.table(board, pool, final, pins))
     if m["goalies"]["GOALIE_GATE"] == "NOT_STARTING":
         m["statuses"]["DELIVERY_STATUS"] = DeliveryStatus.DEGRADED_REVIEW.value

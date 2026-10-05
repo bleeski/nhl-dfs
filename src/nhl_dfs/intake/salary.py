@@ -12,7 +12,7 @@ import hashlib
 import io
 import re
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -78,10 +78,18 @@ class SalaryPool:
     conflicts: list[Conflict]
     sha256: str
     raw: bytes
+    # C15 (B42): rows of games already in progress. They are never selectable (not in rows, by_role_id, persons or
+    # games), but an entry cell may still hold one: it is a pinned cell, and its row is what writes, scores and
+    # checks that cell. DK's marker carries no teams pair or start time, so a started game is known by its teams.
+    started_rows: list[PoolRow] = field(default_factory=list)
 
     @property
     def excluded_role_ids(self) -> frozenset[str]:
         return frozenset(rid for c in self.conflicts if c.excluded for rid in c.role_ids)
+
+    @property
+    def started_by_role_id(self) -> dict[str, PoolRow]:
+        return {r.role_id: r for r in self.started_rows}
 
 
 def parse_game_info(text: str) -> tuple[str, GameInfo]:
@@ -176,16 +184,7 @@ def read_salary(path) -> SalaryPool:
     excluded = {rid for c in conflicts if c.excluded for rid in c.role_ids}
     rows = [r for r in parsed if r.role_id not in excluded]
 
-    persons: dict[str, PersonRows] = {}
-    for r in rows:
-        current = persons.get(r.person_key, PersonRows())
-        if mode is Mode.CLASSIC:
-            current = PersonRows(classic=r)
-        elif "CPT" in r.roster_positions:
-            current = PersonRows(cpt=r, flex=current.flex)
-        else:
-            current = PersonRows(cpt=current.cpt, flex=r)
-        persons[r.person_key] = current
+    persons = _persons_of(rows, mode)
 
     if mode is Mode.SHOWDOWN:
         conflicts.extend(_showdown_pair_reports(persons))
@@ -201,7 +200,64 @@ def read_salary(path) -> SalaryPool:
         conflicts=conflicts,
         sha256=hashlib.sha256(raw).hexdigest(),
         raw=raw,
+        started_rows=started,
     )
+
+
+def _persons_of(rows: list[PoolRow], mode: Mode) -> dict[str, PersonRows]:
+    persons: dict[str, PersonRows] = {}
+    for r in rows:
+        current = persons.get(r.person_key, PersonRows())
+        if mode is Mode.CLASSIC:
+            current = PersonRows(classic=r)
+        elif "CPT" in r.roster_positions:
+            current = PersonRows(cpt=r, flex=current.flex)
+        else:
+            current = PersonRows(cpt=current.cpt, flex=r)
+        persons[r.person_key] = current
+    return persons
+
+
+def with_started_rows(pool: SalaryPool) -> SalaryPool:
+    """The pool with its started-game rows put back into rows, by_role_id and persons (C15). For resolving, pinning,
+    scoring and writing the cells a lineup already holds from a game in progress; the result is never a candidate
+    source, so every caller keeps the started ids in its exclusion set. The input is unchanged."""
+    extra = [r for r in pool.started_rows if r.role_id not in pool.by_role_id]
+    if not extra:
+        return pool
+    rows = pool.rows + extra
+    return replace(pool, rows=rows, by_role_id={r.role_id: r for r in rows}, persons=_persons_of(rows, pool.mode),
+                   teams=frozenset(r.team for r in rows))
+
+
+def mark_started(pool: SalaryPool, now_utc: datetime) -> SalaryPool:
+    """Rows whose Game Info start time has passed at `now_utc` become started rows, exactly as DK's In-Progress marker
+    does at intake (C15, flag 15): out of rows, by_role_id, persons and games, an excluded STARTED_GAME conflict, and
+    the game's rows kept in started_rows. Decided once, by the clock the run reads at its start; a started game stays
+    started. The input is unchanged; a pool with no game past its start is returned as is."""
+    now = now_utc.astimezone(timezone.utc)
+    late = [r for r in pool.rows if row_start(r) is not None and row_start(r) <= now]
+    if not late:
+        return pool
+    drop = {r.role_id for r in late}
+    rows = [r for r in pool.rows if r.role_id not in drop]
+    teams = ", ".join(sorted({r.team for r in late}))
+    conflicts = list(pool.conflicts) + [Conflict(
+        "STARTED_GAME", tuple(r.role_id for r in late),
+        f"{len(late)} row(s) from started game(s) ({teams}): Game Info start time passed at the run's clock; "
+        "excluded, never added to a lineup", True)]
+    return replace(pool, rows=rows, by_role_id={r.role_id: r for r in rows}, persons=_persons_of(rows, pool.mode),
+                   teams=frozenset(r.team for r in rows),
+                   games={k: g for k, g in pool.games.items() if g.start_utc > now}, conflicts=conflicts,
+                   started_rows=list(pool.started_rows) + late)
+
+
+def row_start(r: PoolRow) -> datetime | None:
+    """The scheduled start (UTC) a row's Game Info gives, or None for the In-Progress marker or any unparsable text."""
+    try:
+        return parse_game_info(r.game_info)[1].start_utc
+    except ValueError:
+        return None
 
 
 def _find_conflicts(rows: list[PoolRow], mode: Mode) -> list[Conflict]:
@@ -303,13 +359,21 @@ class SalaryDiff:
 
 
 def added_rows_diff(old: SalaryPool, new: SalaryPool) -> SalaryDiff:
-    removed = [f"{r.name} ({r.role_id})" for r in old.rows if r.role_id not in new.by_role_id]
+    # C15: a row the fresh file marks In-Progress is the same row in a game that has since started (B42), not a removal.
+    # Its identity fields are still compared; only Game Info, which DK replaces with the marker, is not.
+    new_started = new.started_by_role_id
+    removed = [f"{r.name} ({r.role_id})" for r in old.rows if r.role_id not in new.by_role_id and r.role_id not in new_started]
     changed, appg = [], 0
     for r in old.rows:
         n = new.by_role_id.get(r.role_id)
+        started_now = n is None and r.role_id in new_started
+        if started_now:
+            n = new_started[r.role_id]
         if n is None:
             continue
         for f in _KEPT_FIELDS:
+            if started_now and f == "game_info":
+                continue
             a, b = getattr(r, f), getattr(n, f)
             if a != b:
                 show = (lambda v: "/".join(sorted(v))) if f == "roster_positions" else str
