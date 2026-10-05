@@ -62,12 +62,16 @@ class RunView:
         from nhl_dfs.build.run import salary_statuses
         from nhl_dfs.build.late_swap import _canonical
         from nhl_dfs.intake.entries import read_entries
-        from nhl_dfs.intake.salary import read_salary
+        from nhl_dfs.intake.salary import read_salary, with_started_rows
 
         self.run = run
         self.runs_root = Path(runs_root) if runs_root is not None else run.path.parent
         self.m = read_manifest(run)
-        self.pool = read_salary(run.inputs / "DKSalaries.csv")
+        selectable = read_salary(run.inputs / "DKSalaries.csv")
+        # C15: a run built after a game started holds that game's players in pinned cells; their rows resolve here
+        # (lineups, locks, the controller's re-solve) but are never a status, a research target or an alternative.
+        self.pool = with_started_rows(selectable)
+        self.started = frozenset(selectable.started_by_role_id)
         v = run.current_version()
         if v is None:
             raise ValueError(f"run {run.run_id} has no published version")
@@ -76,7 +80,7 @@ class RunView:
         self.entries = read_entries(self.version_path)
         self.lineups = {e.entry_id: _canonical(self.entries, e) for e in self.entries.entries}
         self.contest_of = {e.entry_id: str(e.contest_id) for e in self.entries.entries}
-        self.st = salary_statuses(self.pool)
+        self.st = salary_statuses(selectable)
         self.mode = self.pool.mode
         self.slots = CLASSIC_SLOTS if self.mode is Mode.CLASSIC else SHOWDOWN_SLOTS
         from nhl_dfs.models.contests import fee_value
@@ -206,7 +210,7 @@ def _alternatives(v: RunView, cfg: dict, top: list[str], pinned_people: set[str]
         me = rows.classic or rows.flex
         if me is None:
             continue
-        cands = [r for r in v.pool.rows if r.person_key not in used and r.position == me.position
+        cands = [r for r in v.pool.rows if r.person_key not in used and r.role_id not in v.started and r.position == me.position
                  and r.roster_positions == me.roster_positions and me.salary - lo <= r.salary <= me.salary + hi
                  and v.st.get(r.role_id, (Participation.PLAYING,))[0] is not Participation.OUT]
         floor = 0.5 * means.get(me.role_id, 0.0)  # an alternative must be a plausible substitute, not any cheap body

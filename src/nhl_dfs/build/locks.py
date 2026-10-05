@@ -8,6 +8,9 @@ A cell's state comes from its current occupant:
   OPEN       otherwise, and every blank cell
 A cell that cannot be read, or holds an ID that is not in the salary pool, is pinned (LOCKED,
 reason "unreadable") and its entry is left unchanged.
+A cell whose occupant is a started-game row (the salary file's In-Progress marker, C15) is LOCKED "started" by
+the marker alone: no start time is needed, and the row having left the selectable pool does not make the entry
+unreadable.
 
 Start time = draftables competition start (matched by draftable ID == role ID), else the
 salary file's Game Info. Participation and eligibility are NOT lock inputs; they are
@@ -24,7 +27,7 @@ from datetime import datetime, timedelta, timezone
 from nhl_dfs.contracts.statuses import CellLock
 from nhl_dfs.data.sources.dk_public import Draftables
 from nhl_dfs.intake.entries import EntriesFile, cell_role_id, template_permutation
-from nhl_dfs.intake.salary import SalaryPool, parse_game_info
+from nhl_dfs.intake.salary import SalaryPool, parse_game_info, row_start
 
 REASON_STARTED = "started"
 REASON_EDIT_STOP = "edit stop"
@@ -77,7 +80,10 @@ def _game_starts(pool: SalaryPool, draftables: Draftables | None) -> tuple[dict[
     starts: dict[str, datetime] = {}
     source: dict[str, str] = {}
     game_of: dict[str, str] = {}
+    marker = pool.started_by_role_id  # a pool that carries its started rows (with_started_rows): the marker decides, below
     for r in pool.rows:
+        if r.role_id in marker:
+            continue
         try:
             key, info = parse_game_info(r.game_info)
         except ValueError:
@@ -100,9 +106,10 @@ def compute(entries_current: EntriesFile, pool: SalaryPool, draftables: Draftabl
         d.draftable_id for d in (draftables.rows if draftables is not None else [])
         if d.is_swappable is False and d.draftable_id in pool.by_role_id
     )
-    started = frozenset(rid for rid, t in starts.items() if now >= t)
-    edit_stop = frozenset(rid for rid, t in starts.items() if t - buffer <= now < t)
-    started_games = frozenset(game_of[r] for r in started)
+    marker = pool.started_by_role_id  # started by DK's marker (or by an earlier clock reduction), not by this clock
+    started = frozenset(rid for rid, t in starts.items() if now >= t) | frozenset(marker)
+    edit_stop = frozenset(rid for rid, t in starts.items() if t - buffer <= now < t) - started
+    started_games = frozenset(game_of[r] for r in started if r in game_of) | frozenset(_marker_games(pool))
     edit_stop_games = frozenset(game_of[r] for r in edit_stop) - started_games
 
     perm = template_permutation(entries_current.roster_labels, entries_current.mode)
@@ -119,6 +126,11 @@ def compute(entries_current: EntriesFile, pool: SalaryPool, draftables: Draftabl
                 continue
             if rid is None:
                 cells[(e.entry_id, k)] = CellState(CellLock.OPEN, REASON_EMPTY, None)
+                continue
+            if rid in marker:
+                row = marker[rid]
+                cells[(e.entry_id, k)] = CellState(
+                    CellLock.LOCKED, f"{REASON_STARTED}: {row.team} game is in progress (DraftKings marker)", rid, row_start(row))
                 continue
             if rid not in pool.by_role_id:
                 cells[(e.entry_id, k)] = CellState(CellLock.LOCKED, f"{REASON_UNREADABLE}: ID {rid} is not in the salary pool", rid)
@@ -149,6 +161,18 @@ def compute(entries_current: EntriesFile, pool: SalaryPool, draftables: Draftabl
         unreadable_entries=frozenset(unreadable),
         not_addable=started | edit_stop | unswappable | no_start,
     )
+
+
+def _marker_games(pool: SalaryPool) -> set[str]:
+    """Names of the games the pool's started rows belong to: the game key where the row still has its Game Info, else
+    the team ("BOS (in progress)"): DK's marker names no opponent, so no AWAY@HOME is written for it."""
+    out: set[str] = set()
+    for r in pool.started_rows:
+        try:
+            out.add(parse_game_info(r.game_info)[0])
+        except ValueError:
+            out.add(f"{r.team} (in progress)")
+    return out
 
 
 @dataclass(frozen=True)
@@ -194,7 +218,7 @@ def publish_crossings(reference: EntriesFile, proposed: EntriesFile, pool: Salar
             if old == new:
                 continue
             for rid, verb in ((old, "replaces"), (new, "adds")):
-                row = pool.by_role_id.get(rid) if rid is not None else None
+                row = (pool.by_role_id.get(rid) or pool.started_by_role_id.get(rid)) if rid is not None else None
                 if row is None:
                     continue
                 line = f"entry {e.entry_id} slot {perm[col]}: {verb} {row.name} ({row.team})"
