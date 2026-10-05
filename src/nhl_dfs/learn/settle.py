@@ -165,6 +165,52 @@ def _backlog_rows(rec: dict, sl, joins, fg) -> list[backlog_mod.Row]:
     return rows
 
 
+def template_inputs(entries_file, contest_ids, cache, runs_root: Path, standings_dir: Path, notes: list[str]):
+    """(TemplateStore | None, contest id -> (name, fee, is a satellite)) for ledger.prize_tables (C16, B50, flag 14). The
+    lobby and table roots are read now from the cache root and the runs root (never a fetch); None when the config
+    switches templates off or the files cannot be read (the contests then settle EXACT or UNKNOWN, as before)."""
+    from nhl_dfs.data import http as http_mod
+    from nhl_dfs.models import contests as contests_mod
+    from nhl_dfs.models import payout_templates
+
+    cfg = contests_mod.load_contest_families()
+    if not contests_mod.templates_enabled(cfg):
+        return None, {}
+    try:
+        root = Path(cache.root) if cache is not None else Path(http_mod.DEFAULT_ROOT)
+        store = payout_templates.load_store(root, runs_root, [int(c) for c in contest_ids], extra_dirs=[standings_dir])
+    except Exception as exc:  # reported; settlement continues without templates
+        notes.append(f"payout templates unavailable ({type(exc).__name__}: {str(exc)[:100]}); contests without a table stay UNKNOWN")
+        return None, {}
+    meta: dict[int, tuple[str, object, bool]] = {}
+    for e in entries_file.entries:
+        if not str(e.contest_id).isdigit() or int(e.contest_id) in meta:
+            continue
+        row = store.lobby.get(int(e.contest_id))
+        sat = contests_mod.is_satellite_name(e.contest_name, cfg) or (row is not None and contests_mod.is_satellite_name(row.name, cfg))
+        meta[int(e.contest_id)] = (e.contest_name.strip(), contests_mod.fee_value(e.fee), sat)
+    return store, meta
+
+
+def template_notes(m: dict, tables: dict) -> list[str]:
+    """One note per TEMPLATE table used: whose table it is, that Ben's reported amount overrides it, and whether the table
+    changed since the run priced the contest (the tiers sha256 the run recorded, if it priced this contest on a template)."""
+    out = []
+    ran = {str(c.get("contest_id")): (c.get("payout_template") or {}).get("tiers_sha256")
+           for c in (m.get("provisional") or {}).get("contests", [])}
+    for cid, t in sorted(tables.items()):
+        if t.kind != ledger_mod.TEMPLATE or not t.template:
+            continue
+        out.append(f"contest {cid}: payouts come from the TEMPLATE table of contest {t.template['template_contest_id']} "
+                   f"({t.template['paid_places']:,} paid places), not from DraftKings' table for this contest; type the amount from "
+                   "My Contests into winnings.csv to book it as REPORTED (a mismatch is noted)")
+        before = ran.get(str(cid))
+        if before and before != t.template["tiers_sha256"]:
+            out.append(f"contest {cid}: the template table changed since the run priced it (tiers sha256 {before} then, "
+                       f"{t.template['tiers_sha256']} now): the payouts here use the table as it is now")
+    return out
+
+
 def run(run_id: str, standings_path, *, runs_root, prize_paths=(), winnings_path=None, boxscores: bool = True,
         offline: bool = False, ledger_root=None, backlog_path=None, cache=None, now: datetime | None = None,
         accepted: dict | None = None) -> dict:
@@ -206,10 +252,14 @@ def run(run_id: str, standings_path, *, runs_root, prize_paths=(), winnings_path
     # money
     sdir = Path(standings_path) if Path(standings_path).is_dir() else Path(standings_path).parent
     saved = run.path / "settle" / "prize_tables"
+    templates, meta = template_inputs(read_entries(run.inputs / "DKEntries.csv"), [s.contest_id for s in mine], cache,
+                                      Path(runs_root), sdir, notes)
     tables, t_notes = ledger_mod.prize_tables([s.contest_id for s in mine], entries_n={s.contest_id: len(s.entries) for s in mine},
                                               search_dirs=[sdir], paths=prize_paths, saved_dir=saved,
-                                              run_dirs=run_contest_dirs(Path(runs_root), run))
+                                              run_dirs=run_contest_dirs(Path(runs_root), run), templates=templates,
+                                              contest_meta=meta)
     notes += t_notes
+    notes += template_notes(m, tables)
     ledger_mod.save_tables(tables, saved)
     wpath = Path(winnings_path) if winnings_path else sdir / "winnings.csv"
     reported = ledger_mod.read_winnings(wpath)
@@ -222,7 +272,9 @@ def run(run_id: str, standings_path, *, runs_root, prize_paths=(), winnings_path
     lpath = ledger_mod.append(sl, ledger_root)
     dd = ledger_mod.drawdown(ledger_root)
     template = None
-    unknown = [e for e in sl.entries if e.payout_source == ledger_mod.UNKNOWN]
+    # UNKNOWN entries need Ben's amount; TEMPLATE entries get a row too, because his reported amount is the only real-world
+    # check that DraftKings' table for the template still matches (REPORTED wins and a mismatch is noted)
+    unknown = [e for e in sl.entries if e.payout_source in (ledger_mod.UNKNOWN, ledger_mod.TEMPLATE)]
     if unknown:
         in_inbox = (REPO_ROOT / "data" / "standings").resolve() in sdir.resolve().parents
         template = (sdir / "winnings.csv") if in_inbox else ledger_root / "winnings_needed" / f"{run.run_id}.csv"
@@ -262,7 +314,8 @@ def run(run_id: str, standings_path, *, runs_root, prize_paths=(), winnings_path
                          "sources": {str(s.contest_id): s.source for s in mine}},
            "ledger": sl.record(), "drawdown": dd, "ledger_path": str(lpath),
            "ownership": own_grades, "forecasts": fg.record() if fg else None, "gates": gates,
-           "prize_tables": {str(k): {"source": t.source, "final": t.final, "note": t.final_note} for k, t in tables.items()},
+           "prize_tables": {str(k): {"source": t.source, "final": t.final, "note": t.final_note, "kind": t.kind,
+                                    **({"template": t.template} if t.template else {})} for k, t in tables.items()},
            "winnings_template": str(template) if template else None, "notes": notes}
     srcs = sorted({e.payout_source for e in sl.entries})
     rec["statuses"] = {"PAYOUT_SOURCE": "/".join(srcs), "OUTCOME_CALIBRATION": "UNVALIDATED",

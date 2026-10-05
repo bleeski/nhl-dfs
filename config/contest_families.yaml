@@ -44,8 +44,15 @@ families:
     field_size_prior: 5000
     paid_fraction_prior: 0.20
 
+# Payout templates (C16, [BEN] flag 14): a contest whose DraftKings page is unavailable is priced on the cached table of
+# the same template (same name without the game suffix, same max entries, same fee and prize pool), labeled
+# PAYOUT_SOURCE=TEMPLATE, at build time and in settle. Never for satellites or resized contests. Set false to price
+# every such contest on the declared priors below (PRIOR) again.
+payout_templates:
+  enabled: true
+
 # Payout curve priors (C8, build/objectives.prior_curve). Used only when the DK contest endpoint
-# did not describe the contest (PAYOUT_SOURCE=PRIOR); every figure built on them is an
+# did not describe the contest (PAYOUT_SOURCE=PRIOR, after payout_templates found no table); every figure built on them is an
 # uncalibrated scenario proxy. PLACEHOLDERS: rake, shapes, min-cash multiple and exponent are
 # engineering choices, not facts about DK contests.
 payout_priors:

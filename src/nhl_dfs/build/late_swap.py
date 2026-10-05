@@ -325,7 +325,9 @@ def _scenario_report(so, m, picks, outcomes, final, contest_of, budget_left: flo
         messages.append("referee-draw figures skipped: the scenario scoring budget was spent")
     so.record["referee_s"] = round(time.perf_counter() - t, 3)
     contests = so.cache.contests
-    payout = "EXACT" if contests and all(c.payout_source.value == "EXACT" for c in contests.values()) else "PRIOR"
+    from nhl_dfs.models.contests import combine_payout_sources  # C16: EXACT, TEMPLATE or PRIOR, the weakest contest
+
+    payout = combine_payout_sources(c.payout_source for c in contests.values()).value
     evidence = {"PAYOUT_SOURCE": payout, "OUTCOME_CALIBRATION": OutcomeCalibration.UNVALIDATED.value,
                 "FIELD_CALIBRATION": so.field_cal.value}
     m["statuses"].update(evidence)

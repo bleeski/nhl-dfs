@@ -207,14 +207,24 @@ def exact_curve(detail) -> tuple[np.ndarray, np.ndarray, int | None, str]:
     return prizes, seats, face, note
 
 
+def template_curve(match) -> tuple[np.ndarray, np.ndarray, int | None, str]:
+    """From a models.payout_templates.TemplateMatch: DraftKings' table of the same template and size (C16). The
+    tiers are the matched contest's, so the curve is the exact_curve of that table; only the label says whose it is.
+    A ticket tier cannot occur (the matcher refuses it), so no face value is read."""
+    prizes, seats, face, _ = exact_curve(match.table.detail)
+    return prizes, seats, face, f"TEMPLATE from the {match.label()}"
+
+
 def contest_from(ctx, fam_cfg: dict) -> Contest:
-    """A models.contests.ContestContext -> Contest with its payout curve (EXACT or declared PRIOR)."""
+    """A models.contests.ContestContext -> Contest with its payout curve (EXACT, TEMPLATE or declared PRIOR)."""
     from nhl_dfs.models.contests import fee_value
 
     fee = fee_value(ctx.fee)
     fee_cents = to_cents(fee) if fee is not None else 0
     if ctx.payout_source is PayoutSource.EXACT:
         prizes, seats, face, note = exact_curve(ctx.detail)
+    elif ctx.payout_source is PayoutSource.TEMPLATE:
+        prizes, seats, face, note = template_curve(ctx.template)
     else:
         prizes, seats, face, note = prior_curve(ctx.family, int(ctx.field_size), fee_cents, fam_cfg)
     if ctx.family == "satellite" and not seats.any():

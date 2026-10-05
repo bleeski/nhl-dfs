@@ -298,7 +298,10 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
                 "FIELD_CALIBRATION": field_cal.value, "MODEL_STATUS": proj.source().value}
     sec["evidence"] = evidence
     sec["contests"] = [{**contests[cid].record(), "name": ctx.name, "family_source": ctx.family_source,
-                        "field": fields["selection"][cid].detail} for cid, ctx in contexts.items()]
+                        "field": fields["selection"][cid].detail,
+                        **({"payout_template": ctx.template.record()} if ctx.template is not None else {}),
+                        **({"payout_note": ctx.payout_note} if ctx.payout_note else {})}
+                       for cid, ctx in contexts.items()]
     sec["frontier_all"] = [p.record() for p in sel.frontier]
     sec["frontier"] = [p.record() for p in pf.frontier_report(sel.frontier)]
     sec["chosen"] = {"kappa": sel.chosen_kappa, "reason": sel.chosen_reason, "measured_on": "selection scenarios"}

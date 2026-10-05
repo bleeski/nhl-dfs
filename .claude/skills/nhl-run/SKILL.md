@@ -24,7 +24,8 @@ value. Do all of step 1 in ONE turn, step 2 in ONE turn, step 3 in ONE turn:
    `<run folder>\qa\proposals_1.json`. Do not fix, reformat or complete them.
 3. Run in one PowerShell call, only the parts whose file you saved:
    `.\nhl.ps1 overrides-apply --run <id> --file "<run folder>\news\overrides_1.json"; .\nhl.ps1 qa-apply --run <id> --round 1 --proposals "<run folder>\qa\proposals_1.json"`
-4. Report to Ben in at most 10 plain lines: FILE_VALID, DELIVERY_STATUS, MODEL_STATUS, NEWS_STATE, PAYOUT_SOURCE,
+4. Report to Ben in at most 10 plain lines: FILE_VALID, DELIVERY_STATUS, MODEL_STATUS, NEWS_STATE, PAYOUT_SOURCE (TEMPLATE means
+   DraftKings' cached table for the same contest template, not the contest's own; PRIOR means a placeholder curve),
    OUTCOME_CALIBRATION, FIELD_CALIBRATION, MARKET_COVERAGE (games priced on market odds), RISK_BUDGET (OK or
    BREACHED with its reasons, say plainly that the engine flagged it) and GOALIE_CAP / GAME_CAP when printed;
    which version is current and the upload file itself, presented per CLAUDE.md (Slate rules: a path alone is not delivery); overrides accepted;
