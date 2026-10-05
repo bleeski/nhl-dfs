@@ -423,3 +423,19 @@ def test_project_settings_deny_model_writes_to_public_files():
     s = json.loads((REPO / ".claude" / "settings.json").read_text(encoding="utf-8"))
     deny = set(s["permissions"]["deny"])
     assert {"Write(outputs/**)", "Edit(outputs/**)", "Write(**/DKEntries*.csv)", "Edit(**/DKEntries*.csv)"} <= deny
+
+
+def test_inline_reply_text_is_not_mistaken_for_a_path_when_the_os_rejects_the_name(monkeypatch):
+    """CI on Linux (PR 10): a pasted reply over 255 bytes made Path.exists raise ENAMETOOLONG; Windows returned
+    False. The OS error is simulated here so the test fails the same way on every platform."""
+    import errno
+    from pathlib import Path
+
+    def too_long(self, *a, **k):
+        raise OSError(errno.ENAMETOOLONG, "File name too long", str(self))
+
+    monkeypatch.setattr(Path, "exists", too_long)
+    assert controller._is_path_arg('{"overrides": []}') is False
+    assert controller._is_path_arg("x" * 399) is False
+    assert controller._is_path_arg(Path("any/file.json")) is True  # a Path is a path; no exists() call
+    assert controller._is_path_arg("x" * 400) is False
