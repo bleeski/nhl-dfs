@@ -28,7 +28,11 @@ are discovered and the portfolio is chosen against each contest's family objecti
 budget and the caps (build/scenario_pass.py), and the next version is published with a
 compare-and-swap. Any failure leaves the current version in place and is recorded.
 
-A run refuses to publish once any slate game has started: late swap is C2c's job.
+Started slates (C15, B42 part 3, flag 15): a run that starts after the first game builds the open games. Rows DraftKings
+marks In-Progress, and rows whose Game Info start has passed at the run's clock, leave the pool (`SalaryPool.started_rows`);
+a cell of the entries file that holds one of those players is pinned and stays as it is, the entry's other cells are
+solved around it, and the report names the started teams and the excluded players. A slate with no open game left is
+refused (late swap is C2c's job). The optional passes stay off once a game has started (C14).
 
 Lock safety (C14, B53): every publish above goes through `_export_and_publish`, which refuses, under the publish
 lock and on the live clock, a version that changes a cell of a game that has started or crossed the edit stop,
@@ -60,7 +64,7 @@ from nhl_dfs.build.candidates import Candidate
 from nhl_dfs.build.manifest import exposures_top20, write_manifest
 from nhl_dfs.build.notes import chicago, write_run_notes
 from nhl_dfs.build.state import LockCrossed, LockTimeout, PublishRefused, RunDir, new_run, publish, sha256
-from nhl_dfs.contracts.geometry import Mode, lineup_key
+from nhl_dfs.contracts.geometry import CLASSIC_SLOTS, SHOWDOWN_SLOTS, Mode, check_lineup, lineup_key
 from nhl_dfs.contracts.statuses import (
     DeliveryStatus,
     Eligibility,
@@ -78,7 +82,7 @@ from nhl_dfs.contracts.statuses import (
 from nhl_dfs.data.sources import dk_public
 from nhl_dfs.export.writer import write_entries
 from nhl_dfs.intake.entries import EntriesFile, read_entries
-from nhl_dfs.intake.salary import PersonRows, SalaryPool, parse_game_info, read_salary
+from nhl_dfs.intake.salary import PersonRows, SalaryPool, mark_started, parse_game_info, read_salary, with_started_rows
 from nhl_dfs.models.projection import PriorProjection, objective as objective_from
 from nhl_dfs.referee.check_file import check_file
 
@@ -467,14 +471,19 @@ def run_slate(
     if entries.mode is not pool.mode:
         return fail(f"entries file is {entries.mode.value} but the salary file is {pool.mode.value}")
     now = clock().astimezone(timezone.utc)
+    n_marker = len(pool.started_rows)
+    pool = mark_started(pool, now)  # flag 15: games past their Game Info start leave the pool as DK's marker does
+    if pool.started_rows and not pool.rows:
+        return fail("every game on this slate has started, so there is nothing left to build; changing started entries "
+                    "is late swap (`nhl.ps1 late-swap`, chunk C2c), not a baseline run")
     starts = start_times(pool)
     if starts:
         first_start = min(starts.values())
-        if now >= first_start:
-            return fail(f"slate started at {chicago(_utc(first_start))}; changing started entries is late swap "
-                        "(`nhl.ps1 late-swap`, chunk C2c), not a baseline run")
         if now >= first_start - timedelta(seconds=float(runtime["edit_stop_buffer_s"])):
             messages.append(f"inside the edit-stop buffer: first game starts {chicago(_utc(first_start))}")
+    pins: dict[str, dict[int, str]] = {}
+    if pool.started_rows:
+        pins = _started_slate(pool, entries, n_marker, now, int(runtime["edit_stop_buffer_s"]), m, messages)
 
     st = salary_statuses(pool)
     out_people = {pool.by_role_id[rid].person_key for rid, (p, _) in st.items() if p is Participation.OUT}
@@ -517,19 +526,30 @@ def run_slate(
         return fail(f"no lineup to publish: {scope}", search.status)
 
     t = time.perf_counter()
-    a = assign(search.bank, entries, work, pool.mode, caps, seed=seed, later_start_utc=starts)
+    # The rows of games in progress ride along (spool) so the cells that hold them resolve, write and score; they are
+    # never in the bank, and `fixed` lineups are the pinned entries solved around them.
+    spool = with_started_rows(pool)
+    fixed, unrepaired = {}, []
+    if pins:
+        fixed, unrepaired, impossible = _pinned_lineups(spool, work, entries, pins, objective, runtime, caps, messages)
+        if impossible:
+            return fail("no legal lineup keeps the started-game cell(s) of entr" + ("y " if len(impossible) == 1 else "ies ")
+                        + ", ".join(impossible[:5]) + " and the entry's current cells are not a complete legal lineup; "
+                        "nothing published")
+        m["started_slate"]["unrepaired_entries"] = unrepaired
+    a = assign(search.bank, entries, spool, pool.mode, caps, seed=seed, later_start_utc=starts, fixed=fixed or None)
     timings["assign_s"] = round(time.perf_counter() - t, 3)
-    v1 = _export_and_publish(run, entries, pool, a, slate_id, outputs_root, m, messages, phase="A", expect=None,
+    v1 = _export_and_publish(run, entries, spool, a, slate_id, outputs_root, m, messages, phase="A", expect=None,
                              clock=clock, runtime=runtime)
     timings["phase_a_s"] = round(time.perf_counter() - t_start, 3)
     if v1 is None:
         return fail("phase A produced no checked file", recommendation=(
             "a game started while the file was being built, and a rerun cannot help: use late swap (`nhl.ps1 late-swap`) "
             "with the entries file you have now" if m.get("lock_stops") else None))
-    _set_assignment_fields(m, a, pool)
+    _set_assignment_fields(m, a, spool)
     m["statuses"]["FILE_VALID"] = FileStatus.TRUE.value
     degraded = (search.route != "milp" or any(r.kind == "REPEAT" for r in a.relaxations) or unknown
-                or not v1["public_replaced"])
+                or not v1["public_replaced"] or bool(unrepaired))
     m["statuses"]["DELIVERY_STATUS"] = (DeliveryStatus.DEGRADED_REVIEW if degraded else DeliveryStatus.CHECKED).value
     m["worked"].append(f"phase A published v1 in {timings['phase_a_s']:.1f}s from local files only")
     m["recommendation"] = "keep"
@@ -591,6 +611,86 @@ def run_slate(
         messages.append(f"scenario pass failed ({type(exc).__name__}); the previous version stays current")
     timings["scenario_s"] = round(time.perf_counter() - t, 3)
     return finish()
+
+
+def _started_slate(pool: SalaryPool, entries: EntriesFile, n_marker: int, now: datetime, buffer_s: int, m: dict,
+                   messages: list[str]) -> dict[str, dict[int, str]]:
+    """C15 (flag 15): name the started games and the excluded players in the report, and find the pinned cells: entry id ->
+    canonical slot -> role id for every cell of the entries file that holds a started-game player."""
+    started = pool.started_by_role_id
+    ls = locks_mod.compute(entries, pool, None, now, buffer_s)
+    pins: dict[str, dict[int, str]] = {}
+    for e in entries.entries:
+        held = {k: rid for k, rid in ls.pinned(e.entry_id).items() if rid in started}
+        if held:
+            pins[e.entry_id] = held
+    by_team: dict[str, list[str]] = {}
+    for r in sorted(pool.started_rows, key=lambda x: (x.team, x.name)):
+        by_team.setdefault(r.team, []).append(r.name)
+    n_clock = len(pool.started_rows) - n_marker
+    how = ", ".join(x for x in (f"{n_marker} by the In-Progress marker" if n_marker else "",
+                                f"{n_clock} by the Game Info start time and the run's clock" if n_clock else "") if x)
+    open_games = sorted(pool.games)
+    m["started_slate"] = {
+        "started_teams": sorted(by_team), "excluded_players": by_team, "excluded_rows": len(pool.started_rows), "how": how,
+        "open_games": open_games, "pinned_cells": sum(len(p) for p in pins.values()), "pinned_entries": sorted(pins),
+        "unrepaired_entries": [],
+    }
+    messages.append(f"STARTED SLATE: games in progress for {', '.join(sorted(by_team))}; {len(pool.started_rows)} player row(s) "
+                    f"excluded ({how}) and never added; building the open games: {', '.join(open_games)}")
+    for team, names in by_team.items():
+        messages.append(f"started, excluded: {team}: {', '.join(names)}")
+    if pins:
+        messages.append(f"{sum(len(p) for p in pins.values())} cell(s) in {len(pins)} entr{'y' if len(pins) == 1 else 'ies'} hold "
+                        "a started-game player and stay as they are; the entry's other cells are rebuilt around them")
+    return pins
+
+
+def _pinned_lineups(spool: SalaryPool, work: SalaryPool, entries: EntriesFile, pins: dict[str, dict[int, str]],
+                    objective: dict[str, float], runtime: dict, caps: Caps, messages: list[str]
+                    ) -> tuple[dict[str, tuple[str, ...]], list[str], list[str]]:
+    """(fixed lineups, entries whose current cells were kept, entries with no legal lineup). Each entry that holds a
+    started-game player is solved on its own with those cells pinned (late swap's repair, the baseline objective, only
+    the rows of `work` as candidates); the others are filled from the bank by `assign`, counting these as fixed. The
+    pinned cells keep their slots. An entry the pins leave without a legal completion keeps its current cells when
+    those are a complete legal lineup (reported, DEGRADED_REVIEW); otherwise the run publishes nothing."""
+    from collections import Counter
+
+    from nhl_dfs.build.late_swap import _canonical, _place, _solve_entry
+
+    mode = spool.mode
+    size = len(CLASSIC_SLOTS if mode is Mode.CLASSIC else SHOWDOWN_SLOTS)
+    exclude = frozenset(spool.by_role_id) - frozenset(work.by_role_id)  # DK-OUT rows and the started rows
+    limit = float(runtime.get("late_swap", {}).get("per_entry_time_limit_s", 2.0))
+    cap = caps.person_cap(len(entries.entries))
+    person_n: Counter[str] = Counter(spool.by_role_id[r].person_key for p in pins.values() for r in p.values())
+    fixed: dict[str, tuple[str, ...]] = {}
+    kept: list[str] = []
+    impossible: list[str] = []
+    for e in entries.entries:
+        pin = pins.get(e.entry_id)
+        if not pin:
+            continue
+        before = [pin.get(k) for k in range(size)]
+        pinned_people = {spool.by_role_id[r].person_key for r in pin.values()}
+        capped = frozenset(r.role_id for r in work.rows if person_n[r.person_key] >= cap and r.person_key not in pinned_people)
+        lineup, _route, _relax, detail = _solve_entry(spool, mode, objective, before, pin, fast=False, exclude_rows=exclude,
+                                                      capped_rows=capped, overlaps=[], time_limit_s=limit)
+        placed = _place(before, pin, list(lineup), spool, mode) if lineup is not None else None
+        if placed is None or any(placed[k] != rid for k, rid in pin.items()):
+            current = _canonical(entries, e)
+            rows = [spool.by_role_id.get(r) if r else None for r in current]
+            if all(rows) and check_lineup(rows, mode).ok:
+                fixed[e.entry_id] = tuple(current)  # type: ignore[arg-type]
+                kept.append(e.entry_id)
+                messages.append(f"entry {e.entry_id}: no legal rebuild around its started-game cell(s) ({detail or 'solver'}); "
+                                "its current cells are kept")
+            else:
+                impossible.append(e.entry_id)
+            continue
+        fixed[e.entry_id] = tuple(placed)
+        person_n.update(spool.by_role_id[r].person_key for k, r in enumerate(placed) if k not in pin)
+    return fixed, kept, impossible
 
 
 def _set_assignment_fields(m: dict, a: Assignment, pool: SalaryPool) -> None:
