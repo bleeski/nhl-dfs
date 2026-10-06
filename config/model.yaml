@@ -58,6 +58,12 @@ team:
   # evidence first (scaled down only if they alone exceed the budget), no-history players share the
   # residual up to their prior, never below dress_floor (a call-up can still dress).
   dress_budget: {forwards: 12, defense: 6, dress_floor: 0.02}
+  # Team goal rate (C17, backlog B51): a team whose listed skaters cannot make up a lineup (fewer than 10 F or 5 D expected
+  # to dress, e.g. 11 Colorado forwards in the 2026-09-30 pool) used to take the league goal rate, which lowered Colorado,
+  # the strongest team there. It now takes its own mean skater goals per game over its last `games` regular-season games
+  # before the slate (the same basis as sim.yaml resolve.goals_league), when it has at least `min_games`; else the league
+  # rate, said in the note. PLACEHOLDER: 82 is one season, 20 keeps a handful of early-season games from standing for a team.
+  team_rate: {games: 82, min_games: 20}
 
 # PLACEHOLDER role priors (RoleState, C7): used for a person with no history who holds a role.
 roles:

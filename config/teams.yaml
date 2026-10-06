@@ -4,8 +4,10 @@
 #   dk: DK lobby matchup suffixes plus Ben's 2026-09-29 DKSalaries TeamAbbrev; null when not yet seen.
 #     2026-10-02 (B35): 31 codes confirmed from DK lobby GameSets (Competitions[].Description "AWAY @ HOME"
 #     with the team's city and nickname), recorded in tests/fixtures/http/dk_lobby_gamesets_2026-09-29/-30/
-#     10-01.json; COL, LAK, NYI, PHI, PIT also match the 2026-09-30 DKSalaries TeamAbbrev. OTT has not
-#     appeared in any DK file yet.
+#     10-01.json; COL, LAK, NYI, PHI, PIT also match the 2026-09-30 DKSalaries TeamAbbrev.
+#     2026-10-06 (B85): OTT confirmed from the 2026-10-03 GameSets ("OTT @ TOR", Ottawa Senators @ Toronto Maple
+#     Leafs), tests/fixtures/http/dk_lobby_gamesets_2026-10-03.json; all 32 DK codes are now verified. OTT's
+#     covers code is still null: no Covers board has shown Ottawa.
 #   covers: covers.com NHL odds board logo alt text; null when the team was not on the board.
 #     Each code was confirmed by matching all 16 board games to NHL schedule games on start time.
 # Fill a null only from an observed DK or Covers file, and set its *_verified flag true.
@@ -29,7 +31,7 @@ teams:
   - {nhl: NSH, dk: NSH, dk_verified: true, covers: NAS, df_slug: nashville-predators, name: "Nashville Predators"}
   - {nhl: NYI, dk: NYI, dk_verified: true, covers: NYI, df_slug: new-york-islanders, name: "New York Islanders"}
   - {nhl: NYR, dk: NYR, dk_verified: true, covers: NYR, df_slug: new-york-rangers, name: "New York Rangers"}
-  - {nhl: OTT, dk: null, dk_verified: false, covers: null, df_slug: ottawa-senators, name: "Ottawa Senators"}
+  - {nhl: OTT, dk: OTT, dk_verified: true, covers: null, df_slug: ottawa-senators, name: "Ottawa Senators"}
   - {nhl: PHI, dk: PHI, dk_verified: true, covers: PHI, df_slug: philadelphia-flyers, name: "Philadelphia Flyers"}
   - {nhl: PIT, dk: PIT, dk_verified: true, covers: PIT, df_slug: pittsburgh-penguins, name: "Pittsburgh Penguins"}
   - {nhl: SEA, dk: SEA, dk_verified: true, covers: SEA, df_slug: seattle-kraken, name: "Seattle Kraken"}

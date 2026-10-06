@@ -117,6 +117,9 @@ class ParamTable:
     role_map: dict[str, str]  # role_id -> person_key
     as_of: date
     notes: list[str] = field(default_factory=list)
+    # DK team -> (mean skater goals per game over its last N regular-season games before as_of, games used): the team-rate
+    # source sim/market.model_strength falls back to instead of the league rate (C17, B51). Empty: none known.
+    team_goals: dict[str, tuple[float, int]] = field(default_factory=dict)
 
     def mean_tenths(self, role_id: str) -> int:
         return self.persons[self.role_map[role_id]].mean_tenths
@@ -268,7 +271,26 @@ def build(pool: SalaryPool, crosswalk: dict[str, int], as_of: date, cfg: dict | 
             rid = next(x.role_id for x in (pool.persons[pk].classic, pool.persons[pk].flex, pool.persons[pk].cpt) if x)
             pp.mean_tenths, pp.sd_tenths = pri[rid].mean_tenths, pri[rid].sd_tenths
     role_map = {row.role_id: row.person_key for row in pool.rows}
-    return ParamTable(persons, role_map, as_of, list(features.notes))
+    return ParamTable(persons, role_map, as_of, list(features.notes),
+                      team_goal_rates(features, cfg, {r.team for r in pool.rows}, team_map))
+
+
+def team_goal_rates(features, cfg: dict, dk_teams, team_map: dict[str, str] | None = None) -> dict[str, tuple[float, int]]:
+    """DK team -> (goals per game, games) from the as-of history frame: skater goals summed per team-game, regular season only,
+    the team's last `team.team_rate.games` games before as_of. Teams with no games are absent (the caller says league)."""
+    sk = features.skaters
+    if sk is None or sk.empty or "goals" not in sk:
+        return {}
+    n = int((cfg.get("team", {}).get("team_rate") or {}).get("games", 82))
+    reg = sk[sk["regime"] == "regular"]
+    per_game = reg.groupby(["team", "game_id"], as_index=False).agg(goals=("goals", "sum"), day=("game_date", "max"))
+    team_map = team_map or {}
+    out: dict[str, tuple[float, int]] = {}
+    for dk in sorted(dk_teams):
+        rows = per_game[per_game["team"] == team_map.get(dk, dk)].sort_values(["day", "game_id"]).tail(n)
+        if len(rows):
+            out[dk] = (float(rows["goals"].mean()), int(len(rows)))
+    return out
 
 
 def resolve_ids(pool: SalaryPool, *, store_root=None, accepted_path=None) -> tuple[dict[str, int], dict[str, str]]:

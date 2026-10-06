@@ -130,10 +130,12 @@ def prior_persons(by_entry: dict, pool, proj) -> int:
 def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, runtime, seed, slate_id, outputs_root,
                       cache, m: dict, messages: list[str], prov: dict | None, v1_assignment, expect_sha: str, clock,
                       publish_fn, set_fields_fn, scenario_n: dict | None = None, play_prob: dict | None = None,
-                      confirmed_at: dict | None = None, roles=None) -> None:
+                      confirmed_at: dict | None = None, roles=None, odds: tuple | None = None) -> None:
     """play_prob, confirmed_at (C10, backlog B9): from the run's role state when it was built; play_prob then
     replaces the configured DTD probability (priced once, see build/swap_objective.play_probs). roles: the run's
-    RoleState, for each goalie's start-probability source in scenario/meta.json (B26)."""
+    RoleState, for each goalie's start-probability source in scenario/meta.json (B26) and, when the provisional
+    pass did not finish, the field's lines and news (C17). odds: the run's one (snapshot, messages) from
+    run._run_odds (C17); None fetches it here (online) or skips it (offline), as before."""
     from nhl_dfs.models import contests as contests_mod
     from nhl_dfs.sim import cache as cache_mod
     from nhl_dfs.sim.slate import build_slate, fetch_odds
@@ -151,7 +153,9 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
         return
 
     # games and odds (B5: no usable odds today; every game says which source it used)
-    if offline:
+    if odds is not None:
+        snapshot, odds_msgs = odds
+    elif offline:
         snapshot, odds_msgs = None, ["odds: skipped (offline); every game takes the model intensities"]
     else:
         snapshot, odds_msgs = fetch_odds(cache=cache, now=clock())
@@ -202,14 +206,19 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
         contexts, fb, field_cal = prov["contexts"], prov["fb"], prov["field_cal"]
     else:
         from nhl_dfs.build import provisional as prov_mod
+        from nhl_dfs.build.run import _lobby_rows, _payout_templates  # lazy: run.py imports this module
+        from nhl_dfs.models import field_inputs, ownership
 
-        from nhl_dfs.build.run import _lobby_rows  # lazy: run.py imports this module
-
-        # C38: the lobby rows still size the contests (read from the local capture). Templates are not looked up here, as
-        # before; that C16 gap is BACKLOG's, not this fallback's to widen.
-        contexts = contests_mod.resolve(entries, {}, fam_cfg, None, _lobby_rows(entries, cache, None, fam_cfg, messages))
+        # C38 and C16 (B93): the lobby rows size the contests and a cached template table prices them, as in the provisional
+        # pass (local files only, never a fetch); the contest pages were not answered here, so no details.
+        templates = _payout_templates(entries, cache, run.path.parent, fam_cfg, messages)
+        contexts = contests_mod.resolve(entries, {}, fam_cfg, templates, _lobby_rows(entries, cache, templates, fam_cfg, messages))
         statuses = {rid: p for rid, (p, _) in st.items() if rid in work.by_role_id}
-        fb = prov_mod.build_fields(work, proj, contexts, seed=seed, statuses=statuses)
+        own_cfg_fb = ownership.load_ownership_config()
+        inputs = field_inputs.collect(work, snapshot=snapshot, role_state=roles, now=clock(), own_cfg=own_cfg_fb)  # C17
+        messages.append(inputs.coverage_line())
+        fb = prov_mod.build_fields(work, proj, contexts, seed=seed, statuses=statuses, own_cfg=own_cfg_fb, inputs=inputs)
+        sec["field_inputs"] = inputs.record()
         field_cal = FieldCalibration.PRIOR
         messages.append("scenario pass rebuilt the fields because the provisional pass did not finish")
     contests = {cid: ob.contest_from(ctx, fam_cfg) for cid, ctx in contexts.items()}
@@ -376,8 +385,8 @@ def _grow_fields(work, proj, contexts, fb, own_n, prov, st, risk_cfg, seed, over
         if need <= have:
             report[fam] = {"draws": have, "grown_by": 0}
             continue
-        if feats is None:
-            feats = ownership.feature_table(work, proj, None, cfg=own_cfg, statuses=statuses)
+        if feats is None:  # the table the first draws came from (C17: it carries the odds, lines and news), else a plain one
+            feats = fb.feats if fb.feats is not None else ownership.feature_table(work, proj, None, cfg=own_cfg, statuses=statuses)
         util = ownership.perceived(work, proj, feats, ownership.family_weights(own_cfg, fam))
         t = time.perf_counter()
         extra, sampler = None, "milp"
@@ -401,7 +410,7 @@ def _grow_fields(work, proj, contexts, fb, own_n, prov, st, risk_cfg, seed, over
                        "distinct": len(set(joined.keys)), "seconds": round(time.perf_counter() - t, 2),
                        "sampler": sampler, "mip_rel_gap": g.get("mip_rel_gap") if sampler.startswith("milp") else None,
                        "detail": extra.detail}
-    return FieldBuild(fields, margs, fb.elapsed_s), report
+    return FieldBuild(fields, margs, fb.elapsed_s, fb.feats, fb.inputs), report
 
 
 def _chalk_team(pool, own: dict) -> str | None:

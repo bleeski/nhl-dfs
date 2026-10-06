@@ -591,6 +591,9 @@ deferred:
   - item: "B50 acceptance: TEMPLATE payouts against Ben's reported amounts"
     trigger: "Ben types winnings_usd for entry 5276576946 (196228907, the 09-30 mini-MAX) into data/standings/inbox/2026-09-30/winnings.csv and settles again, and a slate holding the 10-02 Daily Dollar (196267162) is booked; settle then notes any mismatch between the TEMPLATE table and the reported amount"
     backlog: [B50]
+  - item: "B63 acceptance: ownership error with the field inputs on, over five settled slates"
+    trigger: "five settled Classic slates built after C17 (the run manifest carries provisional.field_inputs); compare each contest's mae_all with the same slate re-run with field_inputs.enabled false (scripts/c17_replay.py shows the replay); the 09-30 replay worsened mae_all by 0.02 to 0.27 with 3 of 6 Daily Faceoff pages usable, so C40 (keep the last known lines) first improves the coverage; flip [BEN] flag 30 off if the error keeps rising"
+    backlog: [B63]
   - item: "Score effects and OT shots (B7); per-strength SOG and block rates (B3)"
     trigger: "C25's clean calibration names the SOG-to-goal correlation or the per-strength rates as a deficiency outside tolerance"
     backlog: [B7, B3]

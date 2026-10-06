@@ -123,11 +123,11 @@ def test_extreme_market_is_capped_and_logged():
 def test_match_odds_uses_only_verified_codes():
     snap = OddsSnapshot(T0, "source", "book", "nhl_partner_odds", [
         GameOdds("1", "WPG", "DAL", None, -120, 100, None, None, None, 5.5, -110, -110, None, None),
-        GameOdds("2", "OTT", "DAL", None, -120, 100, None, None, None, 5.5, -110, -110, None, None)])
-    games = {"DAL@WPG": ("WPG", "DAL"), "DAL@OTT": ("OTT", "DAL"), "X@Y": ("YYY", "XXX")}
+        GameOdds("2", "ZZZ", "DAL", None, -120, 100, None, None, None, 5.5, -110, -110, None, None)])
+    games = {"DAL@WPG": ("WPG", "DAL"), "DAL@ZZZ": ("ZZZ", "DAL"), "X@Y": ("YYY", "XXX")}
     got, why = market.match_odds(snap, games)
     assert got["DAL@WPG"].home_ml == -120
-    assert why["DAL@OTT"] == "unverified team code OTT for source nhl_partner_odds"  # OTT: no DK file has shown it yet
+    assert why["DAL@ZZZ"] == "unverified team code ZZZ for source nhl_partner_odds"  # a code no DK file has shown (OTT was the example until B85)
     assert "unverified" in why["X@Y"]
     assert market.match_odds(None, games)[1]["X@Y"] == "no odds snapshot"
 
@@ -139,7 +139,7 @@ def _lobby_codes() -> dict[str, set[str]]:
     from conftest import fixture_bytes
 
     out: dict[str, set[str]] = {}
-    for day in ("2026-09-29", "2026-09-30", "2026-10-01"):
+    for day in ("2026-09-29", "2026-09-30", "2026-10-01", "2026-10-03"):
         for gs in json.loads(fixture_bytes(f"dk_lobby_gamesets_{day}.json"))["GameSets"]:
             for c in gs["Competitions"]:
                 if c.get("Sport") != "NHL":
@@ -151,13 +151,13 @@ def _lobby_codes() -> dict[str, set[str]]:
 
 
 def test_every_dk_lobby_code_is_verified_in_teams_yaml():
-    """B35: a DK code seen in a DK file is filled and verified; the row's name ends in DK's nickname."""
+    """B35 and B85: a DK code seen in a DK file is filled and verified; the row's name ends in DK's nickname."""
     import yaml
 
     teams = {t["dk"]: t for t in yaml.safe_load((market.REPO_ROOT / "config" / "teams.yaml").read_text(encoding="utf-8"))["teams"]
              if t["dk_verified"]}
     seen = _lobby_codes()
-    assert len(seen) == 31
+    assert len(seen) == 32  # all 32 teams since B85 (OTT, first seen in the 2026-10-03 GameSets)
     for code, names in seen.items():
         assert code in teams, code
         assert all(teams[code]["name"].endswith(n) for n in names), (code, names)

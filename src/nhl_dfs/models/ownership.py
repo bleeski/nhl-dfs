@@ -47,6 +47,8 @@ def validate_ownership_config(cfg: dict) -> None:
         bad = [k for k in (over or {}) if k not in FEATURES]
         if bad:
             raise ValueError(f"ownership family {fam!r} overrides unknown features {bad}")
+    if not isinstance((cfg.get("field_inputs") or {}).get("enabled", True), bool):
+        raise ValueError("field_inputs.enabled must be true or false")
     gsp = cfg.get("goalie_start_prior") or {}
     for k in ("top_salary_on_team", "other"):
         if not 0.0 <= float(gsp.get(k, -1)) <= 1.0:
@@ -133,12 +135,20 @@ def feature_table(
     *,
     statuses: Mapping[str, Participation] | None = None,
     news_age_h: Mapping[str, float] | None = None,
+    goalie_start: Mapping[str, float] | None = None,
+    imputed: Mapping[str, Mapping[str, float]] | None = None,
 ) -> dict[str, dict[str, float]]:
     """role_id -> feature -> value (see config/ownership.yaml). A Showdown CPT row carries its
     person's features. roles: role_id -> {"pp1": bool, "line": int} (C7). statuses: role_id ->
-    Participation from the DK status. news_age_h: role_id -> hours since the latest news."""
+    Participation from the DK status. news_age_h: role_id -> hours since the latest news.
+    goalie_start: person_key -> start probability the field knows (C17: a confirmed starter is 1,
+    his team's other goalies 0); a goalie not named here keeps the expected-starter prior.
+    imputed: role_id -> {feature: value} for a player whose team we have no role data for (C17): unknown is the
+    average player, not a non-member, so these override pp1, line1 and news_recent after they are computed."""
     cfg = cfg if cfg is not None else load_ownership_config()
     roles, statuses, news_age_h = roles or {}, statuses or {}, news_age_h or {}
+    goalie_start = goalie_start or {}
+    imputed = imputed or {}
     base = _person_rows(pool)
     totals, wins = team_odds(pool, odds, cfg)
     avg_total = statistics.fmean(totals.values()) if totals else 0.0
@@ -185,7 +195,8 @@ def feature_table(
             "news_recent": 0.0,
         }
         if r.is_goalie:
-            p_start = float(gsp["top_salary_on_team"] if top_goalie.get(r.team) == pk else gsp["other"])
+            p_start = float(goalie_start[pk]) if pk in goalie_start else float(
+                gsp["top_salary_on_team"] if top_goalie.get(r.team) == pk else gsp["other"])
             f["goalie_start_win"] = p_start * wins.get(r.team, 0.5) - even
         person_feats[pk] = f
 
@@ -200,6 +211,7 @@ def feature_table(
         f["unknown"] = 1.0 if st is Participation.UNKNOWN else 0.0
         age = news_age_h.get(r.role_id)
         f["news_recent"] = 1.0 if age is not None and age <= recent_h else 0.0
+        f.update({k: float(v) for k, v in (imputed.get(r.role_id) or {}).items()})
         out[r.role_id] = f
     return out
 
@@ -226,12 +238,15 @@ def utilities(
     *,
     statuses: Mapping[str, Participation] | None = None,
     news_age_h: Mapping[str, float] | None = None,
+    goalie_start: Mapping[str, float] | None = None,
+    imputed: Mapping[str, Mapping[str, float]] | None = None,
 ) -> dict[str, dict[str, float]]:
     """family -> role_id -> perceived uncaptained points. contests: anything with a .family
     (models.contests.ContestContext or FamilyPrior); none gives the default family."""
     cfg = cfg if cfg is not None else load_ownership_config()
     families = sorted({c.family for c in contests}) or [DEFAULT_FAMILY]
-    feats = feature_table(pool, proj, odds, roles, cfg, statuses=statuses, news_age_h=news_age_h)
+    feats = feature_table(pool, proj, odds, roles, cfg, statuses=statuses, news_age_h=news_age_h,
+                          goalie_start=goalie_start, imputed=imputed)
     return {fam: perceived(pool, proj, feats, family_weights(cfg, fam)) for fam in families}
 
 

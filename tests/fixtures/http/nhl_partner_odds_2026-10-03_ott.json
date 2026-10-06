@@ -1,0 +1,92 @@
+{
+ "currentOddsDate": "2026-10-03",
+ "lastUpdatedUTC": "2026-10-03T23:00:40Z",
+ "bettingPartner": {
+  "partnerId": 9,
+  "country": "USA",
+  "name": "DraftKings",
+  "imageUrl": "https://assets.nhle.com/betting_partner/draftkings.svg",
+  "siteUrl": "https://dksb.sng.link/As9kz/3i4d?_dl=https%3A%2F%2Fsportsbook.draftkings.com%2Fgateway%3Fs%3D333653091&pcid=427326&psn=1320&pcn=NHL&pscn=OddsWidget&pcrn=NoOffer&pscid=SP&wpcid=427326&wpsrc=1320&wpcn=NHL&wpscn=OddsWidget&wpcrn=NoOffer&wpscid=SP&_forward_params=1",
+  "bgColor": "#000000",
+  "textColor": "#FFFFFF",
+  "accentColor": "#FFFFFF"
+ },
+ "games": [
+  {
+   "gameId": 2026020023,
+   "gameType": 2,
+   "startTimeUTC": "2026-10-03T23:00:00Z",
+   "homeTeam": {
+    "id": 10,
+    "name": {
+     "default": "Maple Leafs"
+    },
+    "abbrev": "TOR",
+    "logo": "https://assets.nhle.com/logos/nhl/svg/TOR_light.svg",
+    "odds": [
+     {
+      "description": "MONEY_LINE_3_WAY",
+      "value": 140.0,
+      "qualifier": ""
+     },
+     {
+      "description": "MONEY_LINE_2_WAY",
+      "value": -115.0,
+      "qualifier": ""
+     },
+     {
+      "description": "OVER_UNDER",
+      "value": 110.0,
+      "qualifier": "O6.5"
+     },
+     {
+      "description": "PUCK_LINE",
+      "value": 220.0,
+      "qualifier": "-1.5"
+     },
+     {
+      "description": "MONEY_LINE_3_WAY",
+      "value": 320.0,
+      "qualifier": "Draw"
+     }
+    ]
+   },
+   "awayTeam": {
+    "id": 9,
+    "name": {
+     "default": "Senators",
+     "fr": "S\u00e9nateurs"
+    },
+    "abbrev": "OTT",
+    "logo": "https://assets.nhle.com/logos/nhl/svg/OTT_light.svg",
+    "odds": [
+     {
+      "description": "MONEY_LINE_3_WAY",
+      "value": 135.0,
+      "qualifier": ""
+     },
+     {
+      "description": "MONEY_LINE_2_WAY",
+      "value": -105.0,
+      "qualifier": ""
+     },
+     {
+      "description": "OVER_UNDER",
+      "value": -130.0,
+      "qualifier": "U6.5"
+     },
+     {
+      "description": "PUCK_LINE",
+      "value": -270.0,
+      "qualifier": "+1.5"
+     },
+     {
+      "description": "MONEY_LINE_3_WAY",
+      "value": 320.0,
+      "qualifier": "Draw"
+     }
+    ]
+   }
+  }
+ ]
+}

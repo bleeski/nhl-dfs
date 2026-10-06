@@ -73,6 +73,7 @@ class PersonRole:
     pk_unit: int | None = None
     df_listed: bool = False  # on a usable projected lineup
     notes: list[str] = field(default_factory=list)
+    news_utc: datetime | None = None  # when Daily Faceoff's latest news item on him was created (usable pages only; C17)
 
 
 @dataclass
@@ -270,6 +271,13 @@ def _apply_team_page(rs: RoleState, tl: TeamLines, dk_team: str, pool, cfg: dict
             r = person(p)
             if r is not None:
                 r.pk_unit = unit
+    # the player's latest news time (C17: the field's "news_recent" feature); a page that is not usable never gets here
+    for p in tl.players.values():
+        if p.news_created_utc is None:
+            continue
+        r = rs.persons.get(_find_person(pool, p.name, dk_team, df_group(p.position)) or "")
+        if r is not None:
+            r.news_utc = p.news_created_utc
     # injury tags (only where the tag exists; absence from a lineup is never an injury)
     for p in tl.players.values():
         tag = p.injury_status or ("gtd" if p.game_time_decision else None)

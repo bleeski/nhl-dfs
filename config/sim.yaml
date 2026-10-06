@@ -42,7 +42,14 @@ resolve:
 market:
   stale_weight: 0.5            # a stale market (goalie confirmed after the snapshot) blends this
                                # much toward the model intensities
-  max_discrepancy: 0.35        # a fitted intensity is clipped to model x (1 +/- this); logged
+  max_discrepancy: 0.35        # a fitted intensity is clipped to model x (1 +/- this); logged. This is the limit for a side
+                               # whose model rests entirely on player history
+  # C17 (backlog B66, [BEN] flag 31): the limit for a side whose model is only a salary prior (PRIOR persons) or the league
+  # rate. A market far from a prior is information, not an error to clip: wide (up to double or down to zero) never binds for a
+  # plausible market. A side in between is interpolated by the share of its modeled goals that rest on history:
+  #   limit = max_discrepancy + (max_discrepancy_prior - max_discrepancy) * (1 - history share)
+  # PLACEHOLDER: no measurement behind 1.0 yet.
+  max_discrepancy_prior: 1.0
   max_age_h: 36                # an older snapshot is reported and not used
   min_lambda: 0.4
   max_lambda: 6.0
