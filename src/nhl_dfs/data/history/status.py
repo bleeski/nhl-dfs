@@ -5,8 +5,10 @@ how far the newest regular-season game is behind the date the as-of features are
 
   ABSENT             no skater_games file at all (a cloud session before its backfill, a new machine)
   PRIOR_SEASON_ONLY  no regular-season game of the as-of date's own season is stored yet
-  STALE              the newest regular-season game is more than `history.fresh_days` before the as-of date
-  CURRENT            within `history.fresh_days` (B70's own number: 2 days)
+  STALE              the newest regular-season game is more than `history.fresh_days` before the as-of date; a no-game
+                     day makes it read STALE falsely, and the cost is one small fetch that finds nothing
+  CURRENT            within `history.fresh_days` (1: the store holds the last finished day; B70's acceptance, 'within 2 days',
+                     is what a run leaves after its refresh, which starts from 2 days behind)
   SEASON_COMPLETE    the regular season is over at the as-of date; playoffs feed no model (model.yaml regimes)
   UNREADABLE         a stored file could not be read; the reason is in `error`
 
@@ -225,9 +227,21 @@ def render_line(h: dict, model: dict | None = None) -> str:
         gl = h.get("goalie_last_regular_game")
         if gl and h.get("last_regular_game") and gl != h["last_regular_game"]:
             text += f" Goalie table newest regular game {gl} differs from the skater table."
+    r = h.get("refresh")
+    if r:
+        from nhl_dfs.data.history.refresh import render_line as render_refresh
+
+        text += f" Refresh after the first publish: {render_refresh(r)}"
+        a = h.get("after")
+        if a and a.get("last_regular_game"):
+            text += (f" The store now reads {a['state']}: newest regular-season game {a['last_regular_game']} "
+                     f"({a['days_behind']} day(s) before the as-of date).")
+        if h.get("rebuilt_projection"):
+            text += " The projection the provisional and scenario passes use was rebuilt from the refreshed store (v1 used the earlier one)."
     c = (model or {}).get("counts")
     if c:
         total = sum(int(v) for v in c.values())
-        text += (f" Model inputs: HISTORY {c.get('HISTORY', 0)}, MIXED {c.get('MIXED', 0)}, PRIOR {c.get('PRIOR', 0)} of "
+        label = "Model inputs after the rebuild" if h.get("rebuilt_projection") else "Model inputs"
+        text += (f" {label}: HISTORY {c.get('HISTORY', 0)}, MIXED {c.get('MIXED', 0)}, PRIOR {c.get('PRIOR', 0)} of "
                  f"{total} persons.")
     return text

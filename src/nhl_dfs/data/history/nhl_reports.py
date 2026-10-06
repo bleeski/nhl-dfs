@@ -168,19 +168,27 @@ def crosscheck(box: nhl.BoxScore, skaters: pd.DataFrame, goalies: pd.DataFrame) 
 
 # -- backfill ----------------------------------------------------------------------------------------
 
-def _merge_since(old: pd.DataFrame, new: pd.DataFrame, since: date | None) -> pd.DataFrame:
+def _merge_since(old: pd.DataFrame, new: pd.DataFrame, since: date | None, upsert: bool = False) -> pd.DataFrame:
+    """Rows fetched from `since` replace the stored rows from `since`. With upsert (C39, the in-run refresh) nothing stored is
+    deleted: the fetched rows are merged by (nhl_id, game_id) and win, so an empty or short answer for the re-fetched days can
+    never erase games already in the store."""
     if since is None or old.empty:
         return new
+    if upsert:
+        if new.empty:
+            return old
+        return pd.concat([old, new], ignore_index=True).drop_duplicates(["nhl_id", "game_id"], keep="last")
     keep = old[old["game_date"] < since]
     return pd.concat([keep, new], ignore_index=True).drop_duplicates(["nhl_id", "game_id"], keep="last")
 
 
 def backfill(seasons, *, since: date | None = None, cache: HttpCache | None = None, store_root=None,
              cfg: dict | None = None, today: date | None = None, crosscheck_games: int | None = None,
-             moneypuck: bool | None = None, raw_root=None, mp_transport=None) -> BackfillStats:
+             moneypuck: bool | None = None, raw_root=None, mp_transport=None, upsert: bool = False) -> BackfillStats:
     """Fetch per-game reports for each season (incremental from `since`), store them, then build
     the combined skater_games / goalie_games tables (Tier A where MoneyPuck is enabled and has the
-    season, Tier B otherwise)."""
+    season, Tier B otherwise). upsert=True merges the fetched rows into the stored ones instead of
+    replacing everything from `since` (see _merge_since)."""
     from nhl_dfs.data.history import combine
 
     t0 = time.perf_counter()
@@ -203,8 +211,8 @@ def backfill(seasons, *, since: date | None = None, cache: HttpCache | None = No
             got["goalie"] += fetch_window("goalie", "summary", d0, d1, cache, cap, stats)
         sk = normalize_skaters(got["timeonice"], got["realtime"], got["summary"])
         gl = normalize_goalies(got["goalie"])
-        sk = _merge_since(store_mod.read("nhl_skater_games", [season], root=store_root), sk, since)
-        gl = _merge_since(store_mod.read("nhl_goalie_games", [season], root=store_root), gl, since)
+        sk = _merge_since(store_mod.read("nhl_skater_games", [season], root=store_root), sk, since, upsert)
+        gl = _merge_since(store_mod.read("nhl_goalie_games", [season], root=store_root), gl, since, upsert)
         if not sk.empty:
             store_mod.write("nhl_skater_games", season, sk, root=store_root)
         if not gl.empty:

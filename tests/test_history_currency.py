@@ -35,8 +35,8 @@ def test_current_stale_and_prior_season_states(fixture_store):
     cur = status.measure(date(2025, 10, 10), store_root=fixture_store)
     assert cur.state == "CURRENT" and cur.days_behind == 1 and cur.current_season_games == 1
     assert cur.last_regular == date(2025, 10, 9) == cur.last_game and cur.goalie_last_regular == date(2025, 10, 9)
-    edge = status.measure(date(2025, 10, 11), store_root=fixture_store)  # exactly fresh_days (2) behind
-    assert edge.state == "CURRENT" and edge.days_behind == 2
+    edge = status.measure(date(2025, 10, 11), store_root=fixture_store)  # 10-10 has no game stored: two days behind is STALE
+    assert edge.state == "STALE" and edge.days_behind == 2
     stale = status.measure(date(2025, 10, 20), store_root=fixture_store)
     assert stale.state == "STALE" and stale.days_behind == 11
     new_season = status.measure(date(2026, 9, 28), store_root=fixture_store)
@@ -161,4 +161,4 @@ def test_config_carries_the_documented_numbers():
     from nhl_dfs.data.http import load_sources_config
 
     h = load_sources_config()["history"]
-    assert h["fresh_days"] == 2 and h["complete_after_h"] == 3 and h["bootstrap_stale_min"] == 30
+    assert h["fresh_days"] == 1 and h["complete_after_h"] == 3 and h["bootstrap_stale_min"] == 30

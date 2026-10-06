@@ -837,7 +837,9 @@ def build_parser() -> argparse.ArgumentParser:
     hist.add_argument("--raw-root", type=str, default=None)
     hist.add_argument("--keep-raw", action="store_true", help="B2: skip the raw report cache eviction after the backfill")
     hist.add_argument("--status", action="store_true", help="C39: report how current the store is (local files only)")
-    hist.add_argument("--as-of", type=str, default=None, help="with --status: YYYY-MM-DD; default today (ET)")
+    hist.add_argument("--as-of", type=str, default=None, help="with --status or --refresh: YYYY-MM-DD; default today (ET)")
+    hist.add_argument("--refresh", action="store_true", help="C39: bring the store up to the last finished day (NHL reports only)")
+    hist.add_argument("--budget-s", type=float, default=120.0, help="with --refresh: give up after this many seconds, store unchanged")
     hist.set_defaults(func=cmd_history)
 
     prm = sub.add_parser("params")
@@ -1041,6 +1043,20 @@ def cmd_history(args: argparse.Namespace) -> int:
         print(f"history store status as of {as_of} (games strictly before that date feed the models)")
         print(status.measure(as_of, store_root=args.store_root).line())
         return 0
+    if args.refresh:  # C39: the same bounded refresh a run does after its first publish, by hand (NHL reports only)
+        from nhl_dfs.data.history import refresh as refresh_mod
+        from nhl_dfs.data.history import status
+        from nhl_dfs.data.http import HttpCache
+
+        now = datetime.now(timezone.utc)
+        as_of = date.fromisoformat(args.as_of) if args.as_of else now.astimezone(ZoneInfo("America/New_York")).date()
+        print(f"history refresh as of {as_of}: NHL reports only; the store changes only if the whole fetch succeeds")
+        print("before: " + status.measure(as_of, store_root=args.store_root).line())
+        cache = HttpCache(Path(args.raw_root)) if args.raw_root else None
+        res = refresh_mod.refresh_incremental(as_of, now=now, store_root=args.store_root, cache=cache, budget_s=float(args.budget_s))
+        print("result: " + res.line())
+        print("after: " + status.measure(as_of, store_root=args.store_root).line())
+        return 0 if res.outcome in ("REFRESHED", "NO_NEW_GAMES", "SKIPPED") else 1
     if not args.backfill:
         print("history needs --backfill <number of completed seasons>")
         return 2
