@@ -289,7 +289,7 @@ coerced to a known value (CLAUDE.md); other vocabularies here that have no
   A caller that gives no share keeps 0.35.
 - Evidence: `docs/experiments/2026-10-06_c17_replay.md` (time-pinned replay of the 09-30 slate, nothing fetched). All inputs against off on
   today's code worsen `mae_all` by 0.02 to 0.27 on that slate (one slate, 3 of 6 Daily Faceoff pages usable, placeholder weights); against
-  the recorded 09-30 run all four contests are lower, but that run had 112 of 133 persons on PRIOR (B35). B63's five-slate check is a
+  the recorded 09-30 run all four contests are lower, but that run had 112 of 133 persons on PRIOR (B35), and the pass needs the covered-average treatment adopted after seeing replay numbers (without it contest 196218438 is 4.543 against 4.315). B63's five-slate check is a
   deferred trigger.
 - OTT (B85): `config/teams.yaml` OTT dk OTT verified from the 2026-10-03 DK lobby GameSets (OTT @ TOR).
 

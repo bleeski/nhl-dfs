@@ -157,6 +157,8 @@ def arm_wrapper(arm: str, real):
             return replace(got, roles={}, news_age_h={}, goalie_start={})
         if arm == "roles":
             return replace(got, odds=None)
+        if arm == "noimpute":  # all inputs, but a team with no usable page reads as "not on PP1 or line 1" (the first design)
+            return replace(got, imputed={})
         only = {"pp1": lambda g: replace(g, odds=None, news_age_h={}, goalie_start={},
                                          roles={k: {"pp1": v["pp1"], "line": None} for k, v in g.roles.items()}),
                 "line1": lambda g: replace(g, odds=None, news_age_h={}, goalie_start={},
@@ -280,7 +282,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", required=True, help="scratch folder (outside data/, runs/ and outputs/)")
     ap.add_argument("--worlds", nargs="+", default=["A"], choices=["A", "B"])
-    ap.add_argument("--arms", nargs="+", default=["all"], choices=["off", "odds", "roles", "all", "pp1", "line1", "news", "goalies"])
+    ap.add_argument("--arms", nargs="+", default=["all"], choices=["off", "odds", "roles", "all", "noimpute", "pp1", "line1", "news", "goalies"])
     ap.add_argument("--scenario-n", default="full", choices=["full", "small"])
     args = ap.parse_args()
     out = Path(args.out).resolve()
