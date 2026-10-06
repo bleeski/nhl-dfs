@@ -291,7 +291,10 @@ def test_resolve_prices_a_matched_contest_on_its_template_and_labels_it(tmp_path
     assert a.template.contest_id == MINI_MAX_TABLE and a.record()["payout_template"]["paid_places"] == 2732
     assert a.record()["PAYOUT_SOURCE"] == "TEMPLATE"
     assert a.payout_line().startswith(f"PAYOUT_SOURCE=TEMPLATE contest {MINI_MAX} (table of contest {MINI_MAX_TABLE} (2,732 paid")
-    assert b.payout_source is PayoutSource.PRIOR and b.field_size == 5000 and b.field_size_source == "family_prior"
+    # C38 (B72): no cached table keeps the payout PRIOR, but the lobby row's 891 max entries now sizes the contest (it was
+    # the 5,000 family placeholder); 891 is over the small-field cut, so the family stays large_gpp
+    assert b.payout_source is PayoutSource.PRIOR and b.field_size == 891 and b.field_size_source == "lobby"
+    assert b.family == "large_gpp" and b.field_size_label == "LOBBY"
     assert "no cached table" in b.payout_note and b.payout_line().startswith("PAYOUT_SOURCE=PRIOR contest 196218438 (no cached")
     assert cm.overall_payout_source(ctx.values()) is PayoutSource.PRIOR  # the weakest contest
     c = ob.contest_from(a, FAM)

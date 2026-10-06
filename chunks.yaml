@@ -172,7 +172,7 @@ chunks:
     effort: "medium: models/ownership.py and its build_fields callers (build/run.py:811, build/scenario_pass.py:208 and :370, build/provisional.py:181), sim/market.py (clip), the COL league-rate fallback traced from RUN_NOTES of run 20260930-210607-classic"
     breakpoint: "odds, role state and news age wired into every build_fields call with a test per weight, committed; then the 09-30 scratch replay and the team-rate fallback (B51); then the clip rule (B66)"
     impact: "Band 1: controls that exist but never reach the solver. The ownership prior's implied_total, goalie_start_win, pp1, line1 and news_recent weights never see data in a run (read-only audit; line references in B63), so the field cannot know game totals, line news or PP units. On 09-30 the forecast had TOR stacks at 42% (actual 21 to 24%) and COL at 19% (actual 38 to 51%), and the engine's own portfolio held zero COL skaters after COL fell to a league-average rate (B51). Deterministic gaps, each S to M; reach: every slate. The size of the forecast gain is unmeasured (judgment)."
-    backlog: [B63, B20, B51, B66, B85]
+    backlog: [B63, B20, B51, B66, B85, B93]
     findings: []
     checks:
       - pytest -m c17 -q
@@ -567,6 +567,9 @@ deferred:
   - item: "Covers odds fallback (B5)"
     trigger: "the NHL partner feed goes stale again (it was fresh on 10-01 and 10-02); until then C32 corrects the stale docstrings and adds B5's status note"
     backlog: [B5]
+  - item: "Prior payout curve uses the lobby prize pool (B94)"
+    trigger: "a settled slate where a contest priced on the prior (FIELD_SIZE_SOURCE=LOBBY, PAYOUT_SOURCE=PRIOR) paid out differently from the prior by more than the rake assumption, or the next chunk that edits build/objectives.prior_curve; C38 sizes the contest, the pool is the next fact on the same row"
+    backlog: [B94]
   - item: "Late swap publish precheck under the publish lock (B87)"
     trigger: "the next change to late swap's publish call, or a rehearsal that shows the window (the referee's runtime plus a publish-lock wait of up to 60 s); C14 closed the same window for the controller and the initial run"
     backlog: [B87]
