@@ -10,12 +10,15 @@
 #   value_z          points per $1,000 salary, z-scored within position group (F, D, G)
 #   salary_rank      salary rank within position group, 0 cheapest to 1 dearest, minus 0.5
 #   implied_total    team implied goals minus the slate average; 0 without odds
-#   pp1, line1       1 when roles (C7) put the player on PP1 / line 1; 0 until roles exist
+#   pp1, line1       1 when roles (C7) put the player on PP1 / line 1 (forward line 1 or defense pair 1, from a usable
+#                    Daily Faceoff page); 0 otherwise
 #   goalie_start_win goalies only: start prior times win probability, minus the top-goalie value
-#                    at an even game (so an expected starter in a coin-flip game is 0)
+#                    at an even game (so an expected starter in a coin-flip game is 0). A starter the role state
+#                    CONFIRMS counts as 1 and his team's other goalies as 0 (C17)
 #   questionable     1 when the DK status maps to QUESTIONABLE (DTD): the field fades DTD players
 #   unknown          1 when the DK status is unrecognized (UNKNOWN, never OUT)
-#   news_recent      1 when news on the player is within news_recent_hours (0 until news exists)
+#   news_recent      1 when news on the player (his latest Daily Faceoff news item, or a goalie confirmation) is within
+#                    news_recent_hours
 weights:
   appg: 0.5
   value_z: 1.0
@@ -29,6 +32,12 @@ weights:
   news_recent: 1.0
 
 news_recent_hours: 3
+
+# C17 (backlog B63, [BEN] flag 30): a run hands the feature table the slate's odds (matched through the verified team codes,
+# same age limit as the simulator), the role state's PP1 and line 1 players, news ages and confirmed goalies. false restores
+# the pre-C17 behavior exactly: the field sees none of them.
+field_inputs:
+  enabled: true
 
 # Without roles or news, no goalie is confirmed. The field's belief is priced as a prior: the
 # highest-salary goalie on each team is the expected starter at this probability, any other

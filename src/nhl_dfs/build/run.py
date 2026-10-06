@@ -582,12 +582,15 @@ def run_slate(
     rm = _role_model(pool, after_b, st, offline, cache, clock, runtime, m, messages)
     timings["roles_s"] = round(time.perf_counter() - t, 3)
 
+    # Odds (C17), once: the provisional pass's field features and the scenario pass's market fit read the same snapshot
+    odds = _run_odds(cache, offline, clock, runtime, messages)
+
     # Provisional pass (C3) -------------------------------------------------------------------
     t = time.perf_counter()
     prov = None
     try:
         prov = _provisional_pass(run, entries, pool, after_b, st, starts, offline, runtime, caps, seed, slate_id,
-                                 outputs_root, cache, m, messages, out_root, rm=rm, clock=clock)
+                                 outputs_root, cache, m, messages, out_root, rm=rm, odds=odds, clock=clock)
     except Exception as exc:  # the current version stays; never raised out of the run
         m["failed"].append(f"provisional pass: {type(exc).__name__}: {str(exc)[:160]}")
         messages.append(f"provisional pass failed ({type(exc).__name__}); the previous version stays current")
@@ -604,7 +607,7 @@ def run_slate(
                           starts=starts, offline=offline, runtime=runtime, seed=seed, slate_id=slate_id,
                           outputs_root=outputs_root, cache=cache, m=m, messages=messages, prov=prov, v1_assignment=a,
                           expect_sha=m["versions"][-1]["sha256"], clock=clock, publish_fn=_export_and_publish,
-                          set_fields_fn=_set_assignment_fields, scenario_n=scenario_n,
+                          set_fields_fn=_set_assignment_fields, scenario_n=scenario_n, odds=odds,
                           play_prob=rm.play_prob if rm is not None else None,
                           confirmed_at=rm.roles.confirmed_at() if rm is not None else None,
                           roles=rm.roles if rm is not None else None)
@@ -942,6 +945,22 @@ def _role_model(pool, after_b, st, offline, cache, clock, runtime, m, messages):
     return rm
 
 
+def _run_odds(cache, offline: bool, clock, runtime: dict, messages: list[str]) -> tuple[object | None, list[str]]:
+    """C17: the run's one odds snapshot, (snapshot or None, messages), read cache-first and bounded by the network
+    budget. Offline runs skip it, as the scenario pass always has. It feeds the field features (provisional pass) and
+    the market fit (scenario pass), so both see the same prices."""
+    from nhl_dfs.build.swap_objective import _bounded
+    from nhl_dfs.sim.slate import fetch_odds
+
+    if offline:
+        return None, ["odds: skipped (offline); every game takes the model intensities"]
+    try:
+        return _bounded(lambda: fetch_odds(cache=cache, now=clock()), float(runtime["network_pass_budget_s"]), "nhl-odds-fetch")
+    except TimeoutError as exc:  # the run continues without prices, and says so
+        messages.append(f"odds unavailable ({exc}); the field features and every game take no market")
+        return None, [f"odds: {exc}; every game takes the model intensities"]
+
+
 def _payout_templates(entries, cache, runs_root, fam_cfg: dict, messages: list[str]):
     """C16 (flag 14): the lobby rows and cached tables for this slate's contests, read from local files only (the HTTP
     cache root and the runs root, read now, never a fetch); None when switched off or unreadable (the contests then keep
@@ -986,7 +1005,7 @@ def _lobby_rows(entries, cache, templates, fam_cfg: dict, messages: list[str]):
 
 
 def _provisional_pass(run, entries, pool, after_b, st, starts, offline, runtime, caps, seed, slate_id,
-                      outputs_root, cache, m, messages, out_root, rm=None, *, clock) -> dict:
+                      outputs_root, cache, m, messages, out_root, rm=None, *, odds=None, clock) -> dict:
     """Returns what the scenario pass (C8) builds on: contexts, fields, FIELD_CALIBRATION, the
     provisional assignment and the candidate bank (also when its own publish failed)."""
     import json
@@ -994,7 +1013,7 @@ def _provisional_pass(run, entries, pool, after_b, st, starts, offline, runtime,
     from nhl_dfs.build import provisional as prov
     from nhl_dfs.build.state import atomic_write
     from nhl_dfs.models import contests as contests_mod
-    from nhl_dfs.models import ownership
+    from nhl_dfs.models import field_inputs, ownership
     from nhl_dfs.models import prefit as prefit_mod
     from nhl_dfs.models.projection import PriorProjection
 
@@ -1031,7 +1050,11 @@ def _provisional_pass(run, entries, pool, after_b, st, starts, offline, runtime,
 
     statuses = {rid: p for rid, (p, _) in st.items() if rid in work.by_role_id}
     proj = after_b.get("proj") or PriorProjection(work)
-    fb = prov.build_fields(work, proj, contexts, seed=seed, statuses=statuses, own_cfg=own_cfg)
+    # C17 (B63): the slate's odds, the role state's lines, PP units, goalie confirmations and news ages reach the field
+    inputs = field_inputs.collect(work, snapshot=odds[0] if odds else None, role_state=rm.roles if rm is not None else None,
+                                  now=clock(), own_cfg=own_cfg)
+    messages.append(inputs.coverage_line())
+    fb = prov.build_fields(work, proj, contexts, seed=seed, statuses=statuses, own_cfg=own_cfg, inputs=inputs)
     atomic_write(run.path / "field.json",
                  json.dumps(prov.field_summary(work, fb, contexts, model_status=proj.source().value), indent=2).encode("utf-8"))
     bank = after_b.get("bank")
@@ -1080,6 +1103,7 @@ def _provisional_pass(run, entries, pool, after_b, st, starts, offline, runtime,
         "evidence": evidence,
         "contests": [c.record() for c in contexts.values()],
         "fields": fields,
+        "field_inputs": inputs.record(),
         "field_s": round(fb.elapsed_s, 3),
         "entries": rows,
         "prefit": prefit_note,
@@ -1090,7 +1114,7 @@ def _provisional_pass(run, entries, pool, after_b, st, starts, offline, runtime,
         if f["degraded"]:
             messages.append(f"field for {fam} is short: {f['n_draws']} of {f['n_requested']} draws; ownership is degraded")
     state = {"contexts": contexts, "fb": fb, "field_cal": field_cal, "assignment": a_p, "bank": bank,
-             "own_cfg": own_cfg, "statuses": statuses}
+             "own_cfg": own_cfg, "statuses": statuses, "inputs": inputs}
     vp = _export_and_publish(run, entries, pool, a_p, slate_id, outputs_root, m, messages, phase="P",
                              expect=after_b["sha"], clock=clock, runtime=runtime)
     if vp is None:

@@ -108,6 +108,8 @@ def _provisional_lines(p: dict[str, Any]) -> list[str]:
         f"- {p['label']}. Version: {ver}.",
         "- Evidence: " + " ".join(f"{k}={v}" for k, v in ev.items()),
         f"- Prefit: {p.get('prefit', 'not run')}",
+        # C17: what the ownership prior was told; a manifest written before C17 has none and says so
+        "- " + (p["field_inputs"]["line"] if p.get("field_inputs") else "FIELD_INPUTS not recorded (written before C17)"),
         "- Fields: " + "; ".join(
             f"{fam} {f['n_draws']}/{f['n_requested']} draws, {f['repeats']} repeats"
             + (" DEGRADED" if f["degraded"] else "") for fam, f in p["fields"].items()),

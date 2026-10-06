@@ -165,12 +165,16 @@ class FieldBuild:
     fields: dict  # family -> models.field.Field
     marginals: dict[str, Marginals]  # contest id -> Marginals at that contest's field size
     elapsed_s: float
+    feats: dict | None = None  # the feature table the draws were made from (C17: the scenario pass grows the field on the same one)
+    inputs: object | None = None  # models.field_inputs.FieldInputs behind `feats`, for the manifest and RUN_NOTES
 
 
 def build_fields(pool: SalaryPool, proj: Projection, contexts: Mapping[str, ContestContext], *, seed: int,
                  statuses: Mapping[str, Participation] | None = None, odds=None,
-                 own_cfg: dict | None = None) -> FieldBuild:
-    """One sampled field per contest family present; marginals per contest at its field size."""
+                 own_cfg: dict | None = None, inputs=None) -> FieldBuild:
+    """One sampled field per contest family present; marginals per contest at its field size. inputs: a
+    models.field_inputs.FieldInputs (C17: the slate's odds, role state, news ages and goalie confirmations);
+    without it the feature table sees only `odds` (default none), as before."""
     import time
 
     from nhl_dfs.models import field as field_mod
@@ -178,7 +182,8 @@ def build_fields(pool: SalaryPool, proj: Projection, contexts: Mapping[str, Cont
 
     t0 = time.perf_counter()
     own_cfg = own_cfg if own_cfg is not None else ownership.load_ownership_config()
-    feats = ownership.feature_table(pool, proj, odds, cfg=own_cfg, statuses=statuses)
+    kw = inputs.feature_kwargs() if inputs is not None else {"odds": odds}
+    feats = ownership.feature_table(pool, proj, cfg=own_cfg, statuses=statuses, **kw)
     n = int(own_cfg["field"]["n"][pool.mode.value])
     fields = {}
     for fam in sorted({c.family for c in contexts.values()}):
@@ -186,7 +191,7 @@ def build_fields(pool: SalaryPool, proj: Projection, contexts: Mapping[str, Cont
         fields[fam] = field_mod.sample(pool, pool.mode, util, field_mod.behaviors_for(fam, own_cfg), n, seed, fam,
                                        proj=proj, feats=feats, cfg=own_cfg)
     margs = {cid: field_mod.marginals(fields[c.family], pool, c.field_size) for cid, c in contexts.items()}
-    return FieldBuild(fields, margs, time.perf_counter() - t0)
+    return FieldBuild(fields, margs, time.perf_counter() - t0, feats, inputs)
 
 
 def field_summary(pool: SalaryPool, fb: FieldBuild, contexts: Mapping[str, ContestContext], top: int = 15,
