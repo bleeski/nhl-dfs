@@ -349,3 +349,73 @@ def test_history_refresh_command_reports_before_result_and_after(capsys, stores)
     rc = cli.main(["history", "--refresh", "--as-of", "2026-05-02", "--store-root", str(one)])
     out = capsys.readouterr().out
     assert rc == 0 and out.count("before: ") == 1 and "result: SKIPPED: the regular season is over" in out and "after: " in out
+
+
+def test_a_swap_that_fails_part_way_is_reported_as_such_and_the_next_refresh_heals_it(stores, tmp_path, monkeypatch):
+    """Windows refuses to replace a file another process has open. The first swap succeeds and the second fails: the result
+    must not claim the store is unchanged, and the store must still be consistent (the combined tables are just older)."""
+    import os
+
+    _, old = stores
+    root = _copy(old, tmp_path)
+    before = _digest(root)
+    calls = []
+
+    def flaky(src, dst):
+        calls.append(dst)
+        if len(calls) == 2:
+            raise PermissionError("the file is open in another process")
+        os.replace(src, dst)
+
+    monkeypatch.setattr(refresh, "_replace", flaky)
+    cache, _ = _cache(tmp_path)
+    res = refresh.refresh_incremental(AS_OF, now=NOW, store_root=root, cache=cache)
+    assert res.outcome == "FAILED" and "stopped after nhl_skater_games" in res.reason
+    assert "not replaced: nhl_goalie_games, skater_games, goalie_games" in res.reason and "the store is unchanged" not in res.reason
+    now = _digest(root)
+    assert now["nhl_skater_games"] != before["nhl_skater_games"]  # the one swap that went through stays
+    assert all(now[k] == before[k] for k in ("nhl_goalie_games", "skater_games", "goalie_games"))
+    assert not list((root / "skater_games").glob("*.tmp"))  # no temp files left behind
+    assert status.measure(AS_OF, store_root=root).state == "STALE"  # the combined table still says what it said
+    monkeypatch.undo()
+    cache2, _ = _cache(tmp_path / "again")
+    healed = refresh.refresh_incremental(AS_OF, now=NOW, store_root=root, cache=cache2)
+    assert healed.outcome == "REFRESHED" and status.measure(AS_OF, store_root=root).state == "CURRENT"
+    assert _b2b(root) == 1
+
+
+def test_the_rebuilt_projection_is_the_one_the_provisional_pass_uses(stores, tmp_path, monkeypatch):
+    """Flag 34: after a refresh that adds games the passes after Phase B get the rebuilt table, and the provisional pass completes
+    on it (it is not enough that after_b['proj'] is replaced; the pass must be handed it and run)."""
+    _, old = stores
+    root = _copy(old, tmp_path)
+    monkeypatch.setattr(store_mod, "DEFAULT_ROOT", root)
+    _no_dk(monkeypatch)
+    monkeypatch.setattr(run_mod, "_fetch_contest_details", lambda ids, cache, budget: ({}, ["stub"]))
+    built = []
+    real_pf = params.projection_for
+
+    def tagged(pool, as_of, **kw):
+        t = real_pf(pool, as_of, **kw)
+        built.append(t)
+        return t
+
+    monkeypatch.setattr(params, "projection_for", tagged)
+    seen = {}
+    real_pp = run_mod._provisional_pass
+
+    def spy(run, entries, pool, after_b, *a, **k):
+        seen["proj"] = after_b.get("proj")
+        return real_pp(run, entries, pool, after_b, *a, **k)
+
+    monkeypatch.setattr(run_mod, "_provisional_pass", spy)
+    cache, _ = _cache(tmp_path, [*ROUTES, ("", 404, b"not found")])
+    r = _online(tmp_path, cache, baseline_only=False, scenario=False)
+    h = r.manifest["history"]
+    assert h["refresh"]["outcome"] == "REFRESHED" and h["rebuilt_projection"] is True
+    assert len(built) == 2 and built[0] is not built[1]  # Phase A's table, then the rebuilt one
+    assert seen["proj"] is not None and seen["proj"] is not built[0]
+    assert seen["proj"] is built[1] or seen["proj"].counts() == built[1].counts()  # the rebuilt table, possibly role-adjusted
+    assert "provisional" in r.manifest and r.manifest["provisional"], r.manifest["messages"]
+    assert not any("provisional pass failed" in x for x in r.manifest["messages"])
+    assert r.manifest["failed"] == ["phase B: DK draftables unavailable"]  # the stubbed DraftKings fetch; nothing else failed

@@ -109,20 +109,43 @@ def _own_cache(cache: HttpCache | None, cfg: dict, max_calls: int) -> HttpCache:
                      sleep=cache.sleep, force_refresh=cache.force_refresh)
 
 
+_replace = os.replace  # one name for the file swap, so a test can make it fail part way
+
+
+class PartialPromotion(RuntimeError):
+    """A file swap failed after earlier ones succeeded (Windows refuses to replace a file another process has open)."""
+
+    def __init__(self, done: list[str], rest: list[str], cause: BaseException):
+        super().__init__(f"{type(cause).__name__}: {str(cause)[:100]}")
+        self.done, self.rest = done, rest
+
+
 def _promote(stage, store_root, season: int) -> None:
-    """Move the changed tables from the staging folder into the store, one atomic replace per file, combined tables last."""
-    for kind in PROMOTED_KINDS:
-        src = store_mod.path_for(kind, season, root=stage)
-        if not src.exists():
-            continue
-        dst = store_mod.path_for(kind, season, root=store_root)
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(dir=dst.parent, suffix=".parquet.tmp")
-        os.close(fd)
-        try:
+    """Move the changed tables from the staging folder into the store, combined tables last. Phase 1 copies each one next to its
+    target as a temp file (a failure here leaves the store untouched); phase 2 swaps them in with one atomic replace per file in a
+    tight loop. If a swap fails part way the files already swapped stay: the store is still consistent (the per-source tables are
+    newer than the combined ones, which the next refresh recombines) and PartialPromotion names what was and was not replaced."""
+    staged: list[tuple[str, str, object]] = []
+    try:
+        for kind in PROMOTED_KINDS:
+            src = store_mod.path_for(kind, season, root=stage)
+            if not src.exists():
+                continue
+            dst = store_mod.path_for(kind, season, root=store_root)
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            fd, tmp = tempfile.mkstemp(dir=dst.parent, suffix=".parquet.tmp")
+            os.close(fd)
+            staged.append((kind, tmp, dst))
             shutil.copyfile(src, tmp)
-            os.replace(tmp, dst)
-        finally:
+        done: list[str] = []
+        for i, (kind, tmp, dst) in enumerate(staged):
+            try:
+                _replace(tmp, dst)
+            except OSError as exc:
+                raise PartialPromotion(done, [k for k, _, _ in staged[i:]], exc) from exc
+            done.append(kind)
+    finally:
+        for _, tmp, _ in staged:
             if os.path.exists(tmp):
                 os.remove(tmp)
 
@@ -208,7 +231,12 @@ def refresh_incremental(as_of: date, *, now: datetime | None = None, store_root=
         if not changed:
             res.outcome = "NO_NEW_GAMES"
             return res
-        _promote(stage, store_root, season)
+        try:
+            _promote(stage, store_root, season)
+        except PartialPromotion as part:
+            res.reason = (f"swapping the refreshed tables into the store stopped after {', '.join(part.done) or 'the first file'}; "
+                          f"not replaced: {', '.join(part.rest)} ({part}); the store is consistent and the next refresh recombines it")
+            return res
         res.outcome = "REFRESHED"
         return res
     except Exception as exc:  # a refresh must never stop a run
