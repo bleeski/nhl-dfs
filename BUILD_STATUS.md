@@ -48,7 +48,7 @@ Tracker for `BUILD_CHUNKS.md` (final, 26 September 2026). Every development sess
 | C36 | TODO | C11 | | | | | band 3; B67 |
 | C37 | TODO | C43 | | | | | band 3; B76 |
 | C38 | DONE | C16 | 2026-10-05 | 2026-10-05 | 8f197df | PASS | band 1; B72 |
-| C39 | TODO | C17 | | | | | band 1; B70, B71; flag 18 default in force |
+| C39 | IN_PROGRESS | C17 | 2026-10-06 |  |  |  | band 1; B70, B71; flag 18 default in force |
 | C40 | TODO | C7 | | | | | band 1; B73 |
 | C41 | TODO | C19 | | | | | band 1; B74 |
 | C42 | TODO | C18 | | | | | band 1, experiment: DONE on rejected is valid; B75 |
