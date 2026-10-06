@@ -235,6 +235,32 @@ coerced to a known value (CLAUDE.md); other vocabularies here that have no
 - Cloud sessions: `data/raw/` and `runs/` are gitignored, so a cloud container has no lobby capture and no tables and stays
   PRIOR (reported per contest). Persisting them is B68's question (flag 16), not C16's.
 
+## Field size from the lobby row (C38, `models/contests.py`, B72, flag 29)
+
+- A contest whose page did not describe it and that no template matched is sized from its lobby row, the same local capture and
+  reader C16 uses (`payout_templates.lobby_rows`; `build/run._lobby_rows` reads it once, or takes the template store's rows).
+  Missing is missing: no row, no usable row, or a switch off keeps the family prior and says why.
+- A row sizes a contest only when: the fee equals the entries file's; the name (game suffix and stray spaces stripped) equals the
+  entries file's; max entries is at least 1; and our own entries in that contest are fewer than the row's max (at least one
+  opponent exists). Otherwise the contest stays `field_size_source=family_prior` with the reason in `field_size_note`.
+- Family: a family the name gives (cash, satellite, wta, small_field patterns) is kept and only the size moves. A contest whose
+  family is only the declared default is `small_field` (family source `lobby`) when max entries is at most
+  `exact_rules.small_field_max_entries` (500), else the default; the cut is the exact path's own (`family_from_detail`), so a contest
+  is classed the same whether its page answered or not. It reads max entries only; max per user is recorded in the note, so a
+  multi-entry contest under the cut (475 max, 14 per user) is small_field too.
+- Labels: `FIELD_SIZE_SOURCE` is `EXACT` (the contest page), `LOBBY` (the lobby row's max entries; also a TEMPLATE contest's) or
+  `PRIOR` (the family's declared size). The stored `field_size_source` keeps its older values (`contest_detail`, `lobby`,
+  `family_prior`). One printed line per contest: `FIELD_SIZE_SOURCE=LOBBY contest <id> (<max entries>, <per user>; lobby capture
+  <snapshot>)` or `FIELD_SIZE_SOURCE=PRIOR contest <id> (<reason>)`; the manifest (`provisional.contests[*]` and
+  `scenario.contests[*]`: `FIELD_SIZE_SOURCE`, `field_size_note`), RUN_NOTES (both contest tables and Messages) and the CLI `note:`
+  lines carry it.
+- `PAYOUT_SOURCE` is untouched: a LOBBY-sized contest is still PRIOR unless C16 matched a template. Only the size and the family
+  move, never the payout curve. Late swap and refresh read the contests frozen at build time.
+- Off-switch: `config/contest_families.yaml lobby_field_size.enabled` (independent of `payout_templates.enabled`); false restores
+  the family priors exactly.
+- Cloud sessions: no run phase fetches the lobby and a container has no `data/raw`, so a cloud contest prints
+  `FIELD_SIZE_SOURCE=PRIOR` (no lobby capture lists this contest). B91 carries the fix with C16's.
+
 ## Late swap and refresh objective (C9, `build/swap_objective.py`, `scenario_cache.py`, `live.py`)
 
 - Lock semantics are C2c's, unchanged: pinned cells (LOCKED, EDIT_STOP) byte-identical, no started or edit-stop
