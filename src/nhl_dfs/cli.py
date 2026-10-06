@@ -836,6 +836,8 @@ def build_parser() -> argparse.ArgumentParser:
     hist.add_argument("--store-root", type=str, default=None)
     hist.add_argument("--raw-root", type=str, default=None)
     hist.add_argument("--keep-raw", action="store_true", help="B2: skip the raw report cache eviction after the backfill")
+    hist.add_argument("--status", action="store_true", help="C39: report how current the store is (local files only)")
+    hist.add_argument("--as-of", type=str, default=None, help="with --status: YYYY-MM-DD; default today (ET)")
     hist.set_defaults(func=cmd_history)
 
     prm = sub.add_parser("params")
@@ -1027,10 +1029,18 @@ def cmd_field(args: argparse.Namespace) -> int:
 def cmd_history(args: argparse.Namespace) -> int:
     import time
     from datetime import date, datetime, timezone
+    from zoneinfo import ZoneInfo
 
     from nhl_dfs.data.history import history_seasons, nhl_reports, regular_season_complete, store
     from nhl_dfs.data.http import load_sources_config
 
+    if args.status:  # C39: where the store stands, from local files only; nothing is fetched or written
+        from nhl_dfs.data.history import status
+
+        as_of = date.fromisoformat(args.as_of) if args.as_of else datetime.now(ZoneInfo("America/New_York")).date()
+        print(f"history store status as of {as_of} (games strictly before that date feed the models)")
+        print(status.measure(as_of, store_root=args.store_root).line())
+        return 0
     if not args.backfill:
         print("history needs --backfill <number of completed seasons>")
         return 2

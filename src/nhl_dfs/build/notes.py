@@ -51,6 +51,7 @@ def render(m: dict[str, Any]) -> str:
         if final else "- Final: nothing published",
         "- Status: " + " ".join(f"{k}={v}" for k, v in s.items()),
         f"- DK status from the salary file: {news.get('csv_summary', 'not read')}",
+        *([f"- History store: {_history_line(m)}"] if m.get("history") else []),
         f"- Material news changes: {news.get('phase_b_summary', 'none (offline or no network pass)')}",
         "- QA changes: none (no QA round in the baseline run)",
         f"- Fallback / relaxation: route {m.get('search_route', '?')}; "
@@ -76,6 +77,16 @@ def render(m: dict[str, Any]) -> str:
     if m.get("messages"):
         lines += ["", "## Messages", ""] + [f"- {x}" for x in m["messages"]]
     return "\n".join(lines) + "\n"
+
+
+def _history_line(m: dict[str, Any]) -> str:
+    """C39: the history store's state at the as-of date, from the manifest block (data/history/status.render_line)."""
+    from nhl_dfs.data.history.status import render_line
+
+    try:
+        return render_line(m["history"], m.get("model"))
+    except Exception as exc:  # a notes line must never stop the notes (or the run) from being written
+        return f"unavailable ({type(exc).__name__}: {str(exc)[:80]})"
 
 
 def _started_lines(s: dict[str, Any]) -> list[str]:

@@ -80,3 +80,7 @@ history:
   evict_raw: true        # B2: after a clean backfill, drop report bodies whose rows are in the store (see nhl_reports.evict_raw)
   keep_unindexed_days: 7 # an unreferenced body (a schema failure kept for diagnosis) is deleted after this many days
   crosscheck_boxscores_per_season: 2
+  # C39 (B70, B71): how current the store is, measured by data/history/status.py
+  fresh_days: 2          # CURRENT when the newest regular-season game is at most this many days before the as-of date
+  complete_after_h: 3    # an Eastern day counts as complete this many hours after its midnight (late games finish after it)
+  bootstrap_stale_min: 30  # a RUNNING cloud-bootstrap backfill older than this, or whose process is gone, reads ABANDONED

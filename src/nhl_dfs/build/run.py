@@ -49,7 +49,7 @@ import io
 import threading
 import time
 from dataclasses import dataclass, field, replace
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
@@ -326,6 +326,17 @@ def _projection(work: SalaryPool, pool: SalaryPool, clock, m: dict, messages: li
     return table
 
 
+def _history_status(m: dict, messages: list[str]) -> None:
+    """C39 (B70, B71): how current the history store is at the as-of date the projection used. Local files only; it reads
+    and reports, and nothing it finds changes a lineup. A failure becomes a message, never a stopped run."""
+    try:
+        from nhl_dfs.data.history import status
+
+        m["history"] = status.measure(date.fromisoformat(m["model"]["as_of"])).as_dict()
+    except Exception as exc:
+        messages.append(f"history store status unavailable ({type(exc).__name__}: {str(exc)[:100]})")
+
+
 # -- run -----------------------------------------------------------------------------------
 
 @dataclass
@@ -515,6 +526,7 @@ def run_slate(
     timings["intake_s"] = round(time.perf_counter() - t_start, 3)
 
     proj = _projection(work, pool, clock, m, messages)
+    _history_status(m, messages)
     objective = objective_from(work, proj)
     t = time.perf_counter()
     search = build_bank(work, objective, len(entries.entries), runtime, seed=seed)
