@@ -115,21 +115,30 @@ def _team_goal_stats(params, team: str, opp: str, model_cfg: dict) -> tuple[floa
 
 
 def model_strength(params, home: str, away: str, cfg: dict | None = None, model_cfg: dict | None = None) -> TeamStrength:
-    """Model intensities from the per-person ParamTable. A team whose listed skaters cannot make
-    up a lineup (an incomplete pool) takes the league goal rate instead, and says so."""
+    """Model intensities from the per-person ParamTable. A team whose listed skaters cannot make up a lineup (an incomplete
+    pool: fewer than 10 F or 5 D expected to dress) takes its own recent goal rate when the table has one (C17, B51), else
+    the league goal rate, and says so."""
     from nhl_dfs.models.rates import load_model_config
 
     cfg = cfg or load_sim_config()
     model_cfg = model_cfg or load_model_config()
     r = cfg["resolve"]
     league_miss = 1.0 - float(model_cfg["goalies"]["sv_pct"])
+    min_games = int(((model_cfg.get("team") or {}).get("team_rate") or {}).get("min_games", 20))
+    own_rates = getattr(params, "team_goals", None) or {}
     notes = []
     lam = []
     for team, opp in ((home, away), (away, home)):
         g_for, f_d, d_d, miss = _team_goal_stats(params, team, opp, model_cfg)
         if f_d < 10.0 or d_d < 5.0:
-            g_for = float(r["goals_league"])
-            notes.append(f"{team}: listed skaters cover {f_d:.1f} F and {d_d:.1f} D, league goal rate used")
+            own = own_rates.get(team)
+            if own is not None and own[1] >= min_games:
+                g_for = float(own[0])
+                notes.append(f"{team}: listed skaters cover {f_d:.1f} F and {d_d:.1f} D, its own goal rate {own[0]:.2f} over its "
+                             f"last {own[1]} games used")
+            else:
+                g_for = float(r["goals_league"])
+                notes.append(f"{team}: listed skaters cover {f_d:.1f} F and {d_d:.1f} D, league goal rate used")
         lam.append(float(r["lambda0_league"]) * g_for / float(r["goals_league"]) * miss / league_miss)
     return TeamStrength(lam[0], lam[1], tuple(notes))
 

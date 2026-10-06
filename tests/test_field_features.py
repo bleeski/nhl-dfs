@@ -472,3 +472,54 @@ def test_the_scenario_fallback_prices_a_contest_on_its_cached_template_b93(tmp_p
     assert scen["PAYOUT_SOURCE"] == "TEMPLATE" and scen["field_size"] == 1189
     assert scen["payout_template"]["template_contest_id"] == 297000009 and scen["paid_positions"] == 285
     assert r.statuses["PAYOUT_SOURCE"] == "TEMPLATE"
+
+
+# -- B51: the team-rate source that replaces the league rate -------------------------------------------------------------------
+
+def _games_frame():
+    """Skater goal rows for two teams over six games (one playoff game, which never counts): AAA scores 4, 2, 3, 5, 1 in its
+    regular-season games in date order, BBB 0 every game. NHL code AAA is DK code ZZZ in the map."""
+    import pandas as pd
+
+    rows = []
+    for i, (gaa, gbb, regime) in enumerate([(4, 0, "regular"), (2, 0, "regular"), (3, 0, "regular"), (5, 0, "regular"),
+                                             (1, 0, "regular"), (9, 0, "playoffs")]):
+        day = datetime(2026, 4, 1 + i).date()
+        rows += [{"team": "AAA", "game_id": 100 + i, "game_date": day, "goals": gaa - 1, "regime": regime},
+                 {"team": "AAA", "game_id": 100 + i, "game_date": day, "goals": 1, "regime": regime},  # two skaters, one team-game
+                 {"team": "BBB", "game_id": 100 + i, "game_date": day, "goals": gbb, "regime": regime}]
+    return SimpleNamespace(skaters=pd.DataFrame(rows))
+
+
+def test_team_goal_rate_is_goals_per_team_game_over_the_last_regular_season_games():
+    from nhl_dfs.models import params as params_mod
+    from nhl_dfs.models.rates import load_model_config
+
+    cfg = load_model_config()
+    feats = _games_frame()
+    full = params_mod.team_goal_rates(feats, cfg, {"ZZZ", "BBB", "NOPE"}, {"ZZZ": "AAA"})
+    assert full["ZZZ"] == (pytest.approx((4 + 2 + 3 + 5 + 1) / 5), 5)  # the playoff game is not a team-game here
+    assert full["BBB"] == (0.0, 5) and "NOPE" not in full  # a team with no games is absent, never zero
+    last3 = params_mod.team_goal_rates(feats, {"team": {"team_rate": {"games": 3}}}, {"ZZZ"}, {"ZZZ": "AAA"})
+    assert last3["ZZZ"] == (pytest.approx((3 + 5 + 1) / 3), 3)  # the last three by date
+    assert params_mod.team_goal_rates(SimpleNamespace(skaters=feats.skaters.iloc[0:0]), cfg, {"ZZZ"}) == {}
+
+
+def test_a_thin_pool_team_takes_its_own_goal_rate_instead_of_the_league_rate():
+    from sim_helpers import MODEL_CFG, synthetic_params
+    from nhl_dfs.sim import market
+
+    league = float(market.load_sim_config()["resolve"]["goals_league"])
+    thin = synthetic_params(("AAA", "BBB"), n_f=6, n_d=4)  # fewer than 10 F and 5 D expected to dress: the old fallback
+    old = market.model_strength(thin, "AAA", "BBB", model_cfg=MODEL_CFG)
+    assert "league goal rate used" in old.notes[0] and "AAA" in old.notes[0]
+    thin.team_goals = {"AAA": (league * 1.2, 82), "BBB": (league * 0.8, 10)}
+    got = market.model_strength(thin, "AAA", "BBB", model_cfg=MODEL_CFG)
+    assert got.lam_home == pytest.approx(old.lam_home * 1.2)  # AAA's own rate, 20% above the league rate
+    assert any("AAA: listed skaters cover" in n and "its own goal rate" in n and "last 82 games" in n for n in got.notes)
+    assert got.lam_away == pytest.approx(old.lam_away)  # BBB has only 10 games (below min_games 20): league rate, said so
+    assert any("BBB" in n and "league goal rate used" in n for n in got.notes)
+    full = synthetic_params(("AAA", "BBB"), n_f=13, n_d=7)
+    full.team_goals = {"AAA": (6.0, 82)}
+    assert not market.model_strength(full, "AAA", "BBB", model_cfg=MODEL_CFG).notes  # a complete roster never needs it
+
