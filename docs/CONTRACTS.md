@@ -261,6 +261,38 @@ coerced to a known value (CLAUDE.md); other vocabularies here that have no
 - Cloud sessions: no run phase fetches the lobby and a container has no `data/raw`, so a cloud contest prints
   `FIELD_SIZE_SOURCE=PRIOR` (no lobby capture lists this contest). B91 carries the fix with C16's.
 
+## Inputs reach the field features and the simulator (C17, `models/field_inputs.py`, `build/run.py`, `scenario_pass.py`, `sim/market.py`; B63, B20, B51, B66, B85, B93; flags 30 to 32)
+
+- What the field is told: `field_inputs.collect(work, snapshot, role_state, now, own_cfg)` returns `FieldInputs`. Odds: the run's one
+  snapshot matched with `market.match_odds` (only verified DK codes match, Covers codes translate to the pool's) and not older than
+  `market.max_age_h`. Roles: `pp1` = Daily Faceoff PP unit 1, `line` = forward line or defense pair, usable pages only. News ages: hours
+  since the player's latest Daily Faceoff news item or a goalie confirmation (a time ahead of the clock is 0). Goalie starts: only a
+  CONFIRMED team (starter 1, the team's other goalies 0); EXPECTED and CONFLICTED keep the 0.8/0.2 prior. A skater whose team has no usable
+  page reads as the covered average of his position group on `pp1`, `line1` and `news_recent` (`imputed`), never as a non-member; with no
+  covered team, or all covered, nothing is imputed.
+- Where: `run._run_odds` fetches the odds once (cache first, bounded by `network_pass_budget_s`, none offline) before the provisional
+  pass; `_provisional_pass` builds the inputs and calls `build_fields(inputs=)`; `FieldBuild.feats` is the one feature table and
+  `_grow_fields` reuses it; the scenario pass takes the same odds (`odds=`), and its fallback after a failed provisional pass builds the
+  same inputs and looks up C16 template tables (B93). `cli field` of a baseline-only run stays an offline family-prior diagnostic. Late
+  swap and refresh never sample a field (they read the frozen `scenario/fields.json`).
+- Report: one line `FIELD_INPUTS MARKET=a/b ROLES=c/d (...)` in the messages, the manifest (`provisional.field_inputs`;
+  `scenario.field_inputs` on the fallback) and RUN_NOTES; `FIELD_INPUTS=OFF` when switched off. Off-switch
+  `config/ownership.yaml field_inputs.enabled` (flag 30): false restores the pre-C17 field exactly.
+- Team rate (B51): `ParamTable.team_goals` is DK team to (mean skater goals per game over its last 82 regular-season games before the
+  slate, games used) from the as-of history frame (`config/model.yaml team.team_rate`). `sim/market.model_strength` uses it instead of the
+  league rate for a team whose listed skaters cannot make up a lineup (fewer than 10 F or 5 D expected to dress) when it has at least
+  `min_games` (20) games, else the league rate; the note says which.
+- Clip (B66, flag 31): `TeamStrength.history_home` and `history_away` are the share of a side's modeled goals that rest on history (HISTORY
+  persons 1, MIXED by exposure ratio, PRIOR 0; a side on its own recent rate 1, on the league rate 0). The limit is `max_discrepancy` +
+  (`max_discrepancy_prior` - `max_discrepancy`) x (1 - share), 0.35 and 1.0 today, so a fully history-backed side keeps 0.35 and a prior side
+  is not clipped for a plausible market. A CAPPED note prints the market value, the clipped value, the model value, the limit and the share.
+  A caller that gives no share keeps 0.35.
+- Evidence: `docs/experiments/2026-10-06_c17_replay.md` (time-pinned replay of the 09-30 slate, nothing fetched). All inputs against off on
+  today's code worsen `mae_all` by 0.02 to 0.27 on that slate (one slate, 3 of 6 Daily Faceoff pages usable, placeholder weights); against
+  the recorded 09-30 run all four contests are lower, but that run had 112 of 133 persons on PRIOR (B35). B63's five-slate check is a
+  deferred trigger.
+- OTT (B85): `config/teams.yaml` OTT dk OTT verified from the 2026-10-03 DK lobby GameSets (OTT @ TOR).
+
 ## Late swap and refresh objective (C9, `build/swap_objective.py`, `scenario_cache.py`, `live.py`)
 
 - Lock semantics are C2c's, unchanged: pinned cells (LOCKED, EDIT_STOP) byte-identical, no started or edit-stop
