@@ -523,3 +523,74 @@ def test_a_thin_pool_team_takes_its_own_goal_rate_instead_of_the_league_rate():
     full.team_goals = {"AAA": (6.0, 82)}
     assert not market.model_strength(full, "AAA", "BBB", model_cfg=MODEL_CFG).notes  # a complete roster never needs it
 
+
+
+# -- B66: the market clip depends on how much of the model side rests on player history ---------------------------------------------
+
+def _edm_van():
+    """The 2026-10-01 EDM @ VAN game from the run's cached partner feed (VAN -218/EDM +180... as priced, total 6.5). B66: its away
+    market intensity 3.64 sat 36% above the model's 2.67, so the fixed 35% clip binds and the fit stops reproducing the market."""
+    from conftest import fixture_bytes
+    from nhl_dfs.data.sources import nhl
+
+    snap = nhl.parse_partner_odds(json.loads(fixture_bytes("nhl_partner_odds_2026-10-01_slate.json")))
+    return snap, next(g for g in snap.games if {g.home_abbrev, g.away_abbrev} == {"VAN", "EDM"})
+
+
+def test_the_clip_is_wide_when_the_model_side_is_a_prior_and_035_when_it_is_history():
+    from nhl_dfs.sim import market
+
+    cfg = market.load_sim_config()
+    snap, g = _edm_van()
+    fit = lambda hh, ha: market.fit_game(g, market.TeamStrength(2.55, 2.67, (), hh, ha), snap.as_of_utc, None, cfg=cfg)
+    hist, prior, mixed = fit(1.0, 1.0), fit(0.0, 0.0), fit(0.5, 0.5)
+    assert hist.lambda_away == pytest.approx(2.67 * 1.35) and any("CAPPED: away market 3.64 clipped to 3.60" in n for n in hist.notes)
+    assert "(model 2.67 +/- 35%, model side 100% history-backed)" in next(n for n in hist.notes if n.startswith("CAPPED"))
+    assert abs(hist.e_total - hist.target_total) > 0.03  # the 10-01 report: total 6.84 against the market's 6.88
+    assert abs(prior.e_total - prior.target_total) < 0.1 and abs(prior.p_home_win - prior.target_p_home) < 0.01  # B66 acceptance
+    assert not any("CAPPED" in n for n in prior.notes) and prior.lambda_away > hist.lambda_away
+    assert not any("CAPPED" in n for n in mixed.notes)  # halfway: the limit is 0.35 + 0.65 x 0.5 = 68%, above the 36% gap
+    # a caller that does not say (every older TeamStrength) keeps the old clip
+    assert market.fit_game(g, market.TeamStrength(2.55, 2.67), snap.as_of_utc, None, cfg=cfg).lambda_away == pytest.approx(hist.lambda_away)
+    # sides are independent: only the history-backed away side is held
+    one = fit(0.0, 1.0)
+    assert one.lambda_away == pytest.approx(hist.lambda_away)
+
+
+def test_the_clip_still_binds_on_a_history_backed_game_with_a_stale_feed():
+    from nhl_dfs.sim import market
+
+    cfg = market.load_sim_config()
+    snap, g = _edm_van()
+    confirmed_after = snap.as_of_utc + timedelta(hours=1)  # a goalie confirmation that postdates the market: STALE
+    gr = market.fit_game(g, market.TeamStrength(1.6, 1.6, (), 1.0, 1.0), snap.as_of_utc, confirmed_after, cfg=cfg)
+    assert gr.stale and gr.source == "MARKET" and any("STALE" in n for n in gr.notes) and any("CAPPED" in n for n in gr.notes)
+    assert gr.lambda_away == pytest.approx(1.6 * 1.35)  # half-blended toward the model and still above the 35% limit
+    wide = market.fit_game(g, market.TeamStrength(1.6, 1.6, (), 0.0, 0.0), snap.as_of_utc, confirmed_after, cfg=cfg)
+    assert wide.stale and wide.lambda_away > gr.lambda_away  # the same stale feed, a prior model: not clipped
+
+
+def test_a_sides_history_share_comes_from_its_persons_statuses_and_its_rate_source():
+    from dataclasses import replace as dc_replace
+
+    from nhl_dfs.contracts.statuses import ModelStatus
+    from sim_helpers import MODEL_CFG, synthetic_params
+    from nhl_dfs.sim import market
+
+    full = synthetic_params(("AAA", "BBB"), n_f=13, n_d=7)  # every person PRIOR
+    assert market.model_strength(full, "AAA", "BBB", model_cfg=MODEL_CFG).history_home == 0.0
+    for p in full.persons.values():
+        if p.team == "AAA":
+            p.source = ModelStatus.HISTORY
+        elif p.group != "G":
+            p.source, p.history_exposure, p.prior_exposure = ModelStatus.MIXED, 300.0, 100.0  # BBB: 75% history by exposure
+    s = market.model_strength(full, "AAA", "BBB", model_cfg=MODEL_CFG)
+    assert s.history_home == pytest.approx(1.0) and s.history_away == pytest.approx(0.75)
+    thin = synthetic_params(("AAA", "BBB"), n_f=6, n_d=4)
+    for p in thin.persons.values():
+        p.source = ModelStatus.HISTORY
+    assert market.model_strength(thin, "AAA", "BBB", model_cfg=MODEL_CFG).history_home == 0.0  # the league rate rests on no history
+    thin.team_goals = {"AAA": (3.3, 82)}
+    s = market.model_strength(thin, "AAA", "BBB", model_cfg=MODEL_CFG)
+    assert s.history_home == 1.0 and s.history_away == 0.0  # its own measured rate counts as history, BBB still on the league's
+    assert dc_replace(s, history_home=0.2).history_home == 0.2
