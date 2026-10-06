@@ -117,7 +117,7 @@ def _provisional_lines(p: dict[str, Any]) -> list[str]:
     out += ["", "| Contest | Family (source) | PAYOUT_SOURCE | Field size (source) |", "|---|---|---|---|"]
     for c in p["contests"]:
         out.append(f"| {c['contest_id']} {c['name']} | {c['family']} ({c['family_source']}) | {_payout_cell(c)} "
-                   f"| {c['field_size']} ({c['field_size_source']}) |")
+                   f"| {_size_cell(c)} |")
     out += ["", "| Entry | Contest | Family | Projected mean pts, DTD-adjusted (provisional) | Lineup own % sum "
             "(provisional) | Dup proxy (provisional) | Field dup est. (provisional) | Band pts | DTD |",
             "|---|---|---|---:|---:|---:|---:|---:|---:|"]
@@ -138,6 +138,13 @@ def _payout_cell(c: dict[str, Any]) -> str:
     if c["PAYOUT_SOURCE"] == "PRIOR" and c.get("payout_note"):
         return f"PRIOR ({c['payout_note']})"
     return c["PAYOUT_SOURCE"]
+
+
+def _size_cell(c: dict[str, Any]) -> str:
+    """Field size with its FIELD_SIZE_SOURCE (C38: EXACT, LOBBY or PRIOR). A manifest written before C38 has only the
+    older field_size_source value, which is shown as it was; the scenario table of such a manifest shows the size alone."""
+    label = c.get("FIELD_SIZE_SOURCE") or c.get("field_size_source")
+    return f"{c['field_size']} ({label})" if label else f"{c['field_size']}"
 
 
 def _prior_note(ev: dict[str, Any], contests: list[dict[str, Any]]) -> str:
@@ -186,7 +193,7 @@ def _scenario_lines(s: dict[str, Any]) -> list[str]:
                    + ". Ownership in this section is read off these fields.")
     out += ["", "| Contest | Family | PAYOUT_SOURCE | Field size | Fee | Paid / cash line | First prize | Field |", "|---|---|---|---:|---:|---|---:|---|"]
     for c in s.get("contests", []):
-        out.append(f"| {c['contest_id']} {c['name']} | {c['family']} ({c['family_source']}) | {_payout_cell(c)} | {c['field_size']} "
+        out.append(f"| {c['contest_id']} {c['name']} | {c['family']} ({c['family_source']}) | {_payout_cell(c)} | {_size_cell(c)} "
                    f"| {c['fee']:.2f} | {c['paid_positions']} / {c['cash_line']} | {c['first_prize']:.2f} | {c['field']} |")
     out += ["", "Frontier (selection scenarios; dominated points removed; knobs that chose the same portfolio share a row):", "",
             "| Knobs (kappa) | Tail utility / fees | P(lose >= 80% of fees) | E[payout] $ | Max goalie fee share | Max game fee share "

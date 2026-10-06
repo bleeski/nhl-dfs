@@ -51,6 +51,14 @@ families:
 payout_templates:
   enabled: true
 
+# Field size and family from the lobby row (C38, [BEN] flag 29): a contest whose DraftKings page is unavailable and that
+# no template matched takes its field size from the lobby capture's max entries (labeled FIELD_SIZE_SOURCE=LOBBY), and a
+# contest whose family came only from `default` at or under exact_rules.small_field_max_entries entries is small_field
+# (the same cut the exact path uses). Name-pattern families keep their family. PAYOUT_SOURCE is not touched: the payout
+# curve is still the prior. Set false to size every such contest on the family priors above (FIELD_SIZE_SOURCE=PRIOR).
+lobby_field_size:
+  enabled: true
+
 # Payout curve priors (C8, build/objectives.prior_curve). Used only when the DK contest endpoint
 # did not describe the contest (PAYOUT_SOURCE=PRIOR, after payout_templates found no table); every figure built on them is an
 # uncalibrated scenario proxy. PLACEHOLDERS: rake, shapes, min-cash multiple and exponent are

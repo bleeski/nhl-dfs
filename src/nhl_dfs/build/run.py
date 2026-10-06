@@ -962,6 +962,29 @@ def _payout_templates(entries, cache, runs_root, fam_cfg: dict, messages: list[s
         return None
 
 
+def _lobby_rows(entries, cache, templates, fam_cfg: dict, messages: list[str]):
+    """C38 (flag 29): the lobby rows that size a contest whose page did not answer. The template store's own rows when it
+    was loaded (one read of the capture), else the same reader C16 uses, run now on the local capture (the HTTP cache
+    root, never a fetch). None when switched off or unreadable: the contests then keep their family priors, and a
+    failure is reported. Independent of flag 14, so the size still comes from the lobby with templates switched off."""
+    from nhl_dfs.data import http as http_mod
+    from nhl_dfs.models import contests as contests_mod
+    from nhl_dfs.models import payout_templates
+
+    if not contests_mod.lobby_enabled(fam_cfg):
+        return None
+    if templates is not None:
+        return templates.lobby
+    try:
+        root = Path(cache.root) if cache is not None else Path(http_mod.DEFAULT_ROOT)
+        ids = sorted({int(e.contest_id) for e in entries.entries if str(e.contest_id).isdigit()})
+        return payout_templates.lobby_rows(root, ids)
+    except Exception as exc:  # reported; the run continues on the priors
+        messages.append(f"lobby rows unavailable ({type(exc).__name__}: {str(exc)[:100]}); contests the page did not "
+                        "describe use their family priors for the field size")
+        return None
+
+
 def _provisional_pass(run, entries, pool, after_b, st, starts, offline, runtime, caps, seed, slate_id,
                       outputs_root, cache, m, messages, out_root, rm=None, *, clock) -> dict:
     """Returns what the scenario pass (C8) builds on: contexts, fields, FIELD_CALIBRATION, the
@@ -986,9 +1009,11 @@ def _provisional_pass(run, entries, pool, after_b, st, starts, offline, runtime,
         details.update(got)
         save_contest_details(run, got, m, "provisional pass contest detail")
     templates = _payout_templates(entries, cache, out_root, fam_cfg, messages)
-    contexts = contests_mod.resolve(entries, details, fam_cfg, templates)
+    lobby = _lobby_rows(entries, cache, templates, fam_cfg, messages)
+    contexts = contests_mod.resolve(entries, details, fam_cfg, templates, lobby)
     payout = contests_mod.overall_payout_source(contexts.values())
     messages.extend(contests_mod.payout_lines(contexts.values()))  # C16: one PAYOUT_SOURCE line per contest
+    messages.extend(contests_mod.field_size_lines(contexts.values()))  # C38: one FIELD_SIZE_SOURCE line per contest
 
     # Prefit behind the one gate: historical labels count toward the floors, never around them.
     field_cal = FieldCalibration.PRIOR

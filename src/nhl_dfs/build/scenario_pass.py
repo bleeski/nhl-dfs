@@ -203,7 +203,11 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
     else:
         from nhl_dfs.build import provisional as prov_mod
 
-        contexts = contests_mod.resolve(entries, {}, fam_cfg)
+        from nhl_dfs.build.run import _lobby_rows  # lazy: run.py imports this module
+
+        # C38: the lobby rows still size the contests (read from the local capture). Templates are not looked up here, as
+        # before; that C16 gap is BACKLOG's, not this fallback's to widen.
+        contexts = contests_mod.resolve(entries, {}, fam_cfg, None, _lobby_rows(entries, cache, None, fam_cfg, messages))
         statuses = {rid: p for rid, (p, _) in st.items() if rid in work.by_role_id}
         fb = prov_mod.build_fields(work, proj, contexts, seed=seed, statuses=statuses)
         field_cal = FieldCalibration.PRIOR
@@ -299,8 +303,10 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
     sec["evidence"] = evidence
     sec["contests"] = [{**contests[cid].record(), "name": ctx.name, "family_source": ctx.family_source,
                         "field": fields["selection"][cid].detail,
+                        "field_size_source": ctx.field_size_source, "FIELD_SIZE_SOURCE": ctx.field_size_label,
                         **({"payout_template": ctx.template.record()} if ctx.template is not None else {}),
-                        **({"payout_note": ctx.payout_note} if ctx.payout_note else {})}
+                        **({"payout_note": ctx.payout_note} if ctx.payout_note else {}),
+                        **({"field_size_note": ctx.size_note} if ctx.size_note else {})}
                        for cid, ctx in contexts.items()]
     sec["frontier_all"] = [p.record() for p in sel.frontier]
     sec["frontier"] = [p.record() for p in pf.frontier_report(sel.frontier)]
