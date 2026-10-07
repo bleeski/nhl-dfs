@@ -1,9 +1,15 @@
 # C40 decision rule: does the Daily Faceoff "Last updated" stamp move when the lines change? (backlog B73)
 
-Written and committed 2026-10-07 (about 15:10Z) BEFORE any analysis of the stamp against the lines. The git history is the proof of
-order: this file's commit precedes the measurement script's and the report's. Nothing below was tuned on a result. If any line of
-this rule changes after numbers exist, the change is named, with the number that prompted it, in the report, in `docs/sources.md`,
-in the tracker log line and in the final report to Ben.
+Written and committed 2026-10-07 as `8cf1dbd` at 15:06:04Z (10:06 local) BEFORE any analysis of the stamp against the lines. The git
+history is the proof of order: this file's commit precedes the measurement script's (`525ca1d`, 15:11:58Z) and the report's (generated
+15:09Z, committed with it). Nothing below was tuned on a result. If any line of this rule changes after numbers exist, the change is named,
+with the number that prompted it, in the report, in `docs/sources.md`, in the tracker log line and in the final report to Ben.
+(Correction, made in the final commit: the first version of this paragraph gave guessed clock times, "about 15:10Z" here and "about 16:00Z"
+in the addendum; both are replaced by the commit times from `git log --format='%h %cI'`. Nothing else in the rule changed.)
+
+What had been looked at before this file was written, none of it a comparison of the stamp with the lines: counts of cached pages and of
+fetches per team; for the three teams in the card, which skaters had a news item dated after the page stamp (this is how the CHI case below
+was found) and where T.J. Hughes sits on the COL page; and the field names of a page.
 
 ## The question
 
@@ -18,7 +24,8 @@ page whose lines did not change, because then an old stamp means "unchanged" and
   `data/raw/observations/<date>.jsonl` (source `dailyfaceoff`: url, raw_hash, fetched_at). Read only through scratch copies, behind
   the write guard of `scripts/c39_measure.py` (refuses writes under `data/`, `runs/`, `outputs/`; blocks the network).
 - **Cutoff:** only fetches with `fetched_at` at or before **2026-10-07T13:30:28Z** (the newest Daily Faceoff fetch on record when this
-  rule was written; Ben's scheduled refresh keeps adding fetches, and the numbers must be reproducible).
+  rule was written; Ben's Windows capture tasks `nhl-dfs-capture-*` (`tools/capture.py --once`, times in `config/capture.yaml`, about 12 a day)
+  keep adding fetches, and the numbers must be reproducible).
 - Every fetch in the log counts, repeats of the same body included (the log holds more fetches than distinct bodies; a repeat is
   evidence that nothing changed). A fetch is parsed with the repo's own `parse_team_page`, so the measurement sees what the model sees.
   A body that does not parse as a team page (the goalie page) is counted and set aside.
@@ -123,7 +130,7 @@ instruction both forbid relaxing the gate for teams with news newer than the pag
 - A fetch is a snapshot of the page as Daily Faceoff served it (a CDN may serve a copy a few minutes old); a few minutes of lag cannot
   turn a day-scale pattern.
 
-## Addendum written AFTER the first look (2026-10-07, about 16:00Z): the procedure for a second look
+## Addendum written AFTER the first look (2026-10-07, committed in `c496816` at 15:17:07Z): the procedure for a second look
 
 This addendum changes no threshold and no definition above. The first look (cutoff 2026-10-07T13:30:28Z) gave BLOCKED: 4 misses in 85 real
 lines changes (4.7%), upper bound 10.08% against the 10% limit (`2026-10-07_c40_df_stamp_measurement.md`). So that an inconclusive result
@@ -134,6 +141,10 @@ cannot pass by repetition, the follow-up is fixed now:
 2. It is recorded as the second look in its report and in `docs/sources.md`.
 3. Its mechanical verdict is final for this rule: ADOPT, ADOPT WITH A LIMIT or REJECT as above. If it is BLOCKED again (a floor not met or
    the bound still above 10%), it counts as REJECT: the gate stays, the finding is written, the chunk closes.
+   Before running it, the session checks that fetches AFTER 2026-10-07T13:30:28Z exist in the log. They come from the Windows tasks
+   `nhl-dfs-capture-*` (read-only check on 2026-10-07: 12 tasks, state Ready, next run 11:30 local that day); if those tasks were removed
+   and no fetch arrived, the second look would only repeat the first table, and the session reports that and asks Ben (flag 35) instead of
+   closing C40 on a table that holds no new evidence. The cutoff stays fixed either way.
 4. Any different rule (for example a variant that keeps only the top lines, after noticing that all four EV misses were f4 or d3) must be
    committed as its own rule file before it is run, and may be run only on fetches after 2026-10-07T13:30:28Z, so the data that suggested it
    cannot be used to test it.

@@ -191,8 +191,10 @@ on the page, COL (58.6 h) would still be dropped. The PP signature has 49 events
 not be kept either.
 
 To reopen: ONE second look at ONE fixed cutoff, **2026-10-21T13:30:00Z**, not "when enough data exists" (re-running every few days until the bound
-drops under 10% would be optional stopping, and an inconclusive result would pass by persistence). Ben's scheduled refresh adds a fetch of every
-team about every 3 hours, so the second look has about twice the events. Command (reads copies only, refuses writes under `data/`):
+drops under 10% would be optional stopping, and an inconclusive result would pass by persistence). Ben's Windows capture tasks
+(`nhl-dfs-capture-*`, `tools/capture.py --once`, about 12 a day; read-only `schtasks /query` on 2026-10-07 showed 12 tasks Ready) add fetches of
+every team page, so a second look over 23.5 days instead of 9.5 would have roughly 2.5 times the events if they keep running; if they stop, it sees
+the same data and the rule file says what to do. Command (reads copies only, refuses writes under `data/`):
 `python scripts/c40_measure.py --scratch <scratch dir> --out docs/experiments/<date>_c40_df_stamp_second_look.md --cutoff 2026-10-21T13:30:00Z`.
 The same rule applies unchanged to all fetches up to that cutoff (the first-look fetches included), and the report is recorded as the second look.
 If the second look is still BLOCKED, the chunk closes as REJECT (the gate stays). Any other rule, including the bottom-of-lineup pattern above, must

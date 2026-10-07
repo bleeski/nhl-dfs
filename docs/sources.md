@@ -74,7 +74,9 @@ window is preseason into opening week, when lines churn more than midseason). Ru
   FLA (stamp 09-30 11:26Z, 36.9 h) and COL (stamp 10-01 13:23Z, 58.6 h) had no news after their stamps. COL's lines at 58.6 h were the same as
   62 hours earlier, with T.J. Hughes on line 3 and PP1, so keeping them would give a call-up his real role, not make him a worse Captain.
 - **Second look (fixed).** One re-run of the same rule at the single cutoff 2026-10-21T13:30:00Z over all fetches up to it; if it is
-  still BLOCKED it counts as REJECT (the gate stays). Details in the rule file's addendum. Open question for Ben: BUILD_STATUS flag 35.
+  still BLOCKED it counts as REJECT (the gate stays). New fetches come from Ben's Windows capture tasks `nhl-dfs-capture-*`
+  (`tools/capture.py --once`, about 12 a day); if none arrived after the first cutoff the session reports that and asks instead of
+  closing on a repeated table. Details in the rule file's addendum. Open question for Ben: BUILD_STATUS flag 35.
 - **Exit check not met as typed.** The card's `pytest -m c40 -q` (CHI keeps its lines labeled stale; a team with newer contrary news loses
   them) tests behavior that was not built because the measurement did not pass. The c40 tests that exist cover the script's bound and verdict.
 
