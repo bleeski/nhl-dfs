@@ -198,6 +198,7 @@ chunks:
     breakpoint: "first commit measures offline on the cached pages whether the Last updated stamp moves only on edits; the second applies the decision (keep the last known lines, label them stale with their age, unless newer contrary news exists)"
     impact: "Band 1 (inputs that move lineups): the age gate drops a playing team lines and PP units whenever the page stamp is over 24 h (CHI 28.7 h and FLA 36.9 h on 10-01, COL 58.6 h on 10-03: 2 of the 2 cloud late runs on record), leaving the team at role priors, and a call-up with DK average 0 became a Showdown Captain on 10-03. Whether a stale stamp means stale lines is unchecked (judgment), hence measure first. Reach: any team whose lines do not change for a day, which is most teams. Evidence: three team-days."
     backlog: [B73]
+    needs: [35]
     checks:
       - pytest -m c40 -q
   - id: C18
