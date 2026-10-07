@@ -27,7 +27,7 @@ Tracker for `BUILD_CHUNKS.md` (final, 26 September 2026). Every development sess
 | C15 | DONE | C14 | 2026-10-05 | 2026-10-05 | d8d3ba9 | PASS | band 0; B42 parts 2 and 3; flag 15 default in force |
 | C16 | DONE | C11 | 2026-10-05 | 2026-10-05 | 2db117e | PASS | band 1; B62, B50; flag 14 default in force; B62 DONE, B50 built but stays READY (Ben's reported amount for 196228907 is blank; deferred trigger); B91, B92 filed; exit check run through run_slate with a labeled rehearsal clock, one matched contest by the run and the other by test (see the session log) |
 | C17 | DONE | C10 | 2026-10-06 | 2026-10-06 | cb648a9 | PASS | band 1; B63 (READY, five-slate check deferred), B20 (inputs half), B51, B66, B85, B93; flags 30 to 32 defaults in force; the 09-30 check passes against the record but only with the covered-average treatment adopted after seeing replay numbers, and today's code with the inputs on is slightly worse than with them off (docs/experiments/2026-10-06_c17_replay.md) |
-| C18 | TODO | C14 | | | | | band 1 (serves band 2 too); B55, B56; R04, R05 |
+| C18 | IN_PROGRESS | C14 | 2026-10-07 |  |  |  | band 1 (serves band 2 too); B55, B56; R04, R05 |
 | C19 | TODO | C17 | | | | | band 1; B43, B15 (first half) |
 | C20 | TODO | C18 | | | | | band 1; B37, B45; flag 13 default in force |
 | C21 | TODO | C19, C18 | | | | | band 1, experiment: DONE on rejected is valid; B44, B22 |
