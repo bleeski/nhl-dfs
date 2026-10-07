@@ -3,6 +3,11 @@
 # Phase B (network enhancement) wall-clock budget, for the whole pass. Phase A never waits on it.
 network_pass_budget_s: 25
 
+# C39 (B70): after the first publish and Phase B, a stale history store is brought current to the last finished day; this is the
+# wall-clock budget for that fetch. A catch-up from the season opener took 8 requests and 6.6 s on 2026-10-06 (scratch measurement).
+# Past the budget the run goes on and the store is left exactly as it was.
+history_refresh_budget_s: 20
+
 # Engine edit-stop buffer before a game's real lock (plan: four per-row states). C2b refuses a
 # run once any slate game has started and warns inside this buffer; C2c uses it for late swap.
 edit_stop_buffer_s: 300

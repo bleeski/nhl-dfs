@@ -49,7 +49,7 @@ import io
 import threading
 import time
 from dataclasses import dataclass, field, replace
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
@@ -326,6 +326,63 @@ def _projection(work: SalaryPool, pool: SalaryPool, clock, m: dict, messages: li
     return table
 
 
+def _history_status(m: dict, messages: list[str]) -> None:
+    """C39 (B70, B71): how current the history store is at the as-of date the projection used. Local files only; it reads
+    and reports, and nothing it finds changes a lineup. A failure becomes a message, never a stopped run."""
+    try:
+        from nhl_dfs.data.history import status
+
+        m["history"] = status.measure(date.fromisoformat(m["model"]["as_of"])).as_dict()
+    except Exception as exc:
+        messages.append(f"history store status unavailable ({type(exc).__name__}: {str(exc)[:100]})")
+
+
+_NO_REFRESH = {"CURRENT": "the store is already current", "ABSENT": "there is no store to refresh (`history --backfill 2` builds it; "
+               "a cloud session's bootstrap starts that in the background)", "SEASON_COMPLETE": "the regular season is over",
+               "UNREADABLE": "the store could not be read"}
+
+
+def _history_refresh(m: dict, messages: list[str], *, cache, clock, runtime: dict, after_b: dict) -> None:
+    """C39 (B70, flags 33 and 34): after the first publish and Phase B, bring a stale history store up to the last finished day
+    (data/history/refresh.py: bounded, staged, NHL reports only), and when games were added rebuild the projection the later
+    passes use. Never in Phase A, never offline (the caller checks), and a failure only becomes a message: v1 and the store stay."""
+    from nhl_dfs.data.history import refresh, status
+
+    h = m["history"]
+    now = clock()
+    boot = status.read_bootstrap_state(now=now)
+    if boot and boot["state"] == "RUNNING":
+        h["refresh"] = {"outcome": "SKIPPED", "reason": "the session's background backfill is still running and is writing the store"}
+        return
+    if h["state"] not in status.NEEDS_REFRESH:
+        h["refresh"] = {"outcome": "SKIPPED", "reason": _NO_REFRESH.get(h["state"], h["state"])}
+        return
+    as_of = date.fromisoformat(h["as_of"])
+    res = refresh.refresh_incremental(as_of, now=now, cache=cache, budget_s=float(runtime.get("history_refresh_budget_s", 20)))
+    h["refresh"] = res.as_dict()
+    if res.outcome in ("FAILED", "TIMED_OUT"):
+        messages.append(f"history refresh {res.outcome}: {res.reason}")
+        m["failed"].append(f"history refresh: {res.outcome}")
+        return
+    if res.outcome != "REFRESHED":
+        return
+    m["worked"].append(f"history store refreshed: +{res.games_added} game(s), newest regular game {res.last_regular_after}")
+    h["after"] = status.measure(as_of).as_dict()
+    from nhl_dfs.models import params
+
+    try:
+        table = params.projection_for(after_b["work"], as_of)
+    except Exception as exc:  # the earlier projection stays; the store is refreshed either way
+        messages.append(f"projection not rebuilt after the history refresh ({type(exc).__name__}: {str(exc)[:100]}); "
+                        "the earlier one stays for this run")
+        return
+    after_b["proj"] = table
+    m["statuses"]["MODEL_STATUS"] = table.source().value
+    m["model"] = {"as_of": as_of.isoformat(), "status": table.source().value, "counts": table.counts(), "notes": table.notes[:5],
+                  "rebuilt_after_history_refresh": True}
+    h["rebuilt_projection"] = True
+
+
 # -- run -----------------------------------------------------------------------------------
 
 @dataclass
@@ -515,6 +572,7 @@ def run_slate(
     timings["intake_s"] = round(time.perf_counter() - t_start, 3)
 
     proj = _projection(work, pool, clock, m, messages)
+    _history_status(m, messages)
     objective = objective_from(work, proj)
     t = time.perf_counter()
     search = build_bank(work, objective, len(entries.entries), runtime, seed=seed)
@@ -574,6 +632,14 @@ def run_slate(
         after_b["proj"] = proj
         timings["phase_b_s"] = round(time.perf_counter() - t, 3)
         save_contest_details(run, after_b.get("details") or {}, m, "Phase B contest detail")
+    # History store (C39): after v1 and Phase B, before the optional passes; its own budget, skipped offline and near a lock
+    if not offline and m.get("history") and not stopped("history refresh"):
+        t = time.perf_counter()
+        try:
+            _history_refresh(m, messages, cache=cache, clock=clock, runtime=runtime, after_b=after_b)
+        except Exception as exc:  # a refresh problem is a message, never a stopped run
+            messages.append(f"history refresh failed ({type(exc).__name__}: {str(exc)[:100]}); the store and v1 stay")
+        timings["history_refresh_s"] = round(time.perf_counter() - t, 3)
     if baseline_only or stopped("provisional and scenario passes"):
         return finish()
 

@@ -80,3 +80,11 @@ history:
   evict_raw: true        # B2: after a clean backfill, drop report bodies whose rows are in the store (see nhl_reports.evict_raw)
   keep_unindexed_days: 7 # an unreferenced body (a schema failure kept for diagnosis) is deleted after this many days
   crosscheck_boxscores_per_season: 2
+  # C39 (B70, B71): how current the store is, measured by data/history/status.py
+  fresh_days: 1          # CURRENT when the newest regular-season game is at most this many days before the as-of date, i.e. the store
+                         # holds the last finished day and the back-to-back flag can see last night (B70's 'within 2 days' is the
+                         # acceptance; 2 here would leave yesterday missing on every other day, so a run refreshes from 2 days behind)
+  complete_after_h: 3    # an Eastern day counts as complete this many hours after its midnight (late games finish after it)
+  bootstrap_stale_min: 30  # a RUNNING cloud-bootstrap backfill older than this, or whose process is gone, reads ABANDONED
+  refresh_overlap_days: 2  # the in-run refresh fetches again this many days before the newest stored game (corrects partial rows)
+  refresh_max_calls: 40    # the in-run refresh's own request cap (a catch-up from the season start is about 8 requests)

@@ -391,3 +391,40 @@ coerced to a known value (CLAUDE.md); other vocabularies here that have no
   template changed) keeps all of them, with a WARNING line. A season that completes while only incremental windows
   are cached has no canonical bodies until a full backfill runs after July 31. Not evicted (mismatches, `--keep-raw`,
   `history.evict_raw: false`): a dry run prints the sizes.
+
+## History store currency (C39, `data/history/status.py`, `refresh.py`, `build/run.py`, `tools/cloud_bootstrap.sh`; B70, B71; flags 18, 33, 34)
+
+- Measured every run, local files only, never raises: `status.measure(as_of)` reads three columns of the newest stored seasons and returns
+  a state, judged on the regimes the model reads (`model.yaml regimes`, regular only; preseason and playoff rows never make a store look
+  current; the newest game of any type is reported next to it). `ABSENT` (no `skater_games` file), `PRIOR_SEASON_ONLY` (no regular game of
+  the as-of date's own season stored), `STALE`, `CURRENT` (newest regular game at most `history.fresh_days` = 1 day before the as-of date,
+  so the store holds the last finished day and the back-to-back flag can see last night), `SEASON_COMPLETE` (regular season over,
+  `regular_season_complete`), `UNREADABLE`. Phase A puts it in `manifest["history"]` and the `- History store:` line of RUN_NOTES (with the
+  model's HISTORY / MIXED / PRIOR counts); `history --status [--as-of]` prints the same line. It changes no lineup (same v1 sha256 with
+  and without it, tested). A league break can read STALE falsely; the cost is one small fetch that finds nothing.
+- Refreshed in Phase B, after v1 is published and before the optional passes (`run._history_refresh`; `refresh.refresh_incremental`): only
+  when the state is `PRIOR_SEASON_ONLY` or `STALE`, never offline, never when `stopped("history refresh")` (a started game, the edit stop,
+  or too little time), never while the cloud bootstrap backfill is `RUNNING`. It fetches the NHL per-game reports for the season in
+  progress from two days before the newest stored regular game (the season start when none) through the last finished Eastern day
+  (`status.completed_through`: a day completes 3 hours after midnight ET), NHL reports only (flag 33: no MoneyPuck, no box-score cross-check,
+  so the new rows are Tier B), on its own `HttpCache` call cap (`history.refresh_max_calls` 40) and a wall-clock budget
+  (`history_refresh_budget_s` 20). It is staged: the season's files are copied to a temp folder, the fetch and the combine write only
+  there (`backfill(upsert=True)` merges by key and never deletes), and the four changed tables are promoted into the store from the calling
+  thread only when the worker finished inside the budget and every stored (nhl_id, game_id) key is still present; a timeout, a failure or
+  a shrinking result leaves the store byte for byte as it was. A file swap that fails part way (Windows refuses to replace a file another process has open) is
+  reported as FAILED naming the files swapped and not swapped; the store stays consistent (the per-source tables are newer than the
+  combined ones) and the next refresh recombines it. When games were added the projection the role, provisional and scenario
+  passes use is rebuilt from the refreshed store (flag 34; v1 keeps the earlier one); if the rebuild fails the earlier one stays. The
+  outcome (`REFRESHED`, `NO_NEW_GAMES`, `SKIPPED` with the reason, `FAILED`, `TIMED_OUT`) is in `manifest["history"]["refresh"]` and the
+  notes line; a failure is a message and a `failed` entry, never a stopped run. `history --refresh` runs the same function by hand.
+- Cloud bootstrap (flag 18, `tools/cloud_bootstrap.sh`): after the .venv step, when `data/features/history/skater_games/*.parquet` is
+  absent, `history --backfill 2` starts detached (all descriptors redirected, `setsid` where present) and the hook returns at once; the
+  wrapper writes `data/cache/history_bootstrap.state` (`state=RUNNING` with its pid, then `DONE` or `FAILED` with the exit code) and
+  `data/cache/history_bootstrap.log`. Phase A never waits: a run that starts first prices on priors and its ABSENT line says the backfill
+  is running (`status.read_bootstrap_state`; a RUNNING record whose process is gone, or older than `history.bootstrap_stale_min` 30,
+  reads ABANDONED and never blocks a refresh). `--dry-run` (or `NHL_BOOTSTRAP_DRY_RUN=1`) says what it would do and starts nothing.
+  The script always exits 0.
+- The game day the back-to-back flag compares is the Eastern date (`params.build`, as `slate_as_of`): a start after 8 PM ET is the next UTC
+  day, and the UTC date made the flag read 0 for those games.
+- Not done here: the refresh is not part of `scheduled-refresh` (B95); MoneyPuck stays a manual `history --backfill`; eviction of the raw
+  report bodies stays with the `history` command (B2 section above).

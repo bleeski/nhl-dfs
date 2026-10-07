@@ -24,6 +24,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from datetime import date
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 from scipy import stats
@@ -37,6 +38,8 @@ from nhl_dfs.models import opportunity as opp_mod
 from nhl_dfs.models import rates as rates_mod
 from nhl_dfs.models.priors import prior_table
 from nhl_dfs.models.rates import STRENGTHS, load_model_config
+
+_NHL_DAY = ZoneInfo("America/New_York")  # the zone of NHL game dates, as build/run.py slate_as_of uses
 
 
 @dataclass
@@ -223,7 +226,7 @@ def build(pool: SalaryPool, crosswalk: dict[str, int], as_of: date, cfg: dict | 
     schedule = {}
     for gi in pool.games.values():
         home, away = team_map.get(gi.home, gi.home), team_map.get(gi.away, gi.away)
-        day = gi.start_utc.date()
+        day = gi.start_utc.astimezone(_NHL_DAY).date()  # C39: NHL game dates are Eastern; a 10 PM ET start is the next UTC day
         schedule[home] = {"opponent": away, "game_date": day}
         schedule[away] = {"opponent": home, "game_date": day}
     team_goalies: dict[str, list] = {}

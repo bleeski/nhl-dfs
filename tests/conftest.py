@@ -37,6 +37,10 @@ def _no_real_history(tmp_path_factory):
         mp.setattr(http_mod, "DEFAULT_ROOT", root / "raw")
         mp.setattr(cw, "ACCEPTED_CSV", root / "accepted.csv")
         mp.setattr(cw, "PROPOSALS_JSON", root / "proposals.json")
+        # C39: the cloud bootstrap's backfill state file; a real one on a cloud machine must not change what a test sees
+        import nhl_dfs.data.history.status as history_status
+
+        mp.setattr(history_status, "BOOTSTRAP_STATE", root / "history_bootstrap.state")
         yield
 
 
