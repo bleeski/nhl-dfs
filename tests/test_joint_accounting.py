@@ -299,3 +299,73 @@ def test_a_portfolio_with_one_entry_in_every_contest_is_unchanged(seed):
                 f"kappa {kappa} entry {e}"
         for name, value in want_frontier.items():
             assert record[name] == pytest.approx(value, abs=1e-9), f"kappa {kappa} {name}"
+
+
+# -- the selection fill (commit 2) -------------------------------------------------------------------------------
+
+def _select(pool, cands, scen, cts, fields, entries, kappa):
+    import copy
+
+    from nhl_dfs.build import exposure, portfolio as pf
+    from nhl_dfs.contracts.geometry import Mode
+    from nhl_dfs.models import contests as contests_mod
+
+    risk = ob.load_risk_config()
+    cfg = copy.deepcopy(risk)
+    cfg["frontier"]["kappas"] = [kappa]
+    caps = exposure.caps(exposure.load_exposure_config(), len(entries), pool, Mode.CLASSIC, 1, budget=risk["budget"]["classic"])
+    return pf.select(cands, scen, fields, cts, entries, caps, pf.RiskBudget(1.0, None, None, None), seed=1, pool=pool,
+                     fam_cfg=contests_mod.load_contest_families(), risk_cfg=cfg)
+
+
+@pytest.mark.parametrize("kappa", [float(k) for k in CFG["frontier"]["kappas"]])
+def test_review_r04_counterexample_selects_a_plus_c_at_every_knob(kappa):
+    """The review's fixture through the real select: before C18 it chose A then B at all five kappas ($67.50 on average,
+    a quarter of scenarios paying nothing); the joint accounting chooses A and C ($90.00, never nothing)."""
+    from pool_builder import classic_pool
+    from test_portfolio import E, contest, disjoint_lineups, scenarios_for
+
+    pool = classic_pool()
+    A, B, C = disjoint_lineups(pool, 3)
+    used = {r for lu in (A, B, C) for r in lu.role_ids}
+    opponent = SimpleNamespace(role_ids=(next(r.role_id for r in pool.rows if r.role_id not in used),))
+    types = np.array([[10, 11, 0, 5], [10, 11, 0, 5], [10, 0, 0, 5], [0, 0, 10, 5]])
+    totals = list(np.tile(types, (1000, 1)).T)
+    scen = scenarios_for(pool, [A, B, C, opponent], totals)
+    cts = {"W": contest("W", "wta", 100, [9000])}  # 100 entries, $1 each, $90 to first
+    fields = {"W": ob.FieldSpec([opponent.role_ids], ["opp"], np.asarray([1]), 98, "weighted", np.asarray([98], np.int64))}
+    sel = _select(pool, [A, B, C], scen, cts, fields, [E("e1", "W"), E("e2", "W")], kappa)
+    assert {sel.by_entry["e1"], sel.by_entry["e2"]} == {A.role_ids, C.role_ids}
+    assert sel.portfolio.exp_payout == pytest.approx(90.0) and sel.portfolio.p_zero_payout == 0.0
+    assert sel.accounting_gap_cents == 0
+
+
+def test_the_running_payout_equals_the_joint_recount_with_ties_across_contests():
+    """Two-entry large GPP and WTA, a cash entry and a small field entry, nine candidates whose scores tie with the
+    fields' (lineups that repeat one role, so equal totals are common): the fill's running payout must equal the
+    from-scratch joint recount of every finished portfolio, to the cent, at every knob."""
+    from pool_builder import classic_pool
+    from test_portfolio import E, contest, disjoint_lineups, scenarios_for
+    from nhl_dfs.build.candidates import Candidate
+
+    pool = classic_pool()
+    legal = disjoint_lineups(pool, 3)
+    used = {r for lu in legal for r in lu.role_ids}
+    spare = [r.role_id for r in pool.rows if r.role_id not in used]
+    cands = legal + [Candidate((r,) * 9, f"solo-{r}", 0.0, "central") for r in spare]  # nine candidates, one role repeated
+    S = 1200
+    rng = np.random.default_rng(5)
+    base = rng.integers(20, 60, S)
+    totals = [base + rng.integers(-6, 7, S) for _ in range(3)] + [np.clip(base + rng.integers(-8, 9, S), 0, None) for _ in spare]
+    scen = scenarios_for(pool, cands, totals)
+    cts = {"G": contest("G", "large_gpp", 200, [5000, 2000, 1000] + [200] * 37), "W": contest("W", "wta", 12, [1200]),
+           "C": contest("C", "cash", 10, [180] * 4), "S": contest("S", "small_field", 20, [900, 500, 300, 200, 100])}
+    n_opp = {"G": 198, "W": 10, "C": 9, "S": 19}
+    spares = [SimpleNamespace(role_ids=(r,) * 9) for r in spare[:4]]  # field lineups tie with candidates of the same role
+    fields = {cid: ob.FieldSpec([sp.role_ids], [f"f{i}"], np.asarray([1]), n_opp[cid], "weighted", np.asarray([n_opp[cid]], np.int64))
+              for i, (cid, sp) in enumerate(zip(cts, spares))}
+    entries = [E("e1", "G"), E("e2", "G"), E("e3", "W"), E("e4", "W"), E("e5", "C"), E("e6", "S")]
+    for kappa in (float(k) for k in CFG["frontier"]["kappas"]):
+        sel = _select(pool, cands, scen, cts, fields, entries, kappa)
+        assert sel.accounting_gap_cents == 0, f"kappa {kappa}"
+        assert len(set(sel.by_entry.values())) == len(entries)
