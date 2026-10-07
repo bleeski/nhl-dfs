@@ -49,7 +49,7 @@ Tracker for `BUILD_CHUNKS.md` (final, 26 September 2026). Every development sess
 | C37 | TODO | C43 | | | | | band 3; B76 |
 | C38 | DONE | C16 | 2026-10-05 | 2026-10-05 | 8f197df | PASS | band 1; B72 |
 | C39 | DONE | C17 | 2026-10-06 | 2026-10-06 | 8acfad6 | PASS | band 1; B70 (DONE), B71 (READY, the next cloud run observes it: deferred), B95 and B96 filed; flag 18 default in force, flags 33 and 34 defaults in force; CURRENT means the last finished day is stored (`history.fresh_days` 1, not the 2 in the plan); the back-to-back flag now uses the Eastern game day (it read 0 for starts after 8 PM ET); the three Linux-only bootstrap tests have not run anywhere yet (CI on the PR is their first run) |
-| C40 | IN_PROGRESS | C7 | 2026-10-07 |  |  |  | band 1; B73 |
+| C40 | BLOCKED | C7 | 2026-10-07 |  |  |  | first look 2026-10-07 inconclusive: stamp missed 4 of 85 real EV lines changes (4.7%) but its 95% upper bound is 10.08% against the 10% limit; one fixed second look at 2026-10-21T13:30:00Z, flag 35. band 1; B73 |
 | C41 | TODO | C19 | | | | | band 1; B74 |
 | C42 | TODO | C18 | | | | | band 1, experiment: DONE on rejected is valid; B75 |
 | C43 | TODO | C10 | | | | | band 2; B77; flag 19 default in force |
@@ -96,6 +96,7 @@ Defaults are in force until answered. Answer by editing the named config or by t
 | 32 | Team goal rate for a team the pool cannot make up (B51): its own recent rate instead of the league rate? | Yes: its mean skater goals per game over its last 82 regular-season games before the slate when it has at least 20, else the league rate, said in the note | `config/model.yaml` `team.team_rate`, `models/params.py`, `sim/market.py` (C17) |
 | 33 | In-run history refresh (B70): fetch MoneyPuck too, or NHL reports only? | NHL reports only: MoneyPuck is a whole-season zip per kind, too slow for a run; the new rows are Tier B (the MoneyPuck-only columns are league priors flagged missing, which the model already handles), and a manual `history --backfill` still pulls MoneyPuck | `data/history/refresh.py` (C39) |
 | 34 | A run that refreshed the history store (B70): do its own later passes use it? | Yes: after a refresh that adds games the projection is rebuilt before the role, provisional and scenario passes; v1 (Phase A, published before any fetch) keeps the earlier one | `build/run.py` `_history_refresh` (C39) |
+| 35 | Daily Faceoff stamp (B73, C40): the first look was inconclusive (the stamp missed 4 of 85 real lines changes, 4.7%, but the one-sided 95% upper bound is 10.08% against the 10% limit). Wait for ONE fixed second look, or close C40 as REJECTED now (the age gate stays as it is)? | Wait: C40 stays BLOCKED and off the queue (`needs: [35]` in chunks.yaml) until a session runs the single second look at cutoff 2026-10-21T13:30:00Z (same rule, all fetches up to it); that session then removes `needs: [35]` and sets C40 TODO (ADOPT, ADOPT WITH A LIMIT) or closes it (REJECT; a second BLOCKED counts as REJECT). Nothing about the design for a reopened C40 is in force until then | `docs/experiments/2026-10-07_c40_df_stamp_rule.md` (addendum), `docs/sources.md`, `scripts/c40_measure.py` (C40) |
 
 ## Milestones
 

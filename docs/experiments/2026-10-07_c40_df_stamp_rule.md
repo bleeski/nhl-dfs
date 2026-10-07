@@ -122,3 +122,18 @@ instruction both forbid relaxing the gate for teams with news newer than the pag
 - 25 box scores are all there is to check a page against what actually dressed.
 - A fetch is a snapshot of the page as Daily Faceoff served it (a CDN may serve a copy a few minutes old); a few minutes of lag cannot
   turn a day-scale pattern.
+
+## Addendum written AFTER the first look (2026-10-07, about 16:00Z): the procedure for a second look
+
+This addendum changes no threshold and no definition above. The first look (cutoff 2026-10-07T13:30:28Z) gave BLOCKED: 4 misses in 85 real
+lines changes (4.7%), upper bound 10.08% against the 10% limit (`2026-10-07_c40_df_stamp_measurement.md`). So that an inconclusive result
+cannot pass by repetition, the follow-up is fixed now:
+
+1. There is exactly ONE second look, at the fixed cutoff **2026-10-21T13:30:00Z**, by the same script and the same rule, over all fetches
+   up to that cutoff (the first-look fetches included). Nobody re-runs it earlier or at another cutoff.
+2. It is recorded as the second look in its report and in `docs/sources.md`.
+3. Its mechanical verdict is final for this rule: ADOPT, ADOPT WITH A LIMIT or REJECT as above. If it is BLOCKED again (a floor not met or
+   the bound still above 10%), it counts as REJECT: the gate stays, the finding is written, the chunk closes.
+4. Any different rule (for example a variant that keeps only the top lines, after noticing that all four EV misses were f4 or d3) must be
+   committed as its own rule file before it is run, and may be run only on fetches after 2026-10-07T13:30:28Z, so the data that suggested it
+   cannot be used to test it.
