@@ -256,34 +256,7 @@ def _prepare(cand_scores: np.ndarray, fields: Mapping[str, tuple], contests: Map
     return out
 
 
-class _Curve:
-    """A contest's prefix arrays, built once."""
-
-    def __init__(self, ct: ob.Contest, top_pct: float):
-        self.ct = ct
-        self.L = ct.field_size
-        self.cash = ct.prefix(ct.prizes_cents)
-        self.seatp = ct.prefix(ct.seats.astype(np.int64))
-        self.top_k = max(1, int(math.floor(top_pct * self.L)))
-        self.first = int(ct.prizes_cents[0]) if ct.paid else 0
-        self.face = ct.ticket_face_cents or 0
-
-    def pay_util(self, G: np.ndarray, E: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """(payout cents, family utility cents) for rank blocks G, E (own copies included)."""
-        G = G.astype(np.int64)
-        T = E.astype(np.int64) + 1
-        hi, lo = np.minimum(G + T, self.L), np.minimum(G, self.L)
-        pay = (self.cash[hi] - self.cash[lo]) // T
-        fam = self.ct.family
-        if fam == "large_gpp":
-            util = (self.cash[np.minimum(G + T, self.top_k)] - self.cash[np.minimum(G, self.top_k)]) // T
-        elif fam == "wta":
-            util = np.floor((G == 0) / T * self.first).astype(np.int64)
-        elif fam == "satellite":
-            util = np.floor((self.seatp[hi] - self.seatp[lo]) / T * self.face).astype(np.int64) + pay
-        else:
-            util = pay
-        return pay, util
+_Curve = ob.PayCurve  # moved to objectives.py with the joint-accounting primitive (C18); the name stays
 
 
 def _greedy(kappa: float, order: list, entry_contest: Mapping[str, str], fees: Mapping[str, int], cand_scores: np.ndarray,
