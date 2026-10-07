@@ -37,6 +37,7 @@ from typing import Any, Callable, Literal
 
 import numpy as np
 
+from nhl_dfs.build import objectives as ob
 from nhl_dfs.build import packet as packet_mod
 from nhl_dfs.contracts.geometry import Mode, check_lineup, slot_accepts
 from nhl_dfs.contracts.statuses import Participation
@@ -209,7 +210,16 @@ def _portfolio(so, lineups: dict, contest_of: dict, purpose: str, contests: list
 def evaluate(so, before: dict, after: dict, changed: set[str], contest_of: dict, fees: dict, risk_cfg: dict,
              mode: Mode) -> tuple[bool, dict]:
     """Paired comparison of two portfolios differing in `changed` entries: the same selection draws, then this
-    round's referee block. Returns (accept, figures)."""
+    round's referee block. Returns (accept, figures).
+
+    The user's entries in one contest are copies and opponents of each other, so editing one moves the payout of
+    its siblings (C18, B56, R05): the utility gain and the top-1% tail are the paired change in the TOTALS of every
+    touched contest (all owned entries there), scenario by scenario, never the edited entries' alone; a pure transfer
+    of a prize between two owned entries is a gain of zero. `changed` says which contests are touched and which
+    entries are edited. The 3% band is anchored on the edited entries' own utility before (the size of what is
+    being changed: whole-contest utility can be 150 times larger and would swamp a one-entry gain); its standard
+    error is the paired standard error of the aggregate change. The tail test is that paired change against its
+    own paired standard error."""
     from nhl_dfs.build import tiebreak
 
     touched = sorted({contest_of[e] for e in changed})
@@ -225,30 +235,31 @@ def evaluate(so, before: dict, after: dict, changed: set[str], contest_of: dict,
         for cid, (eids, m) in _portfolio(so, before, contest_of, purpose, [c for c in others if c in so.cache.contests]).items():
             if m is not None:
                 base_pay = base_pay + m.payout_cents.astype(np.int64).sum(axis=1)
-        tot, util, tail, tail_se = {}, {}, {}, {}
+        tot, util, edited, top = {}, {}, {}, {}
         for side, lus in (("before", before), ("after", after)):
-            pay = base_pay
-            u = 0
-            t = t_se2 = 0.0
-            for cid, (eids, m) in _portfolio(so, lus, contest_of, purpose, touched).items():
-                pay = pay + m.payout_cents.astype(np.int64).sum(axis=1)
-                idx = [j for j, e in enumerate(eids) if e in changed]
-                u = u + m.utility_cents[:, idx].astype(np.int64).sum(axis=1)
-                t += float(m.exp_payout_top1pct[idx].sum())
-                t_se2 += float((m.exp_payout_top1pct_se[idx] ** 2).sum())
-            tot[side], util[side], tail[side], tail_se[side] = np.asarray(pay), np.asarray(u), t, math.sqrt(t_se2)
+            joint = _portfolio(so, lus, contest_of, purpose, touched)
+            try:
+                pay_t, util_t, top_t = ob.own_totals(joint)
+                _, edited_t, _ = ob.own_totals(joint, only=changed)
+            except ValueError:
+                return False, {"reason": "the touched contests hold no entries to compare"}
+            tot[side], util[side], edited[side], top[side] = np.asarray(base_pay + pay_t), util_t, edited_t, top_t
         S = len(util["before"])
         d = (util["after"] - util["before"]) / 100.0
         gain, se = float(d.mean()), float(d.std() / math.sqrt(max(1, S)))
-        anchor = float(util["before"].mean() / 100.0)
+        anchor = float(edited["before"].mean() / 100.0)
         band = tiebreak.band_width(anchor, se, risk_cfg)
         p = {s: float((tot[s] <= 0.2 * fees_c).mean()) for s in tot}
         p_se = math.sqrt(max(p["before"] * (1 - p["before"]), 1e-12) / max(1, S))
-        tail_ok = tail["after"] >= tail["before"] - math.hypot(tail_se["before"], tail_se["after"])
+        dt = (top["after"] - top["before"]) / 100.0
+        tail_gain, tail_se = float(dt.mean()), float(dt.std() / math.sqrt(max(1, S)))
+        tail_ok = tail_gain >= -tail_se
         safe_ok = p["after"] <= max(limit, p["before"]) + p_se
         gain_ok = gain > band if purpose == "selection" else gain >= -se
         figs[purpose] = {"scenarios": S, "utility_gain": round(gain, 4), "gain_se": round(se, 4), "band": round(band, 4),
-                         "tail_before": round(tail["before"], 4), "tail_after": round(tail["after"], 4),
+                         "tail_before": round(float(top["before"].mean() / 100.0), 4),
+                         "tail_after": round(float(top["after"].mean() / 100.0), 4),
+                         "tail_gain": round(tail_gain, 4), "tail_gain_se": round(tail_se, 4),
                          "p_lose80_before": round(p["before"], 4), "p_lose80_after": round(p["after"], 4),
                          "p_lose80_limit": limit, "gain_ok": gain_ok, "tail_ok": tail_ok, "safety_ok": bool(safe_ok)}
         ok = ok and gain_ok and tail_ok and bool(safe_ok)

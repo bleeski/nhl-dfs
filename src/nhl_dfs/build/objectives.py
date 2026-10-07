@@ -878,6 +878,25 @@ def joint_by_contest(assignment: Mapping[str, Sequence[str]], contests: Mapping[
     return out
 
 
+def own_totals(joint: Mapping[str, tuple[list[str], "Metrics | None"]], only=None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Per-scenario (payout, utility, top-1% payout) cents summed over the user's entries in these contests' joint
+    metrics: every entry, or only those named in `only`. A contest's own entries are one account (an entry's finish
+    counts every other entry), so the change from one portfolio to another is the difference of these totals, never
+    of the edited entries alone (C18, B56, R05)."""
+    pay = util = top = None
+    for eids, m in joint.values():
+        if m is None:
+            continue
+        idx = [j for j, e in enumerate(eids) if only is None or e in only]
+        if not idx:
+            continue
+        p, u, t = (a[:, idx].astype(np.int64).sum(axis=1) for a in (m.payout_cents, m.utility_cents, m.top_payout_cents))
+        pay, util, top = (p, u, t) if pay is None else (pay + p, util + u, top + t)
+    if pay is None:
+        raise ValueError("no entries in these contests' joint metrics")
+    return pay, util, top
+
+
 def portfolio_metrics(assignment: Mapping[str, Sequence[str]], contests: Mapping[str, ContestEval], scenarios: ScenarioSet,
                       *, pool, fees_cents: Mapping[str, int], cfg: dict | None = None,
                       joint: Mapping[str, tuple[list[str], Metrics]] | None = None) -> PortfolioMetrics:

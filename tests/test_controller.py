@@ -184,7 +184,9 @@ def _fake_so(util_before, util_after, tail=(1.0, 1.0), pay=(500, 500)):
     def joint(cid, lineups, purpose):
         after = lineups[0][0] == "NEW"
         u = np.asarray(util_after if after else util_before, np.int64)[:, None]
+        top = int(round((tail[1] if after else tail[0]) * 100))  # the paired tail test reads the per-scenario top-1% payout
         return NS(payout_cents=np.full((S, 1), pay[1] if after else pay[0]), utility_cents=u,
+                  top_payout_cents=np.full((S, 1), top),
                   exp_payout_top1pct=np.array([tail[1] if after else tail[0]]), exp_payout_top1pct_se=np.array([0.01]))
 
     return NS(cache=NS(contests={"c": object()}), joint=joint)

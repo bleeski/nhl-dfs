@@ -369,3 +369,82 @@ def test_the_running_payout_equals_the_joint_recount_with_ties_across_contests()
         sel = _select(pool, cands, scen, cts, fields, entries, kappa)
         assert sel.accounting_gap_cents == 0, f"kappa {kappa}"
         assert len(set(sel.by_entry.values())) == len(entries)
+
+
+# -- QA over every owned entry of a touched contest (commit 3; B56, review R05) --------------------------------------
+
+QA_CFG = {"budget": {"classic": {"p_lose80_max": 0.6}}, "tiebreak": {"band_pct": 0.03, "se_mult": 1.0}}
+
+
+def _qa(so, before, after, changed):
+    from nhl_dfs.build import controller
+    from nhl_dfs.contracts.geometry import Mode
+
+    return controller.evaluate(so, before, after, changed, {e: "c" for e in before}, {e: 1.0 for e in before}, QA_CFG,
+                               Mode.CLASSIC)
+
+
+def test_r05_a_pure_transfer_between_owned_entries_is_a_gain_of_zero():
+    """The review's case through the real joint_payouts: all 4,000 scenarios identical, a 100-entry winner-take-all with a
+    $90 prize, opponents at 5; owned A scores 10 and B scores 0, then B scores 11. A won before and B wins after: the total
+    own payout and first-place equity are unchanged. It used to report utility_gain 90.0 (only B was counted)."""
+    S = 4000
+    scores = {"A": np.full(S, 10), "B0": np.zeros(S, int), "B1": np.full(S, 11)}
+    fs, w, ct = np.full((S, 1), 5), np.array([98], np.int64), contest_of("wta", 100, [9000])
+
+    def joint(cid, lineups, purpose):
+        return ob.joint_payouts(np.column_stack([scores[lu[0]] for lu in lineups]), fs, w, ct, cfg=CFG)
+
+    so = SimpleNamespace(cache=SimpleNamespace(contests={"c": ct}), joint=joint)
+    ok, figs = _qa(so, {"eA": ["A"], "eB": ["B0"]}, {"eA": ["A"], "eB": ["B1"]}, {"eB"})
+    assert not ok
+    assert figs["selection"]["utility_gain"] == 0.0 and not figs["selection"]["gain_ok"]
+    assert figs["selection"]["tail_gain"] == 0.0
+
+
+def _crafted(util, top, edited_first=True):
+    """A contest of n owned entries whose joint metrics are given per side: util, top = {side: (S, n) cents}; payouts constant.
+    The edited entry is column 0 and the only one whose lineup token changes."""
+    n = util["before"].shape[1]
+
+    def joint(cid, lineups, purpose):
+        side = "after" if lineups[0][0] == "NEW" else "before"
+        return SimpleNamespace(payout_cents=np.full(util[side].shape, 500), utility_cents=util[side], top_payout_cents=top[side])
+
+    so = SimpleNamespace(cache=SimpleNamespace(contests={"c": object()}), joint=joint)
+    before = {f"e{j}": ["OLD"] for j in range(n)}
+    after = {**before, "e0": ["NEW"]}
+    return so, before, after
+
+
+def test_r05_a_change_that_helps_the_edited_entry_but_lowers_the_aggregate_is_rejected():
+    rng = np.random.default_rng(3)
+    base = rng.integers(200, 800, (4000, 2))
+    util = {"before": base, "after": base + np.array([60, -150])}  # the edited entry gains 0.60, its sibling loses 1.50
+    top = {"before": base, "after": base}
+    ok, figs = _qa(*_crafted(util, top), {"e0"})
+    assert not ok and figs["selection"]["utility_gain"] == pytest.approx(-0.9) and not figs["selection"]["gain_ok"]
+
+
+def test_r05_a_real_one_entry_gain_inside_a_twenty_entry_contest_is_accepted():
+    """The band is anchored on the edited entry, not the contest: 3% of the whole contest's utility would be 3.0 dollars and would
+    reject a gain of 0.40 that is 8% of the edited entry's own."""
+    rng = np.random.default_rng(4)
+    base = rng.integers(300, 700, (4000, 20))
+    util = {"before": base, "after": base + np.array([40] + [0] * 19)}
+    top = {"before": base, "after": base}
+    ok, figs = _qa(*_crafted(util, top), {"e0"})
+    sel = figs["selection"]
+    assert ok and sel["utility_gain"] == pytest.approx(0.40) and sel["gain_ok"]
+    assert sel["band"] == pytest.approx(0.03 * base[:, 0].mean() / 100.0, abs=1e-4)  # the edited entry's own utility, not the contest's
+    assert sel["band"] < 0.4 < 0.03 * base.sum(axis=1).mean() / 100.0
+
+
+def test_r05_a_tail_loss_absorbed_by_an_unchanged_sibling_is_caught():
+    rng = np.random.default_rng(5)
+    base = rng.integers(200, 800, (4000, 2))
+    util = {"before": base, "after": base + np.array([300, 0])}  # a clear utility gain on the edited entry
+    top = {"before": base, "after": base + np.array([0, -30])}  # but the sibling's top-1% payout falls 0.30 in every scenario
+    ok, figs = _qa(*_crafted(util, top), {"e0"})
+    assert figs["selection"]["gain_ok"] and not figs["selection"]["tail_ok"] and not ok
+    assert figs["selection"]["tail_gain"] == pytest.approx(-0.30)
