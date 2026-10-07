@@ -1,6 +1,7 @@
 name: CI
 
-# Runs the full test suite on every pull request and on every push to master.
+# Runs the full test suite on every pull request and on every push to master, on Linux (`pytest`) and on Windows
+# (`windows`), plus the permanent-boundary tests as their own job (`boundaries`).
 # Tests that need Ben's real DK exports (tests/fixtures/real/, gitignored) skip loudly here, as they
 # do in a fresh cloud session. The tracker lint runs first so BUILD_CHUNKS.md and chunks.yaml cannot drift.
 
@@ -34,6 +35,48 @@ jobs:
 
       - name: Tracker lint
         run: uv run --frozen python tools/next_chunk.py --lint
+
+      - name: Tests
+        run: uv run --frozen pytest -q --durations=10
+
+  boundaries:
+    # The permanent rules of CLAUDE.md, asserted by tests/test_repo_boundaries.py: no personal DK data tracked,
+    # network only through data/http.py, nothing that sends data out, the pinned dependency list, no em dashes in
+    # prose. They also run inside `pytest`; this job is split out so a broken boundary reads as one red line, not as
+    # one failure among 900 results. Advisory like every check here (the repository is private on a free plan, so
+    # nothing server-side blocks a merge over a red check).
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          python-version: "3.13"
+
+      - name: Install (frozen lockfile)
+        run: uv sync --frozen
+
+      - name: Permanent boundaries
+        run: uv run --frozen pytest tests/test_repo_boundaries.py -q --no-header
+
+  windows:
+    # Windows is where slates are operated (nhl.ps1, PowerShell, a CRLF checkout), and a Linux-only suite cannot see
+    # a path, byte or newline assumption that breaks only there. This runs the same full suite on a Windows runner;
+    # it adds nothing the Linux `pytest` job already checks. The Linux-only bootstrap tests skip here as they do on
+    # Ben's machine. First run on this runner: a failure that is only a missing local tool is a finding about the
+    # runner, not about the code, and is fixed or skipped by name, never by loosening a test.
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          python-version: "3.13"
+
+      - name: Install (frozen lockfile)
+        run: uv sync --frozen
 
       - name: Tests
         run: uv run --frozen pytest -q --durations=10
