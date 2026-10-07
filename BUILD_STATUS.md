@@ -49,7 +49,7 @@ Tracker for `BUILD_CHUNKS.md` (final, 26 September 2026). Every development sess
 | C37 | TODO | C43 | | | | | band 3; B76 |
 | C38 | DONE | C16 | 2026-10-05 | 2026-10-05 | 8f197df | PASS | band 1; B72 |
 | C39 | DONE | C17 | 2026-10-06 | 2026-10-06 | 8acfad6 | PASS | band 1; B70 (DONE), B71 (READY, the next cloud run observes it: deferred), B95 and B96 filed; flag 18 default in force, flags 33 and 34 defaults in force; CURRENT means the last finished day is stored (`history.fresh_days` 1, not the 2 in the plan); the back-to-back flag now uses the Eastern game day (it read 0 for starts after 8 PM ET); the three Linux-only bootstrap tests have not run anywhere yet (CI on the PR is their first run) |
-| C40 | TODO | C7 | | | | | band 1; B73 |
+| C40 | IN_PROGRESS | C7 | 2026-10-07 |  |  |  | band 1; B73 |
 | C41 | TODO | C19 | | | | | band 1; B74 |
 | C42 | TODO | C18 | | | | | band 1, experiment: DONE on rejected is valid; B75 |
 | C43 | TODO | C10 | | | | | band 2; B77; flag 19 default in force |
