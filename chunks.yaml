@@ -389,7 +389,7 @@ chunks:
     effort: "medium: build/late_swap.py:599 (assign.Caps.person_cap only), build/swap_objective.py, build/refresh.py, the caps API of build/exposure.py"
     breakpoint: "late swap and refresh pass exposure.caps for the open cells and report GOALIE_CAP and GAME_CAP; a goalie-gate repair that would exceed the cap spreads across alternates; committed with a test on the B17 repair"
     impact: "Band 2: caps that bind per lineup but not across the portfolio, after the first publish. Late swap and refresh apply only the per-person cap, so B17 goalie-gate repairs funnel every affected entry onto the confirmed starter (judgment: the same concentration the 10-01 report recorded at build time). Reach: any slate with a goalie change near lock. Evidence: code reading; not observed. Depends on C27 because it reuses the exact feasibility check."
-    backlog: [B78]
+    backlog: [B78, B97]
     checks:
       - pytest -m c44 -q
   - id: C45
@@ -538,6 +538,9 @@ chunks:
     checks:
       - pytest -m c13 -q
 deferred:
+  - item: "Run-to-run variation of the published portfolio at 150 entries (B98)"
+    trigger: "a session on an idle machine that runs the same inputs twice and diffs the candidates and sampled fields; or the first slate with 20 or more entries in one contest"
+    backlog: [B98]
   - chunk: C12
     trigger: "its gate: 30 distinct Classic slate groups with 15,000 labels (or 50 Showdown games with 5,000) plus the holdout; at 2026-10-03 the ledger holds 3 settled Classic slates, and C29 (settle without a run) and R08's group fix change the count"
     backlog: [B15, B20]

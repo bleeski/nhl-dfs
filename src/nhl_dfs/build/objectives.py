@@ -424,6 +424,7 @@ class Metrics:
     payout_cents: np.ndarray  # (S, K) int32 cash per scenario
     utility_cents: np.ndarray  # (S, K) int32 family utility per scenario (the dollars the family objective values)
     top_k: int = 0
+    top_payout_cents: np.ndarray | None = None  # (S, K) int32 payout from finishes inside the top 1%, per scenario (C18)
 
     def row(self, k: int) -> dict:
         """JSON-ready figures for candidate k (dollars and probabilities with their standard errors)."""
@@ -590,7 +591,7 @@ def _evaluate(S: int, K: int, per_row_bytes: int, block, contest: Contest, cfg: 
         vals["exp_payout"][0], vals["exp_payout"][1], vals["exp_payout_top1pct"][0], vals["exp_payout_top1pct"][1],
         (pay > 0).mean(axis=0), top.mean(axis=0), _se(top, S), vals["first_place_equity"][0], vals["first_place_equity"][1],
         vals["p_clear_line"][0], vals["p_clear_line"][1], vals["p_seat"][0], vals["p_seat"][1],
-        seat.mean(axis=0) * face / 100.0, pay, util, top_k)
+        seat.mean(axis=0) * face / 100.0, pay, util, top_k, topd)
 
 
 def _stack(ms: list[Metrics]) -> Metrics:
@@ -601,9 +602,190 @@ def _stack(ms: list[Metrics]) -> Metrics:
     kw = {f: cat(f) for f in ("objective", "objective_se", "exp_payout", "exp_payout_se", "exp_payout_top1pct",
                               "exp_payout_top1pct_se", "p_cash", "p_top1pct", "p_top1pct_se", "first_place_equity",
                               "first_place_equity_se", "p_clear_line", "p_clear_line_se", "p_seat", "p_seat_se",
-                              "exp_ticket_value", "payout_cents", "utility_cents")}
+                              "exp_ticket_value", "payout_cents", "utility_cents", "top_payout_cents")}
     return Metrics(m0.contest_id, m0.family, m0.n_scenarios, m0.objective_name, top_k=m0.top_k, **kw)
 
+
+# -- joint own-entry accounting (C18, backlog B55, review R04) --------------------------------------------------
+
+class PayCurve:
+    """A contest's prefix arrays, built once: the selection fill's payout and utility kernel."""
+
+    def __init__(self, ct: Contest, top_pct: float):
+        self.ct = ct
+        self.L = ct.field_size
+        self.cash = ct.prefix(ct.prizes_cents)
+        self.seatp = ct.prefix(ct.seats.astype(np.int64))
+        self.top_k = max(1, int(math.floor(top_pct * self.L)))
+        self.first = int(ct.prizes_cents[0]) if ct.paid else 0
+        self.face = ct.ticket_face_cents or 0
+
+    def pay_util(self, G: np.ndarray, E: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """(payout cents, family utility cents) for rank blocks G, E (own copies included)."""
+        G = G.astype(np.int64)
+        T = E.astype(np.int64) + 1
+        hi, lo = np.minimum(G + T, self.L), np.minimum(G, self.L)
+        pay = (self.cash[hi] - self.cash[lo]) // T
+        fam = self.ct.family
+        if fam == "large_gpp":
+            util = (self.cash[np.minimum(G + T, self.top_k)] - self.cash[np.minimum(G, self.top_k)]) // T
+        elif fam == "wta":
+            util = np.floor((G == 0) / T * self.first).astype(np.int64)
+        elif fam == "satellite":
+            util = np.floor((self.seatp[hi] - self.seatp[lo]) / T * self.face).astype(np.int64) + pay
+        else:
+            util = pay
+        return pay, util
+
+
+class OwnContest:
+    """One contest's own entries ranked jointly and filled one at a time: the joint-accounting primitive.
+
+    The candidates are the columns of three shared (S, K) arrays that are never copied or changed: `scores`
+    (scenario scores) and `G`, `E` (field weight strictly above and tied with each candidate; the user's own
+    entries are not in them). Placed own entries are kept as per-candidate counts (`gi` above, `ei` tied) and, per
+    scenario, as each placed entry's position in the ascending score order (`rank`). `kernel(G, E)` maps rank blocks
+    to a tuple of per-scenario measures (payout and utility cents for `PayCurve.pay_util`).
+
+    `marginal(a, b)` is, for scenario rows a..b and EVERY candidate k, what adding k does to the contest's total own
+    measures: the new entry's own measure (the same expression the fill used before), plus what k takes from each
+    placed entry it passes (one place down) and each it ties (one more sharer). Those two sums are read off prefix
+    sums over the placed order, so a step costs O(rows x (m + K)) and never O(rows x m x K); no per-entry (S, K)
+    arrays exist (the per-entry rank is a column of G, E, gi, ei). Every term is the rank function evaluated at the
+    ranks the joint ranking implies, so running totals are exact integer cents and equal a from-scratch recount.
+
+    `live_below`: a placed entry ranked at or below this many places (the contest's paid places) has every measure 0
+    whether or not it is passed or tied, so those (scenario, entry) pairs are skipped and a scenario row with none
+    left is skipped entirely. A speed-up only (None skips nothing); the tests hold both settings to the same numbers.
+    Not thread-safe, one instance per fill; the shared arrays are only read."""
+
+    def __init__(self, kernel, G: np.ndarray, E: np.ndarray, scores: np.ndarray, *, capacity: int = 16,
+                 chunk: int | None = None, live_below: int | None = None):
+        self.kernel = kernel
+        self.G, self.E, self.scores = G, E, scores
+        self.S, self.K = G.shape
+        self.chunk = max(1, min(self.S, chunk or self.S))
+        self.live_below = live_below
+        self.gi = np.zeros((self.S, self.K), G.dtype)
+        self.ei = np.zeros((self.S, self.K), G.dtype)
+        self.cols: list[int] = []
+        self._cj = np.zeros(0, np.intp)
+        self.rank = np.zeros((self.S, max(1, capacity)), np.int16)  # place in the ascending score order, per scenario
+        self.total: tuple[np.ndarray, ...] | None = None  # the placed entries' measures summed, (S,) each
+
+    def _live(self, Gj: np.ndarray) -> np.ndarray:
+        return np.ones(Gj.shape, bool) if self.live_below is None else Gj < self.live_below
+
+    @staticmethod
+    def _distinct(vals) -> list[int]:
+        """Positions of the measures that are different arrays (a family whose utility is its payout returns one array twice)."""
+        return [i for i, v in enumerate(vals) if not any(v is vals[j] for j in range(i))]
+
+    def _pairs(self, a: int, b: int, rows: np.ndarray | None, Gj: np.ndarray, live: np.ndarray):
+        """The live (scenario, entry) pairs of a block: flat positions in the block, scenario and placement index of each,
+        and their G and E (the entry's own ties exclude itself)."""
+        m = len(self.cols)
+        ii = np.flatnonzero(live)
+        rr = ii // m
+        jj = ii - rr * m
+        row = rr if rows is None else rows[rr]
+        col = self._cj[jj]
+        e = self.E[a:b][row, col].astype(np.int64) + self.ei[a:b][row, col] - 1
+        return ii, rr, jj, row, Gj.reshape(-1)[ii], e
+
+    def marginal(self, a: int, b: int) -> tuple[np.ndarray, ...]:
+        """Change in the contest's total measures from adding each candidate, scenario rows a..b: (b - a, K) each."""
+        G, E, gi, ei = self.G[a:b], self.E[a:b], self.gi[a:b], self.ei[a:b]
+        Gn, En = G + gi, E + ei
+        if self.live_below is None:
+            new = list(self.kernel(Gn, En))
+        else:  # a candidate ranked outside the paid places has every measure 0: evaluate the others only
+            hit = np.flatnonzero(Gn < self.live_below)
+            vals = self.kernel(Gn.reshape(-1)[hit], En.reshape(-1)[hit])
+            new = []
+            for i, v in enumerate(vals):
+                twin = next((j for j in range(i) if vals[j] is v), None)
+                if twin is None:
+                    z = np.zeros(Gn.shape, v.dtype)
+                    z.reshape(-1)[hit] = v
+                    new.append(z)
+                else:
+                    new.append(new[twin])
+        m = len(self.cols)
+        if not m:
+            return tuple(new)
+        cj = self._cj
+        Gj = G[:, cj].astype(np.int64) + gi[:, cj]
+        live = self._live(Gj)
+        keep = np.flatnonzero(live.any(axis=1))
+        if not keep.size:
+            return tuple(new)
+        every = keep.size == Gj.shape[0]
+        if not every:
+            Gj, live = Gj[keep], live[keep]
+        ii, rr, jj, row, g, e = self._pairs(a, b, None if every else keep, Gj, live)
+        base, down, tie = self.kernel(g, e), self.kernel(g + 1, e), self.kernel(g, e + 1)
+        R = keep.size
+        flat = rr * (m + 1) + self.rank[a:b][row, jj].astype(np.intp) + 1  # slot of each entry in its scenario's prefix row
+        gl, el = (gi, ei) if every else (gi[keep], ei[keep])
+        below = np.arange(R, dtype=np.intp)[:, None] * (m + 1) + (m - gl - el)  # entries strictly below k: the first
+        upto = below + el  # `m - gi - ei` in order; those tied with k follow, up to `m - gi`
+        for i in self._distinct(new):  # d_down = effect of being passed once, d_tie = effect of gaining a sharer
+            q, t = np.zeros((R, m + 1), base[i].dtype), np.zeros((R, m + 1), base[i].dtype)
+            q.reshape(-1)[flat] = down[i] - tie[i]  # below k: passed, not tied (the tied ones are added back through t)
+            t.reshape(-1)[flat] = tie[i] - base[i]
+            np.cumsum(q, axis=1, out=q)
+            np.cumsum(t, axis=1, out=t)
+            corr = np.take(q.reshape(-1), below, mode="clip") + np.take(t.reshape(-1), upto, mode="clip")
+            if every:
+                new[i] += corr
+            else:
+                new[i][keep] += corr
+        return tuple(new)
+
+    def add(self, k: int) -> tuple[np.ndarray, ...]:
+        """Place candidate k; returns the change in the contest's total measures, (S,) each (exact integer cents
+        for the payout kernel), recounted from the updated ranks of every placed entry."""
+        m = len(self.cols)
+        if m >= self.rank.shape[1]:
+            self.rank = np.concatenate([self.rank, np.zeros_like(self.rank)], axis=1)
+        for a in range(0, self.S, self.chunk):
+            b = min(self.S, a + self.chunk)
+            pos = (m - self.gi[a:b, k] - self.ei[a:b, k]).astype(np.int16)  # k goes after the entries below it
+            if m:
+                placed = self.rank[a:b, :m]
+                placed += placed >= pos[:, None]  # the entries at or after that slot move up one
+            self.rank[a:b, m] = pos
+            own = self.scores[a:b, [k]]
+            self.gi[a:b] += own > self.scores[a:b]
+            self.ei[a:b] += own == self.scores[a:b]
+        self.cols.append(k)
+        self._cj = np.asarray(self.cols, np.intp)
+        return self._recount()
+
+    def _recount(self) -> tuple[np.ndarray, ...]:
+        sums = None
+        cj = self._cj
+        m = len(cj)
+        for a in range(0, self.S, self.chunk):
+            b = min(self.S, a + self.chunk)
+            Gj = self.G[a:b, cj].astype(np.int64) + self.gi[a:b, cj]
+            ii, rr, _jj, _row, g, e = self._pairs(a, b, None, Gj, self._live(Gj))
+            vals = self.kernel(g, e)
+            if sums is None:
+                sums = [np.zeros(self.S, v.dtype) for v in vals]
+            for s, v in zip(sums, vals):
+                s[a:b] = np.bincount(rr, weights=v, minlength=b - a).astype(v.dtype) if v.size else 0
+        old, self.total = self.total, tuple(sums)
+        return self.total if old is None else tuple(n - o for n, o in zip(self.total, old))
+
+    def totals(self) -> tuple[np.ndarray, ...]:
+        """The placed entries' measures summed per scenario, recounted without the incremental counters
+        (`own_pairwise` on the placed scores): what `total` must equal. For tests and checks, not the fill."""
+        cj = self._cj
+        pg, pe = own_pairwise(self.scores[:, cj])
+        vals = self.kernel(self.G[:, cj].astype(np.int64) + pg, self.E[:, cj].astype(np.int64) + pe)
+        return tuple(v.sum(axis=1) for v in vals)
 
 # -- portfolio --------------------------------------------------------------------------------------
 
@@ -694,6 +876,25 @@ def joint_by_contest(assignment: Mapping[str, Sequence[str]], contests: Mapping[
             pg, pe = own_pairwise(own[:, idx[cid]])
             out[cid] = (eids[cid], metrics_from_ranks(G[cid] + pg, E[cid] + pe, contests[cid].contest, cfg))
     return out
+
+
+def own_totals(joint: Mapping[str, tuple[list[str], "Metrics | None"]], only=None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Per-scenario (payout, utility, top-1% payout) cents summed over the user's entries in these contests' joint
+    metrics: every entry, or only those named in `only`. A contest's own entries are one account (an entry's finish
+    counts every other entry), so the change from one portfolio to another is the difference of these totals, never
+    of the edited entries alone (C18, B56, R05)."""
+    pay = util = top = None
+    for eids, m in joint.values():
+        if m is None:
+            continue
+        idx = [j for j, e in enumerate(eids) if only is None or e in only]
+        if not idx:
+            continue
+        p, u, t = (a[:, idx].astype(np.int64).sum(axis=1) for a in (m.payout_cents, m.utility_cents, m.top_payout_cents))
+        pay, util, top = (p, u, t) if pay is None else (pay + p, util + u, top + t)
+    if pay is None:
+        raise ValueError("no entries in these contests' joint metrics")
+    return pay, util, top
 
 
 def portfolio_metrics(assignment: Mapping[str, Sequence[str]], contests: Mapping[str, ContestEval], scenarios: ScenarioSet,

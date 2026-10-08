@@ -320,6 +320,8 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
     sec["frontier_all"] = [p.record() for p in sel.frontier]
     sec["frontier"] = [p.record() for p in pf.frontier_report(sel.frontier)]
     sec["chosen"] = {"kappa": sel.chosen_kappa, "reason": sel.chosen_reason, "measured_on": "selection scenarios"}
+    sec["accounting"] = {"joint_payout_gap_cents": sel.accounting_gap_cents, "expected": 0,
+                         "note": "largest gap, any knob, between the fill's running payout and the joint recount"}
     sec["discovery"]["screened"] = sel.screened
     sec["family_mix"] = {"target": dict(zip(("central", "alternate", "priors_wrong"), sel.families_target)),
                          "selected": sel.family_mix}
