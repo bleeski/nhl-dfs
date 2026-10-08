@@ -9,6 +9,8 @@ invents a rule chunks.yaml or BUILD_STATUS.md does not state.
                             predecessors' checks first; honors requires_files;
                             skips GATED chunks and chunks BLOCKED on a [BEN]
                             flag (`needs:`), naming them
+    --peek                  the same answer without rerunning the DONE chunks' checks (seconds, not
+                            about 20 minutes); for prompt writing and previews, never to start work
     --check <id>            run that chunk's checks; exit 1 on failure
     --start <id>            set IN_PROGRESS with today's date
     --done <id> --commit H  set DONE, finish date, commit; refuses unless
@@ -339,13 +341,13 @@ def deps_done(chunk_id: str, graph: dict[str, dict], rows: dict[str, Row]) -> bo
     return True
 
 
-def find_next(graph: dict[str, dict], rows: dict[str, Row], root: Path) -> str:
-    """Verify DONE predecessors still pass, then report the next chunk."""
+def find_next(graph: dict[str, dict], rows: dict[str, Row], root: Path, verify: bool = True) -> str:
+    """Verify DONE predecessors still pass (verify=False skips that: a preview only), then report the next chunk."""
     lines_out: list[str] = []
 
     for chunk_id, chunk in graph.items():
         row = rows.get(chunk_id)
-        if row is None or row.status != "DONE":
+        if not verify or row is None or row.status != "DONE":
             continue
         ok, reports = run_checks(chunk, root)
         if not ok:
@@ -650,6 +652,7 @@ def lint_queue(root: Path) -> tuple[list[str], list[str]]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(add_help=True)
     parser.add_argument("--root", type=str, default=None)
+    parser.add_argument("--peek", action="store_true")
     parser.add_argument("--check", type=str, default=None)
     parser.add_argument("--start", type=str, default=None)
     parser.add_argument("--done", type=str, default=None)
@@ -788,7 +791,9 @@ def main(argv: list[str] | None = None) -> int:
     # No args: report eligibility.
     lines = load_tracker_lines(status_path)
     rows = parse_rows(lines)
-    print(find_next(graph, rows, root))
+    if args.peek:
+        sys.stderr.write("PEEK: the DONE chunks' checks were NOT rerun; run without --peek before starting work\n")
+    print(find_next(graph, rows, root, verify=not args.peek))
     return 0
 
 
