@@ -29,7 +29,7 @@ Tracker for `BUILD_CHUNKS.md` (final, 26 September 2026). Every development sess
 | C17 | DONE | C10 | 2026-10-06 | 2026-10-06 | cb648a9 | PASS | band 1; B63 (READY, five-slate check deferred), B20 (inputs half), B51, B66, B85, B93; flags 30 to 32 defaults in force; the 09-30 check passes against the record but only with the covered-average treatment adopted after seeing replay numbers, and today's code with the inputs on is slightly worse than with them off (docs/experiments/2026-10-06_c17_replay.md) |
 | C18 | DONE | C14 | 2026-10-07 | 2026-10-07 | db731f2 | PASS | band 1 (serves band 2 too); B55, B56 (DONE); R04, R05; B97 (late-swap repair choice, flag 39 cut line fired) and B98 (run-to-run variation at 150 entries) filed; flags 36 to 39 defaults in force; old tree against new tree on real runs: 2-entry run 1.08x total and identical lineups, 150-entry selection phase 1.38x and +123 MB peak (details in the session log) |
 | C19 | DONE | C17 | 2026-10-08 | 2026-10-08 | 2ef0a64 | PASS | band 1; B43, B15 (first half). DONE 2026-10-08: the 09-30 gate passed and the Classic mixtures are switched on (flag 46 and flag 48 OUTCOME); B43 stays NEW (flag 43), B99 and B100 stay open |
-| C46 | TODO | C19 | | | | | band 1; B100; flag 47 answered yes 2026-10-08, rules in flag 49; ranked ahead of C20 |
+| C46 | IN_PROGRESS | C19 | 2026-10-08 |  |  |  | band 1; B100; flag 47 answered yes 2026-10-08, rules in flag 49; ranked ahead of C20 |
 | C20 | TODO | C18 | | | | | band 1; B37, B45; flag 13 default in force |
 | C21 | TODO | C19, C18, C46 | | | | | band 1, experiment: DONE on rejected is valid; B44, B22 |
 | C22 | TODO | C19 | | | | | band 1, experiment: DONE on rejected is valid; B46 |
