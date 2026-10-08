@@ -177,3 +177,20 @@ def varied_pool(mode: Mode, *, seed: int = 0, teams=("AAA", "BBB", "CCC", "DDD")
             sal = rng.randrange(2000, 12001, 200)
             rows.extend(sd_person(n, t, pos, sal, appg=round(sal / 1000 * rng.uniform(0.6, 1.3), 1)))
     return make_pool(Mode.SHOWDOWN, rows)
+
+
+def stand_in_pool(n_teams: int = 6, *, seed: int = 20260929) -> SalaryPool:
+    """A real-size Classic pool (C19): n_teams teams (6 is a 3-game slate), 36 rows each (8 C, 7 LW, 7 RW,
+    11 D, 3 G), salaries and APPG spread like a DraftKings slate. It stands in for a real slate wherever a test
+    or a measurement needs the field model's shape on a full-size pool. Synthetic: it says nothing about any real slate."""
+    rng = random.Random(seed)
+    names = [chr(ord("A") + i) * 3 for i in range(n_teams)]
+    rows, n = [], 0
+    for t in names:
+        for pos, k in (("C", 8), ("LW", 7), ("RW", 7), ("D", 11), ("G", 3)):
+            for _ in range(k):
+                n += 1
+                sal = rng.randrange(25, 96) * 100 if pos != "G" else rng.randrange(70, 90) * 100
+                appg = max(0.5, (sal - 2000) / 700 + rng.gauss(0, 1.5))
+                rows.append(row(n, t, pos, sal, appg=round(appg, 1)))
+    return make_pool(Mode.CLASSIC, rows)

@@ -175,6 +175,22 @@ def _pm(x, se, nd=3) -> str:
     return f"{x:.{nd}f} +/- {se:.{nd}f}"
 
 
+def _shape_line(fam: str, sm: dict | None) -> str | None:
+    """C19: the sampled field's stack shapes beside the pooled 14-contest table (a prior the mixture was read off,
+    not a fit), so each new slate can be compared with it. Classic fields only."""
+    if not sm:
+        return None
+    tb = sm.get("table") or {}
+    shapes = tb.get("shapes") or {}
+    cmp = lambda key, label: f"{label} {sm[key]:.0f}%" + (f" (table {tb[key]})" if key in tb else "")  # noqa: E731
+    top = ", ".join(f"{s} {v:.0f}%" + (f" (table {shapes[s]})" if s in shapes else "") for s, v in sm["top_shapes"].items())
+    mixture = "Classic mixture ON" if sm["mixture"] == "classic" else "old mixture, Classic mixtures off"
+    games = f"{sm['games']} games" if sm.get("games") else "game count unknown"
+    return (f"- Field shapes, {fam} ({mixture}; {games}; {sm['draws']} draws; FIELD_CALIBRATION=PRIOR, the table is the pooled "
+            f"14-contest Field row, a prior and not a fit): " + ", ".join(
+                [cmp("stack3", "3+ stack"), cmp("stack4", "4+"), cmp("stack5", "5+"), cmp("two3", "two 3+ stacks")]) + f"; top shapes {top}.")
+
+
 def _scenario_lines(s: dict[str, Any]) -> list[str]:
     """C8 section. Every payout figure is a scenario estimate with its Monte Carlo standard error and
     the three evidence states; a PRIOR payout curve makes it an uncalibrated scenario proxy."""
@@ -204,6 +220,7 @@ def _scenario_lines(s: dict[str, Any]) -> list[str]:
                                                                          f"{v['seconds']} s)" if v.get("grown_by") else "")
                                          for fam, v in fg.items())
                    + ". Ownership in this section is read off these fields.")
+        out += [x for x in (_shape_line(fam, v.get("shape_mix")) for fam, v in fg.items()) if x]
     out += ["", "| Contest | Family | PAYOUT_SOURCE | Field size | Fee | Paid / cash line | First prize | Field |", "|---|---|---|---:|---:|---|---:|---|"]
     for c in s.get("contests", []):
         out.append(f"| {c['contest_id']} {c['name']} | {c['family']} ({c['family_source']}) | {_payout_cell(c)} | {_size_cell(c)} "
