@@ -1,7 +1,7 @@
 """C18 (backlog B55, B56): what the joint own-entry accounting costs, measured against the old per-step work.
 
     python scripts/c18_measure.py --bench [--entries 150] [--scenarios 20000] [--candidates 350] [--repeats 3]
-    python scripts/c18_measure.py --bench --mem-only old|new         # one fill in a fresh process, peak working set
+    python scripts/c18_measure.py --bench --mem-only old|new         # one fill in a fresh process: its extra traced peak (tracemalloc)
 
 `--bench` replays ONE contest's selection fill step by step on synthetic scores of the real shape (a 5,000-entry
 large GPP, 20,000 selection scenarios, about 350 screened candidates), twice: `old` is the arithmetic the fill used before C18
