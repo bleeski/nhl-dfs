@@ -35,7 +35,7 @@ DraftKings NHL lineup generator (Classic and Showdown). Deterministic Python eng
 
 ## After a merge
 
-- When a pull request you opened or watched is reported merged (a `pull_request.closed` event with outcome merged, or Ben says so), invoke the `nhl-post-merge` skill before you end the turn. It cleans up merged branches (`python tools/post_merge.py cleanup`), confirms local and GitHub agree, and writes the prompt for the next dev session from `docs/templates/next_session_prompt.md` (`python tools/post_merge.py facts | prompt | check-prompt`).
+- When a pull request you opened or watched is reported merged (a `pull_request.closed` event with outcome merged, or Ben says so), invoke the `nhl-post-merge` skill before you end the turn. It cleans up merged branches (`python tools/post_merge.py cleanup`), confirms local and GitHub agree, and writes the prompt for the next dev session from `docs/templates/next_session_prompt.md` (`python tools/post_merge.py facts | prompt | check-prompt`). If the Skill tool is blocked or unavailable (a managed hook once errored in a cloud session), run the steps in `.claude/skills/nhl-post-merge/SKILL.md` directly with the same commands; do not try to bypass the block.
 - Delete only branches fully merged into origin/master, never a remote branch without Ben's say-so, never force-push. Anything that must run on Ben's machine is given as a numbered copy-and-paste PowerShell block. The prompt is shown in the reply and never committed.
 
 ## Commands
