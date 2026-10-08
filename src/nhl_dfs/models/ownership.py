@@ -29,8 +29,8 @@ OWNERSHIP_YAML = REPO_ROOT / "config" / "ownership.yaml"
 FEATURES = ("appg", "value_z", "salary_rank", "implied_total", "pp1", "line1", "goalie_start_win",
             "questionable", "unknown", "news_recent")
 DEFAULT_FAMILY = "large_gpp"
-STACK_RULES = ("none", "team3", "team4", "double_stack")  # C19 added team4 and double_stack
-CLASSIC_ONLY_RULES = ("team4", "double_stack")
+STACK_RULES = ("none", "team3", "team4", "double_stack", "team5")  # C19 added team4 and double_stack, C46 team5
+CLASSIC_ONLY_RULES = ("team4", "double_stack", "team5")
 
 
 def bucket_range(key: str) -> tuple[int, int | None]:
@@ -51,37 +51,38 @@ def load_ownership_config(path: Path = OWNERSHIP_YAML) -> dict:
     return cfg
 
 
-def _validate_classic_mixtures(fld: dict, behaviors: dict) -> None:
-    """field.classic_mixtures (C19): enabled, then family -> game-count bucket -> weights. Optional as a whole."""
-    cm = fld.get("classic_mixtures")
+def _validate_classic_mixtures(fld: dict, behaviors: dict, table: str = "classic_mixtures") -> None:
+    """field.classic_mixtures (C19) and field.classic_mixtures_team5 (C46): enabled, then family -> game-count
+    bucket -> weights. Each is optional as a whole."""
+    cm = fld.get(table)
     if cm is None:
         return
     if not isinstance(cm.get("enabled"), bool):
-        raise ValueError("field.classic_mixtures.enabled must be true or false")
+        raise ValueError(f"field.{table}.enabled must be true or false")
     for fam, buckets in cm.items():
         if fam == "enabled":
             continue
         if "default" not in (buckets or {}):
-            raise ValueError(f"classic_mixtures {fam!r} needs a default bucket")
+            raise ValueError(f"{table} {fam!r} needs a default bucket")
         spans = []
         for key, mix in buckets.items():
             if key != "default":
                 try:
                     lo, hi = bucket_range(key)
                 except ValueError:
-                    raise ValueError(f"classic_mixtures {fam!r}: bucket {key!r} is not N, LO-HI or N+") from None
+                    raise ValueError(f"{table} {fam!r}: bucket {key!r} is not N, LO-HI or N+") from None
                 if hi is not None and hi < lo:
-                    raise ValueError(f"classic_mixtures {fam!r}: bucket {key!r} is empty")
+                    raise ValueError(f"{table} {fam!r}: bucket {key!r} is empty")
                 spans.append((lo, float("inf") if hi is None else hi, key))
             unknown = [k for k in mix if k not in behaviors]
             if unknown:
-                raise ValueError(f"classic_mixtures {fam!r} bucket {key!r} names unknown behaviors {unknown}")
+                raise ValueError(f"{table} {fam!r} bucket {key!r} names unknown behaviors {unknown}")
             if any(float(v) < 0 for v in mix.values()) or abs(sum(float(v) for v in mix.values()) - 1.0) > 1e-6:
-                raise ValueError(f"classic_mixtures {fam!r} bucket {key!r} weights must be non-negative and sum to 1")
+                raise ValueError(f"{table} {fam!r} bucket {key!r} weights must be non-negative and sum to 1")
         spans.sort()
         for (_, hi1, k1), (lo2, _, k2) in zip(spans, spans[1:]):
             if lo2 <= hi1:
-                raise ValueError(f"classic_mixtures {fam!r}: buckets {k1!r} and {k2!r} overlap")
+                raise ValueError(f"{table} {fam!r}: buckets {k1!r} and {k2!r} overlap")
 
 
 def validate_ownership_config(cfg: dict) -> None:
@@ -119,6 +120,7 @@ def validate_ownership_config(cfg: dict) -> None:
     if DEFAULT_FAMILY not in (fld.get("mixtures") or {}):
         raise ValueError(f"ownership field needs a {DEFAULT_FAMILY!r} mixture")
     _validate_classic_mixtures(fld, behaviors)
+    _validate_classic_mixtures(fld, behaviors, "classic_mixtures_team5")
     buckets = (cfg.get("dup_proxy") or {}).get("salary_left_buckets") or []
     if not buckets or buckets[-1].get("max_left") is not None:
         raise ValueError("dup_proxy.salary_left_buckets must end with max_left: null")

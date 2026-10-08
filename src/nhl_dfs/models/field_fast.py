@@ -13,7 +13,8 @@ exactly the draw models.field.sample hands to the MILP. Here a batch of draws is
 3. Every lineup is checked with contracts.geometry.check_lineup and the team and stack rules; a
    draw that fails any of them is solved by the MILP instead (counted in the detail).
 
-C19 adds two stack rules, team4 (4 skaters of one team) and double_stack (4 of one team and 3 of another).
+C19 adds two stack rules, team4 (4 skaters of one team) and double_stack (4 of one team and 3 of another); C46 adds
+team5 (5 skaters of one team) through the same forcing with the stack size 5.
 Four forced skaters can already be uncompletable (4 centers, or 3 C + 4 W with no room for two D), and the best
 four by value are not the best four for the lineup, so `_force_one` forces one skater at a time, the one that
 displaces least from the best completion so far, skipping any that would leave the forced set unable to reach 8
@@ -367,7 +368,7 @@ def _legal(A: ClassicArrays, lu: tuple[str, ...], stack: int, k: int = 3, stack2
 
 def solve_batch(A: ClassicArrays, V: np.ndarray, stack_team: np.ndarray, spec: StackSpec | None = None) -> tuple[list, int]:
     """Lineups (canonical role ids, or None where the relaxation failed a check) for (B, R) values.
-    spec: the C19 stack requirements (team4, double_stack); None is the original 3-of-one-team rule."""
+    spec: the C19 and C46 stack requirements (team4, double_stack, team5); None is the original 3-of-one-team rule."""
     sel = _price_search(A, V, stack_team, iters=26 if spec is None else STACK_PRICE_ITERS, spec=spec)
     sel = _improve(A, V, sel, stack_team, spec=spec)
     out, bad = [], 0
@@ -435,7 +436,7 @@ def sample_fast(pool: SalaryPool, util: Mapping[str, float], behaviors, n: int, 
                 t1 += [A.team_names.index(reqs[0][0]) if reqs else -1] * k
                 t2 += [A.team_names.index(reqs[1][0]) if len(reqs) > 1 else -1] * k
             double = b.stack_rule == "double_stack"
-            k1 = 4
+            k1 = 5 if b.stack_rule == "team5" else 4
             for j, a in enumerate(range(0, len(t1), batch)):
                 m = min(batch, len(t1) - a)
                 V = perturbed(A, obj, m, b.noise_sd, _seed(seed, b.name, "", f"fast{j}"))

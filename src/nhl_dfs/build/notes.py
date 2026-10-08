@@ -184,7 +184,8 @@ def _shape_line(fam: str, sm: dict | None) -> str | None:
     shapes = tb.get("shapes") or {}
     cmp = lambda key, label: f"{label} {sm[key]:.0f}%" + (f" (table {tb[key]})" if key in tb else "")  # noqa: E731
     top = ", ".join(f"{s} {v:.0f}%" + (f" (table {shapes[s]})" if s in shapes else "") for s, v in sm["top_shapes"].items())
-    mixture = "Classic mixture ON" if sm["mixture"] == "classic" else "old mixture, Classic mixtures off"
+    mixture = {"classic": "Classic mixture ON", "team5": "Classic mixture ON, team5 table"}.get(  # C46: the table in force
+        sm["mixture"], "old mixture, Classic mixtures off")
     games = f"{sm['games']} games" if sm.get("games") else "game count unknown"
     return (f"- Field shapes, {fam} ({mixture}; {games}; {sm['draws']} draws; FIELD_CALIBRATION=PRIOR, the table is the pooled "
             f"14-contest Field row, a prior and not a fit): " + ", ".join(
