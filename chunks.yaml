@@ -227,6 +227,19 @@ chunks:
     findings: []
     checks:
       - pytest -m c19 -q
+  - id: C46
+    title: Field 5+ stacks, a team5 rule and its own mixture table (B100, flag 47)
+    depends: [C19]
+    marker: c46
+    band: 1
+    size: M
+    effort: "medium: models/field.py stack_jobs and classic_mixture, models/field_fast.py (the stack size from the rule), models/ownership.py validation, config/ownership.yaml, scripts/c19_weights.py as the model for the solve and the gate"
+    breakpoint: "the team5 rule in both samplers with its agreement test, committed with the switch off; then the one-pass weights on the stand-in pool; then the real-pool gate and, only if it passes, the switch"
+    impact: "Band 1: ownership level against the field's stack mix. The C19 field holds 0.6% 5+ stacks on the real 2026-09-30 pool against 21.3% in the pooled table (5-2-1 12.2, 6-1-1 6.3) and too many 4-2-1-1 (19.8% against 8.0), and it has been the live Classic field since the C19 merge on 2026-10-08; the 3-game slate's top 1% held 5+ stacks in 45 to 65% (14 contests, one week: thin). C21 studies stack size against the field, so it depends on this. Ranked ahead of C20 (also band 1, M) because it is the smaller change and corrects the field every live Classic run is built against now; no band-0 item is open. One more rule through the same forcing and one more solve under flag 40's method. FIELD_CALIBRATION stays PRIOR."
+    backlog: [B100]
+    findings: []
+    checks:
+      - pytest -m c46 -q
   - id: C20
     title: Goalie as the top-1% factor, unresolved goalies in research, no skater against the lineup's goalie, goalie choice with leverage
     depends: [C18]
@@ -242,7 +255,7 @@ chunks:
       - pytest -m c20 -q
   - id: C21
     title: Stack size by slate blow-up, discovery sleeves and the shape mix (experiment)
-    depends: [C19, C18]
+    depends: [C19, C18, C46]
     marker: c21
     band: 1
     size: M
@@ -643,9 +656,6 @@ deferred:
   - item: "Pair composition of double stacks (B99)"
     trigger: "the next run of scripts/standings_synthesis.py: add the share of two-3+ lineups whose two teams play each other"
     backlog: [B99]
-  - item: "A team5 rule for 5+ stacks in the field (B100, flag 47)"
-    trigger: "Ben answers flag 47, or before C21 starts: C21 depends on C19 and would study stack size against a field with almost no 5-stacks"
-    backlog: [B100]
 flag_recommendations:
   2: "Record Ben's 2026-10-02 answer in the flags table: 40% goalie and game fee share with the LINEUPS fallback (done in this plan); C27 fixes the feasibility test behind it."
   3: "Replace the placeholder mix with the observed one (5 to 10 entries per slate, 1 to 2 per contest, fees $0.10 to $1, 20-max and 150-max GPPs plus Showdown) so family priors and C21's sleeve sizes fit what Ben plays."
