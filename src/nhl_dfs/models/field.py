@@ -30,6 +30,8 @@ from nhl_dfs.models.projection import Projection
 
 SALARY_CAP = 50_000
 SALARY_LEFT_EDGES = (0, 100, 300, 500, 1000, 2000)  # histogram bucket upper edges; last is open
+STACK_RULES = ("none", "team3", "team4", "double_stack")
+CLASSIC_ONLY_RULES = ("team4", "double_stack")
 
 
 @dataclass(frozen=True)
@@ -37,7 +39,9 @@ class Behavior:
     name: str
     weight: float
     noise_sd: float
-    stack_rule: str  # "none" | "team3" (Classic: >= 3 skaters of one team; Showdown: >= 4 of 6)
+    # "none" | "team3" (Classic: >= 3 skaters of one team; Showdown: >= 4 of 6) | Classic only (C19):
+    # "team4" (>= 4 skaters of one team) | "double_stack" (>= 4 of one team and >= 3 of another, so 4-3-1)
+    stack_rule: str
     captain_rule: str  # key of field.captain_rules
     salary_left_pref: float  # points gained per $1,000 unspent
     popularity_weight: float = 1.0  # objective = mean + popularity_weight * (u - mean)
@@ -122,6 +126,49 @@ def _stack_min(mode: Mode) -> int:
     return 3 if mode is Mode.CLASSIC else 4
 
 
+Requirements = tuple[tuple[str, int], ...]  # ((team, minimum skaters), ...) one draw must satisfy
+
+
+def stack_jobs(rule: str, mode: Mode, n: int, pool: SalaryPool, skaters_by_team: Mapping[str, Sequence[str]],
+               team_total: Mapping[str, float]) -> tuple[list[tuple[Requirements, int]], str | None]:
+    """(requirements, draws) jobs for one behavior's n draws, and a note when the rule had to be dropped.
+
+    "none": one unconstrained job. "team3": one job per team with enough skaters, draws split by
+    largest remainder in proportion to exp(implied total). "team4": the same with a minimum of 4.
+    "double_stack": one job per ordered pair (A with a minimum of 4, B with a minimum of 3), draws split in
+    proportion to exp(total A + total B); DraftKings needs 3 skater teams, so every such lineup is 4-3-1.
+    A rule no team or pair can satisfy falls back to one unconstrained job (as team3 always has) and says so.
+    Both samplers use this one allocation, so they draw the same mix."""
+    if rule not in STACK_RULES:
+        raise ValueError(f"unknown stack rule {rule!r}")
+    if rule in CLASSIC_ONLY_RULES and mode is not Mode.CLASSIC:
+        raise ValueError(f"stack rule {rule!r} is Classic only")
+    if rule == "none" or n <= 0:
+        return [((), n)], None
+    size = {t: len({pool.by_role_id[x].person_key for x in rids}) for t, rids in skaters_by_team.items()}
+    if rule in ("team3", "team4"):
+        m = _stack_min(mode) if rule == "team3" else 4
+        teams = sorted(t for t, s in size.items() if s >= m)
+        if not teams:
+            return [((), n)], (None if rule == "team3" else f"no team has {m} skaters; {n} draws unstacked")
+        per = split_counts([math.exp(team_total[t]) for t in teams], n)
+        return [(((t, m),), k) for t, k in zip(teams, per) if k], None
+    pairs = [(a, b) for a in sorted(t for t, s in size.items() if s >= 4) for b in sorted(size) if b != a and size[b] >= 3]
+    if len(size) < 3 or not pairs:
+        return [((), n)], f"no legal 4-3 pair of teams; {n} draws unstacked"
+    per = split_counts([math.exp(team_total[a] + team_total[b]) for a, b in pairs], n)
+    return [(((a, 4), (b, 3)), k) for (a, b), k in zip(pairs, per) if k], None
+
+
+def _label(reqs: Requirements) -> str:
+    """Seed and menu label of a job: the team for one, "A+B" for a pair, empty for none."""
+    return "+".join(t for t, _ in reqs)
+
+
+def _groups(reqs: Requirements, skaters_by_team: Mapping[str, Sequence[str]]) -> tuple[GroupConstraint, ...]:
+    return tuple(GroupConstraint(role_ids=frozenset(skaters_by_team[t]), min_count=m) for t, m in reqs)
+
+
 def behavior_objective(pool: SalaryPool, mode: Mode, util: Mapping[str, float], proj: Projection,
                        feats: Mapping[str, Mapping[str, float]], b: Behavior, captain_rules: Mapping[str, float]) -> dict[str, float]:
     out = {}
@@ -164,29 +211,23 @@ def sample(
     for r in pool.rows:
         if mode is Mode.SHOWDOWN or not r.is_goalie:
             skaters_by_team[r.team].append(r.role_id)
-    stack_teams = sorted(t for t, rids in skaters_by_team.items()
-                         if len({pool.by_role_id[x].person_key for x in rids}) >= _stack_min(mode))
-    team_total = {t: next((feats[rid]["implied_total"] for rid in skaters_by_team[t]), 0.0) for t in stack_teams}
+    team_total = {t: next((feats[rid]["implied_total"] for rid in rids), 0.0) for t, rids in skaters_by_team.items()}
 
     for b, n_b in zip(behaviors, counts):
         if n_b == 0:
             continue
         obj = behavior_objective(pool, mode, util, proj, feats, b, cfg["field"]["captain_rules"])
-        if b.stack_rule == "team3" and stack_teams:
-            per_team = split_counts([math.exp(team_total[t]) for t in stack_teams], n_b)
-            jobs = [(t, k) for t, k in zip(stack_teams, per_team) if k]
-        else:
-            jobs = [(None, n_b)]
+        jobs, note = stack_jobs(b.stack_rule, mode, n_b, pool, skaters_by_team, team_total)
+        if note:
+            detail.append(f"behavior {b.name}: {note}")
         got = 0
-        for team, k in jobs:
-            menu = ()
-            if team is not None:
-                gc = GroupConstraint(role_ids=frozenset(skaters_by_team[team]), min_count=_stack_min(mode))
-                menu = ((f"stack:{team}", (gc,)),)
+        for reqs, k in jobs:
+            label = _label(reqs)
+            menu = ((f"stack:{label}", _groups(reqs, skaters_by_team)),) if reqs else ()
             remaining = deadline - time.perf_counter()
             if remaining <= 0:
                 break
-            cands = generate(pool, mode, obj, k, seed=_seed(seed, b.name, team or ""), perturb_sd=b.noise_sd,
+            cands = generate(pool, mode, obj, k, seed=_seed(seed, b.name, label), perturb_sd=b.noise_sd,
                              groups_menu=menu, time_limit_total_s=remaining, distinct=False)
             for c in cands:
                 lineups.append(c.role_ids)
@@ -231,31 +272,28 @@ def sample_parallel(
     for r in pool.rows:
         if mode is Mode.SHOWDOWN or not r.is_goalie:
             skaters_by_team[r.team].append(r.role_id)
-    stack_teams = sorted(t for t, rids in skaters_by_team.items()
-                         if len({pool.by_role_id[x].person_key for x in rids}) >= _stack_min(mode))
-    team_total = {t: next((feats[rid]["implied_total"] for rid in skaters_by_team[t]), 0.0) for t in stack_teams}
-    jobs = []  # (behavior, objective, team or None, sub index, draws)
+    team_total = {t: next((feats[rid]["implied_total"] for rid in rids), 0.0) for t, rids in skaters_by_team.items()}
+    jobs = []  # (behavior, objective, requirements, sub index, draws)
+    notes: list[str] = []
     for b, n_b in zip(behaviors, counts):
         if n_b == 0:
             continue
         obj = behavior_objective(pool, mode, util, proj, feats, b, cfg["field"]["captain_rules"])
-        if b.stack_rule == "team3" and stack_teams:
-            per = [(t, k) for t, k in zip(stack_teams, split_counts([math.exp(team_total[t]) for t in stack_teams], n_b)) if k]
-        else:
-            per = [(None, n_b)]
-        for team, k in per:
+        per, note = stack_jobs(b.stack_rule, mode, n_b, pool, skaters_by_team, team_total)
+        if note:
+            notes.append(f"behavior {b.name}: {note}")
+        for reqs, k in per:
             for j, a in enumerate(range(0, k, sub_size)):
-                jobs.append((b, obj, team, j, min(sub_size, k - a)))
+                jobs.append((b, obj, reqs, j, min(sub_size, k - a)))
 
     def run(job):
-        b, obj, team, j, k = job
+        b, obj, reqs, j, k = job
         remaining = deadline - time.perf_counter()
         if remaining <= 0:
             return []
-        menu = ()
-        if team is not None:
-            menu = ((f"stack:{team}", (GroupConstraint(role_ids=frozenset(skaters_by_team[team]), min_count=_stack_min(mode)),)),)
-        return generate(pool, mode, obj, k, seed=_seed(seed, b.name, team or "", f"sub{j}"), perturb_sd=b.noise_sd,
+        label = _label(reqs)
+        menu = ((f"stack:{label}", _groups(reqs, skaters_by_team)),) if reqs else ()
+        return generate(pool, mode, obj, k, seed=_seed(seed, b.name, label, f"sub{j}"), perturb_sd=b.noise_sd,
                         groups_menu=menu, time_limit_total_s=remaining, distinct=False, mip_rel_gap=mip_rel_gap)
 
     with ThreadPoolExecutor(max_workers=max(1, int(workers))) as ex:
@@ -267,7 +305,7 @@ def sample_parallel(
         lineups += [c.role_ids for c in got]
         beh += [b.name] * len(got)
         short[b.name] += k - len(got)
-    detail = [f"behavior {name}: {k} draws short (time budget or solver errors)" for name, k in sorted(short.items()) if k]
+    detail = notes + [f"behavior {name}: {k} draws short (time budget or solver errors)" for name, k in sorted(short.items()) if k]
     keys = [lineup_key([pool.by_role_id[r] for r in lu], mode) for lu in lineups]
     return Field(contest_family, lineups, keys, beh, n, detail)
 

@@ -13,6 +13,13 @@ exactly the draw models.field.sample hands to the MILP. Here a batch of draws is
 3. Every lineup is checked with contracts.geometry.check_lineup and the team and stack rules; a
    draw that fails any of them is solved by the MILP instead (counted in the detail).
 
+C19 adds two stack rules, team4 (4 skaters of one team) and double_stack (4 of one team and 3 of another).
+Four forced skaters can already be uncompletable (4 centers, or 3 C + 4 W with no room for two D), so
+`_forced_legal` takes each team's skaters in value order and skips any that would leave the forced set
+unable to reach 8 skaters with 2 C, 3 W and 2 D. For a double stack the other 1 skater must come from a third
+team (DraftKings needs 3 skater teams), so both stack teams are blocked from the non-forced fill. team3 keeps
+the original `_forced` and per-team batches, so its draws are unchanged.
+
 It is exact for the relaxation and near-exact for the MILP: tests/test_field_fast.py and
 tests/bench_field.py record how often it returns the MILP's own lineup on identical objectives and
 the value gap. It needs the compact Classic form (every row exactly one of C / W / D / G, every
@@ -26,6 +33,7 @@ import math
 import time
 import zlib
 from collections import defaultdict
+from dataclasses import dataclass
 from typing import Mapping, Sequence
 
 import numpy as np
@@ -65,24 +73,43 @@ class ClassicArrays:
         self.idx = {k: np.nonzero(self.grp == k)[0] for k in (C, W, D, G)}
         self.skaters = np.nonzero(self.grp != G)[0]
         self.T = len(teams)
+        # C19: per-team skater columns padded with a dummy column R, and the group per column with -1 for it
+        self.R = len(self.rows)
+        self.grp_ext = np.append(self.grp, -1)
+        width = max((int((self.team[self.skaters] == t).sum()) for t in range(self.T)), default=0)
+        self.tm = np.full((self.T, max(width, 1)), self.R)
+        for t in range(self.T):
+            cols = self.skaters[self.team[self.skaters] == t]
+            self.tm[t, : len(cols)] = cols
 
 
-def _greedy(A: ClassicArrays, U: np.ndarray, forced: np.ndarray) -> np.ndarray:
-    """(B, R) bool: the best position-legal lineup by U given forced skaters (relaxation: no cap)."""
+@dataclass
+class StackSpec:
+    """Stack requirements beyond the original "3 of one team" (C19). k: skaters required from `stack_team`;
+    team2: (B,) second stack team per row (-1 none) needing k2 skaters, whose two teams then cannot supply the
+    eighth skater."""
+    k: int = 3
+    team2: np.ndarray | None = None
+    k2: int = 3
+
+
+def _greedy(A: ClassicArrays, U: np.ndarray, forced: np.ndarray, block: np.ndarray | None = None) -> np.ndarray:
+    """(B, R) bool: the best position-legal lineup by U given forced skaters (relaxation: no cap).
+    block: columns the non-forced fill may not use (a double stack's two teams)."""
     B = U.shape[0]
     sel = forced.copy()
     for k in (C, W, D):
         cols = A.idx[k]
         fk = forced[:, cols].sum(axis=1)
         need = np.maximum(0, MIN[k] - fk)
-        Uk = np.where(forced[:, cols], NEG, U[:, cols])
+        Uk = np.where(forced[:, cols] if block is None else forced[:, cols] | block[:, cols], NEG, U[:, cols])
         order = np.argsort(-Uk, axis=1, kind="stable")
         ranks = np.empty_like(order)
         np.put_along_axis(ranks, order, np.arange(len(cols))[None, :].repeat(B, axis=0), axis=1)
         sel[:, cols] |= ranks < need[:, None]
     sk = A.skaters
     extra = 8 - sel[:, sk].sum(axis=1)
-    Ur = np.where(sel[:, sk], NEG, U[:, sk])
+    Ur = np.where(sel[:, sk] if block is None else sel[:, sk] | block[:, sk], NEG, U[:, sk])
     order = np.argsort(-Ur, axis=1, kind="stable")
     ranks = np.empty_like(order)
     np.put_along_axis(ranks, order, np.arange(len(sk))[None, :].repeat(B, axis=0), axis=1)
@@ -105,12 +132,60 @@ def _forced(A: ClassicArrays, U: np.ndarray, stack_team: np.ndarray, k: int = 3)
     return forced
 
 
-def _price_search(A: ClassicArrays, V: np.ndarray, stack_team: np.ndarray, iters: int = 26) -> np.ndarray:
+def _force_group(A: ClassicArrays, U: np.ndarray, sel: np.ndarray, counts: np.ndarray, team: np.ndarray, k: int) -> None:
+    """Add up to k skaters per row from that row's team (-1: none) to `sel`, best U first, skipping a skater whose
+    addition would leave the forced set unable to reach 8 skaters with 2 C, 3 W and 2 D. `counts` (B, 3) holds
+    the forced C, W and D per row and is updated, so a second group sees the first."""
+    rows = np.nonzero(team >= 0)[0]
+    if rows.size == 0:
+        return
+    b = rows.size
+    cols = A.tm[team[rows]]  # (b, M), dummy column R pads short teams
+    Uext = np.concatenate([U[rows], np.full((b, 1), NEG)], axis=1)
+    order = np.argsort(-np.take_along_axis(Uext, cols, axis=1), axis=1, kind="stable")
+    cols = np.take_along_axis(cols, order, axis=1)
+    grp = A.grp_ext[cols]
+    c = counts[rows].copy()
+    taken = np.zeros(b, int)
+    for r in range(cols.shape[1]):
+        valid = (cols[:, r] < A.R) & (taken < k)
+        if not valid.any():
+            break
+        idx = np.nonzero(valid)[0]
+        c2 = c.copy()
+        c2[idx, grp[idx, r]] += 1
+        fits = (np.maximum(c2[:, 0], MIN[C]) + np.maximum(c2[:, 1], MIN[W]) + np.maximum(c2[:, 2], MIN[D])) <= 8
+        take = valid & fits
+        c = np.where(take[:, None], c2, c)
+        taken += take
+        sel[rows[take], cols[take, r]] = True
+    counts[rows] = c
+
+
+def _force(A: ClassicArrays, U: np.ndarray, stack_team: np.ndarray, spec: StackSpec | None):
+    """(forced, block): the forced skaters and the columns the non-forced fill must avoid (None: no block).
+    No spec is the original rule, the stack team's best 3 skaters."""
+    if spec is None:
+        return _forced(A, U, stack_team), None
+    forced = np.zeros(U.shape, bool)
+    counts = np.zeros((U.shape[0], 3), int)
+    _force_group(A, U, forced, counts, stack_team, spec.k)
+    block = None
+    if spec.team2 is not None:
+        _force_group(A, U, forced, counts, spec.team2, spec.k2)
+        skater = (A.grp != G)[None, :]
+        block = ((A.team[None, :] == stack_team[:, None]) | (A.team[None, :] == spec.team2[:, None])) & skater
+    return forced, block
+
+
+def _price_search(A: ClassicArrays, V: np.ndarray, stack_team: np.ndarray, iters: int = 26,
+                  spec: StackSpec | None = None) -> np.ndarray:
     B = V.shape[0]
 
     def lineup(lam):
         U = V - lam[:, None] * A.sal[None, :]
-        return _greedy(A, U, _forced(A, U, stack_team))
+        forced, block = _force(A, U, stack_team, spec)
+        return _greedy(A, U, forced, block)
 
     lo = np.zeros(B)
     sel0 = lineup(lo)
@@ -131,8 +206,10 @@ def _price_search(A: ClassicArrays, V: np.ndarray, stack_team: np.ndarray, iters
     return sel
 
 
-def _improve(A: ClassicArrays, V: np.ndarray, sel: np.ndarray, stack_team: np.ndarray, rounds: int = 6) -> np.ndarray:
-    """Best-improvement single swaps on V keeping minimums, cap, >= 3 skater teams and the stack."""
+def _improve(A: ClassicArrays, V: np.ndarray, sel: np.ndarray, stack_team: np.ndarray, rounds: int = 6,
+             spec: StackSpec | None = None) -> np.ndarray:
+    """Best-improvement single swaps on V keeping minimums, cap, >= 3 skater teams and the stack(s)."""
+    k1 = 3 if spec is None else spec.k
     B, R = V.shape
     sel = sel.copy()
     ar = np.arange(B)
@@ -169,7 +246,13 @@ def _improve(A: ClassicArrays, V: np.ndarray, sel: np.ndarray, stack_team: np.nd
             st = np.where(has, stack_team, 0)
             cst = tc[ar, st][:, None, None]
             after_s = cst - ((tii == st[:, None, None]) & (gii != G)) + ((tj == st[:, None, None]) & (gj != G))
-            ok &= ~has[:, None, None] | (after_s >= 3)
+            ok &= ~has[:, None, None] | (after_s >= k1)
+        if spec is not None and spec.team2 is not None:
+            has2 = spec.team2 >= 0
+            st2 = np.where(has2, spec.team2, 0)
+            cst2 = tc[ar, st2][:, None, None]
+            after_2 = cst2 - ((tii == st2[:, None, None]) & (gii != G)) + ((tj == st2[:, None, None]) & (gj != G))
+            ok &= ~has2[:, None, None] | (after_2 >= spec.k2)
         gain = np.where(ok, gain, 0.0)
         flat = gain.reshape(B, -1)
         best = flat.argmax(axis=1)
@@ -202,24 +285,28 @@ def _canonical(A: ClassicArrays, cols: Sequence[int]) -> tuple[str, ...] | None:
     return tuple(r.role_id for r in lu)
 
 
-def _legal(A: ClassicArrays, lu: tuple[str, ...], stack: int) -> bool:
+def _legal(A: ClassicArrays, lu: tuple[str, ...], stack: int, k: int = 3, stack2: int = -1, k2: int = 3) -> bool:
     rows = [A.pool.by_role_id[r] for r in lu]
     if not check_lineup(rows, Mode.CLASSIC).ok:
         return False
-    if stack >= 0:
-        return sum(1 for r in rows if not r.is_goalie and r.team == A.team_names[stack]) >= 3
+    for team, need in ((stack, k), (stack2, k2)):
+        if team >= 0 and sum(1 for r in rows if not r.is_goalie and r.team == A.team_names[team]) < need:
+            return False
     return True
 
 
-def solve_batch(A: ClassicArrays, V: np.ndarray, stack_team: np.ndarray) -> tuple[list, int]:
-    """Lineups (canonical role ids, or None where the relaxation failed a check) for (B, R) values."""
-    sel = _price_search(A, V, stack_team)
-    sel = _improve(A, V, sel, stack_team)
+def solve_batch(A: ClassicArrays, V: np.ndarray, stack_team: np.ndarray, spec: StackSpec | None = None) -> tuple[list, int]:
+    """Lineups (canonical role ids, or None where the relaxation failed a check) for (B, R) values.
+    spec: the C19 stack requirements (team4, double_stack); None is the original 3-of-one-team rule."""
+    sel = _price_search(A, V, stack_team, spec=spec)
+    sel = _improve(A, V, sel, stack_team, spec=spec)
     out, bad = [], 0
     for b in range(V.shape[0]):
         cols = np.nonzero(sel[b])[0]
         lu = _canonical(A, cols) if len(cols) == 9 else None
-        if lu is None or not _legal(A, lu, int(stack_team[b])):
+        k1 = 3 if spec is None else spec.k
+        t2 = -1 if spec is None or spec.team2 is None else int(spec.team2[b])
+        if lu is None or not _legal(A, lu, int(stack_team[b]), k1, t2, 3 if spec is None else spec.k2):
             out.append(None)
             bad += 1
         else:
@@ -262,11 +349,47 @@ def sample_fast(pool: SalaryPool, util: Mapping[str, float], behaviors, n: int, 
     stack_teams = sorted(t for t, rids in skaters_by_team.items() if len(rids) >= 3)
     team_total = {t: next((feats[rid]["implied_total"] for rid in skaters_by_team[t]), 0.0) for t in stack_teams}
     lineups, beh, detail = [], [], []
-    fallback = 0
+    fallback = dropped = 0
+    team_total_all = {t: next((feats[rid]["implied_total"] for rid in rids), 0.0) for t, rids in skaters_by_team.items()}
     for b, n_b in zip(behaviors, counts):
         if n_b == 0:
             continue
         obj = fm.behavior_objective(pool, Mode.CLASSIC, util, proj, feats, b, cfg["field"]["captain_rules"])
+        if b.stack_rule in fm.CLASSIC_ONLY_RULES:  # C19: rows of every team (pair) in one batch, per-row teams
+            jobs, note = fm.stack_jobs(b.stack_rule, Mode.CLASSIC, n_b, pool, skaters_by_team, team_total_all)
+            if note:
+                detail.append(f"behavior {b.name}: {note}")
+            t1: list[int] = []
+            t2: list[int] = []
+            for reqs, k in jobs:
+                t1 += [A.team_names.index(reqs[0][0]) if reqs else -1] * k
+                t2 += [A.team_names.index(reqs[1][0]) if len(reqs) > 1 else -1] * k
+            double = b.stack_rule == "double_stack"
+            k1 = 4
+            for j, a in enumerate(range(0, len(t1), batch)):
+                m = min(batch, len(t1) - a)
+                V = perturbed(A, obj, m, b.noise_sd, _seed(seed, b.name, "", f"fast{j}"))
+                st = np.asarray(t1[a:a + m])
+                st2 = np.asarray(t2[a:a + m])
+                spec = StackSpec(k1, st2 if double else None, 3)
+                got, _ = solve_batch(A, V, st, spec)
+                for i, lu in enumerate(got):
+                    if lu is None and milp_fallback:
+                        groups = ()
+                        if st[i] >= 0:
+                            groups = (GroupConstraint(role_ids=frozenset(skaters_by_team[A.team_names[st[i]]]), min_count=k1),)
+                            if double and st2[i] >= 0:
+                                groups += (GroupConstraint(role_ids=frozenset(skaters_by_team[A.team_names[st2[i]]]), min_count=3),)
+                        res = LineupModel(pool, Mode.CLASSIC, groups=groups).solve(
+                            {r: float(V[i, c]) for c, r in enumerate(A.ids)}, time_limit_s=5.0)
+                        lu = tuple(res.lineup) if res.lineup is not None else None
+                        fallback += 1
+                    if lu is not None:
+                        lineups.append(lu)
+                        beh.append(b.name)
+                    else:
+                        dropped += 1
+            continue
         if b.stack_rule == "team3" and stack_teams:
             per = [(t, k) for t, k in zip(stack_teams, fm.split_counts([math.exp(team_total[t]) for t in stack_teams], n_b)) if k]
         else:
@@ -289,8 +412,13 @@ def sample_fast(pool: SalaryPool, util: Mapping[str, float], behaviors, n: int, 
                     if lu is not None:
                         lineups.append(lu)
                         beh.append(b.name)
+                    else:
+                        dropped += 1
     if fallback:
         detail.append(f"{fallback} draw(s) failed a check in the vectorized solve and were solved by the MILP")
+    if dropped:
+        detail.append(f"{dropped} draw(s) dropped: no legal lineup from the vectorized solve" +
+                      (" or the MILP" if milp_fallback else ""))
     keys = [lineup_key([pool.by_role_id[r] for r in lu], Mode.CLASSIC) for lu in lineups]
     fld = fm.Field(contest_family, lineups, keys, beh, n, detail)
     fld.elapsed_s = time.perf_counter() - t0
