@@ -173,15 +173,15 @@ PHASE 1: PLAN PHASE 2: BUILD PHASE 3: REPORT AND ARCHIVE
 def test_check_prompt_accepts_a_complete_prompt_and_names_every_defect():
     assert pm.check_prompt(GOOD) == []
     bad = pm.check_prompt(GOOD.replace("/plan", "plan", 1).replace("/advisor", "").replace("PHASE 3: REPORT AND ARCHIVE", "")
-                          + " <<WRITE: something>> {{CHUNK_ID}} —")
+                          + " <<WRITE: something>> {{CHUNK_ID}} " + chr(0x2014))
     joined = " | ".join(bad)
-    for needle in ("start with /plan", "PHASE 3", "/advisor", "unfilled <<WRITE", "{{CHUNK_ID}}", "em dash"):
+    for needle in ("start with /plan", "PHASE 3", "/advisor", "unfilled or broken <<WRITE", "{{CHUNK_ID}}", "em dash"):
         assert needle in joined
 
 
 def test_the_template_has_no_em_dash_and_every_required_section():
     text = pm.TEMPLATE.read_text(encoding="utf-8")
-    assert "—" not in text
+    assert chr(0x2014) not in text
     assert text.lstrip().startswith("/plan") and all(s in text for s in pm.REQUIRED_SECTIONS)
 
 
@@ -193,7 +193,7 @@ def test_the_live_tracker_renders_a_prompt_that_only_the_write_blocks_keep_open(
     assert g["chunk"] in text and f"git checkout -b dev/{g['chunk'].lower()}-" in text
     assert not re.findall(r"\{\{[A-Z_]+\}\}", text), "every mechanical field must be filled from the tracker"
     problems = pm.check_prompt(text)
-    assert any("unfilled <<WRITE" in p for p in problems) and len(problems) == 1  # an unfinished prompt cannot pass
+    assert any("unfilled or broken <<WRITE" in p for p in problems) and len(problems) == 1  # an unfinished prompt cannot pass
     filled = re.sub(r"<<WRITE:[^>]*>>", "filled", text)
     assert pm.check_prompt(filled) == []
 
@@ -216,3 +216,81 @@ def test_the_cli_runs_check_prompt_with_an_exit_code(tmp_path: Path):
     f.write_text(GOOD + "<<WRITE: todo>>", encoding="utf-8")
     bad = subprocess.run([sys.executable, str(REPO_ROOT / "tools" / "post_merge.py"), "check-prompt", str(f)], capture_output=True, text=True)
     assert bad.returncode == 1 and "PROMPT=FAIL" in bad.stdout
+
+
+# -- the reviewer's cases ----------------------------------------------------------------------------------------
+
+def test_a_finished_branch_whose_remote_is_gone_is_deleted_even_from_a_stale_branch(world):
+    """git branch -d refuses this exact case (merged into the base, not into HEAD or the deleted upstream)."""
+    _, work, _ = world
+    sh(work, "switch", "-c", "stale-dev")  # a stale checkout at the old master tip
+    sh(work, "switch", "-c", "feat")
+    commit(work, "feat.txt")
+    sh(work, "push", "-u", "origin", "feat")
+    sh(work, "switch", "master")
+    sh(work, "merge", "--no-ff", "feat", "-m", "Merge feat")
+    sh(work, "push", "origin", "master")
+    sh(work, "push", "origin", "--delete", "feat")  # GitHub deleting the head branch after the merge
+    sh(work, "switch", "stale-dev")
+    plan = pm.cleanup_plan(work)  # the fetch --prune turns feat's upstream into [gone]
+    assert actions(plan)["feat"] == "delete"
+    done = pm.apply_plan(work, plan)
+    assert any(d.startswith("deleted local branch feat (was ") and "restore with: git branch feat " in d for d in done), done
+    assert "feat" not in sh(work, "branch", "--format=%(refname:short)").split()
+
+
+def test_the_ancestor_check_is_rerun_just_before_deleting(world):
+    _, work, _ = world
+    make_branches(work)
+    plan = pm.cleanup_plan(work)
+    assert actions(plan)["feat"] == "delete"
+    sh(work, "switch", "feat")  # new work lands on the branch after the plan was made
+    commit(work, "late.txt")
+    sh(work, "switch", "master")
+    done = pm.apply_plan(work, plan)
+    assert any("NOT deleted local branch feat" in d and "no longer fully merged" in d for d in done)
+    assert "feat" in sh(work, "branch", "--format=%(refname:short)").split()
+
+
+def test_master_is_never_deleted_even_when_the_base_is_another_branch(world):
+    origin, work, _ = world
+    sh(work, "push", "origin", "master:develop")
+    sh(work, "fetch", "origin")
+    plan = pm.cleanup_plan(work, base="origin/develop", fetch=False)
+    assert actions(plan).get("master") == "keep"
+    pm.apply_plan(work, plan)
+    assert "master" in sh(work, "branch", "--format=%(refname:short)").split()
+
+
+def test_remote_branches_honor_keep_and_skip_a_branch_pushed_with_no_commits(world):
+    _, work, _ = world
+    make_branches(work)  # feat is merged and still on the remote
+    sh(work, "push", "origin", "master:fresh-pr")  # pushed with no commits of its own: sits at the base tip
+    sh(work, "fetch", "origin")
+    assert pm.cleanup_plan(work, fetch=False)["remote_merged"] == ["feat"]
+    assert pm.cleanup_plan(work, keep=("feat",), fetch=False)["remote_merged"] == []
+    assert "confirm no open pull request" in pm.render_cleanup(pm.cleanup_plan(work, fetch=False))
+
+
+def test_the_powershell_block_stops_on_changes_and_on_a_failed_switch(world):
+    _, work, _ = world
+    block = pm.powershell_block(pm.cleanup_plan(work))
+    assert "if (git status --porcelain)" in block and "STOP: the files listed above" in block
+    assert "$LASTEXITCODE -eq 0" in block and "STOP: could not switch to master" in block
+    assert block.index("git switch master") < block.index("git pull --ff-only origin master")
+    assert "{{" not in block and "}}" not in block  # the doubled braces were format escapes
+
+
+def test_the_branch_name_avoids_a_name_that_already_exists(world):
+    _, work, _ = world
+    assert pm.branch_name(work, "C19", "Field stack mix by slate size and more") == "dev/c19-field-stack-mix-by-slate"
+    sh(work, "branch", "dev/c19-field-stack-mix-by-slate")
+    assert pm.branch_name(work, "C19", "Field stack mix by slate size and more") == "dev/c19-field-stack-mix-by-slate-2"
+    sh(work, "push", "origin", "master:dev/c19-field-stack-mix-by-slate-2")  # a remote-only name counts too
+    sh(work, "fetch", "origin")
+    assert pm.branch_name(work, "C19", "Field stack mix by slate size and more") == "dev/c19-field-stack-mix-by-slate-3"
+
+
+@pytest.mark.parametrize("junk", ["<<WRITE >>", "<<WRITE", "{{ NEXT_FLAG }}", "{{NEXT_FLAG2}}", "see >> here"])
+def test_check_prompt_catches_malformed_markers_too(junk):
+    assert pm.check_prompt(GOOD + junk)

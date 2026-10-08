@@ -6,8 +6,9 @@
     python tools/post_merge.py check-prompt FILE
 
 cleanup   Report by default (it only runs `git fetch --prune`). With --apply it deletes LOCAL branches that are fully
-          merged into the base (`git branch -d`, which refuses anything else) and fast-forwards a local master that is
-          strictly behind the base. It never touches the current branch, a --keep branch, a branch with commits the base
+          merged into the base and were pushed (the ancestor check is re-run just before each delete, then `git branch -D`:
+          `-d` compares with HEAD or a deleted upstream and so refuses exactly the finished branches; the old commit id is
+          printed so a branch can be restored) and fast-forwards a local master that is strictly behind the base. It never touches the current branch, a --keep branch, a branch with commits the base
           lacks (including one whose upstream is gone and which may have been squash-merged: those are listed for review),
           a branch that tracks the base or was never pushed (a new dev branch looks merged: it is listed for review),
           a dirty working tree, or a diverged master. It never deletes a remote branch: merged remote branches are listed
@@ -36,7 +37,8 @@ ROOT = TOOLS.parent
 TEMPLATE = ROOT / "docs" / "templates" / "next_session_prompt.md"
 REQUIRED_SECTIONS = ("STATE OF THE REPO", "1. WHAT TO DO", "2. HOW MUCH EFFORT", "3. HOW TO VERIFY",
                      "ADVISOR", "PHASE 1: PLAN", "PHASE 2: BUILD", "PHASE 3: REPORT AND ARCHIVE")
-EM_DASH = "—"
+EM_DASH = chr(0x2014)  # spelled out so that no source file contains one
+PROTECTED = ("master", "main", "develop", "trunk")
 
 
 # --- git ---------------------------------------------------------------------------------------
@@ -78,7 +80,9 @@ def cleanup_plan(cwd: Path, base: str | None = None, keep: tuple[str, ...] = (),
         if name == base_branch:
             continue
         merged = is_ancestor(cwd, name, base)
-        if name == current:
+        if name in PROTECTED or upstream.endswith("/HEAD"):
+            action, why = "keep", "a long-lived branch: never deleted by this tool"
+        elif name == current:
             action, why = "keep", "checked out"
         elif name in keep:
             action, why = "keep", "named with --keep (an open pull request or work in progress)"
@@ -113,11 +117,14 @@ def cleanup_plan(cwd: Path, base: str | None = None, keep: tuple[str, ...] = (),
     plan["master_name"] = base_branch
 
     _, remote = git(cwd, "for-each-ref", "--format=%(refname:short)", "refs/remotes/origin")
+    base_sha = git(cwd, "rev-parse", base)[1]
     for r in remote.splitlines():
-        if r in (base, "origin/HEAD", "origin") or r == f"origin/{base_branch}":
+        short = r.split("/", 1)[1] if "/" in r else r
+        if r in (base, "origin/HEAD", "origin") or short in PROTECTED or short == base_branch or short in keep:
             continue
-        if is_ancestor(cwd, r, base):
-            plan["remote_merged"].append(r.split("/", 1)[1])
+        # a branch pushed with no commits of its own sits AT the base tip: a pull request about to open, not a merged one
+        if is_ancestor(cwd, r, base) and git(cwd, "rev-parse", r)[1] != base_sha:
+            plan["remote_merged"].append(short)
     return plan
 
 
@@ -129,8 +136,14 @@ def apply_plan(cwd: Path, plan: dict) -> list[str]:
     for b in plan["branches"]:
         if b["action"] != "delete":
             continue
-        rc, out = git(cwd, "branch", "-d", b["name"])  # -d refuses an unmerged branch: a second guard
-        done.append(f"{'deleted' if rc == 0 else 'NOT deleted'} local branch {b['name']}" + ("" if rc == 0 else f" ({out})"))
+        name = b["name"]
+        if not is_ancestor(cwd, name, plan["base"]):  # the real guard, re-run now: the branch may have moved since the plan
+            done.append(f"NOT deleted local branch {name}: it is no longer fully merged into {plan['base']}")
+            continue
+        sha = git(cwd, "rev-parse", name)[1]
+        rc, out = git(cwd, "branch", "-D", name)  # safe only because of the check above; -d would refuse a finished branch
+        done.append(f"deleted local branch {name} (was {sha[:10]}; restore with: git branch {name} {sha[:10]})" if rc == 0
+                    else f"NOT deleted local branch {name} ({out})")
     name = plan["master_name"]
     if plan["master"] == "behind":
         if plan["dirty"] and plan["current"] == name:
@@ -145,10 +158,18 @@ def apply_plan(cwd: Path, plan: dict) -> list[str]:
 
 
 POWERSHELL = """git fetch --prune origin
-git status --short
-git switch {master}
-git pull --ff-only origin {master}
-.venv\\Scripts\\python.exe tools\\post_merge.py cleanup
+if (git status --porcelain) {{
+  git status --short
+  Write-Host "STOP: the files listed above have uncommitted changes. Do not go on; send this output to Claude."
+}} else {{
+  git switch {master}
+  if ($LASTEXITCODE -eq 0) {{
+    git pull --ff-only origin {master}
+    .venv\\Scripts\\python.exe tools\\post_merge.py cleanup
+  }} else {{
+    Write-Host "STOP: could not switch to {master}. Send this output to Claude."
+  }}
+}}
 """
 
 
@@ -168,7 +189,8 @@ def render_cleanup(plan: dict) -> str:
     if not plan["branches"]:
         out.append("  no other local branches")
     if plan["remote_merged"]:
-        out.append("merged remote branches still on GitHub (GitHub normally deletes these itself; this tool never does):")
+        out.append("merged remote branches still on GitHub (GitHub normally deletes these itself; this tool never does). "
+                   "Before running any line, confirm no open pull request uses that branch (deleting it would close the pull request):")
         out += [f"  git push origin --delete {r}" for r in plan["remote_merged"]]
     deletes = [b["name"] for b in plan["branches"] if b["action"] == "delete"]
     todo = deletes or m == "behind" or plan["remote_merged"]
@@ -181,9 +203,10 @@ def powershell_block(plan: dict) -> str:
     name = plan.get("master_name", "master")
     return ("COPY AND PASTE INTO POWERSHELL on your machine, in the nhl-dfs folder (it only fetches, fast-forwards master "
             "and prints a report; the last line deletes nothing):\n```powershell\n" + POWERSHELL.format(master=name) + "```\n"
-            "Expected: `git status --short` prints nothing (if it prints files, stop and tell Claude), the pull says "
-            "Fast-forward or Already up to date, and the report names what it would delete. To delete the merged local "
-            "branches it lists, run the same last command with `--apply` added.")
+            "Expected: no STOP line, the pull says Fast-forward or Already up to date, and the report names what it would "
+            "delete. If a STOP line appears, nothing was changed: send the output to Claude. If the last line says it "
+            "cannot find post_merge.py, the pull did not work: send the output to Claude. To delete the merged local "
+            "branches the report lists, run its last line again with `--apply` added.")
 
 
 # --- the next prompt -----------------------------------------------------------------------------
@@ -245,6 +268,17 @@ def slug(title: str) -> str:
     return "-".join(re.sub(r"[^a-z0-9]+", " ", title.lower()).split()[:5])
 
 
+def branch_name(root: Path, chunk_id: str, title: str) -> str:
+    """dev/<id>-<five words of the title>, with -2, -3 ... when that name already exists here or on origin (a resume)."""
+    base = f"dev/{chunk_id.lower()}-{slug(title)}"
+    name, n = base, 1
+    while (git(root, "rev-parse", "--verify", "--quiet", f"refs/heads/{name}")[0] == 0
+           or git(root, "rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{name}")[0] == 0):
+        n += 1
+        name = f"{base}-{n}"
+    return name
+
+
 def render_facts(root: Path) -> str:
     g = gather(root)
     rc, head = git(root, "log", "origin/master", "--oneline", "-3")
@@ -256,7 +290,7 @@ def render_facts(root: Path) -> str:
     out += [f"{g['chunk']} · {c['title']}", f"status {g['status']}; band {c.get('band')}; size {c.get('size')}; effort: {c.get('effort')}",
             f"depends on {c.get('depends')}; marker {c.get('marker')}; needs flags {c.get('needs') or 'none'}",
             f"breakpoint: {c.get('breakpoint')}", "exit checks: " + "; ".join(c.get("checks") or []),
-            f"branch name for the new session: dev/{g['chunk'].lower()}-{slug(c['title'])}",
+            f"branch name for the new session: {branch_name(root, g['chunk'], c['title'])}",
             f"next in the queue after it: {', '.join(g['after']) or 'nothing'}",
             f"next free flag {g['next_flag']}, next free backlog B{g['next_backlog']}",
             f"tracker notes (HANDOFF if any): {g['notes'] or 'none'}",
@@ -279,7 +313,7 @@ def render_prompt(root: Path, template: Path = TEMPLATE) -> str:
         "BACKLOG": ", ".join(c.get("backlog") or []) or "none", "MARKER": str(c.get("marker")),
         "BREAKPOINT": str(c.get("breakpoint")), "STATUS": g["status"], "RANK": f"Queue #{g['rank']}" if g["rank"] else "not ranked",
         "EXIT_CHECKS": "; ".join(f"`{x}`" for x in c.get("checks") or []),
-        "BRANCH": f"dev/{g['chunk'].lower()}-{slug(c['title'])}", "NEXT_FLAG": str(g["next_flag"]),
+        "BRANCH": branch_name(root, g["chunk"], c["title"]), "NEXT_FLAG": str(g["next_flag"]),
         "NEXT_BACKLOG": f"B{g['next_backlog']}", "AFTER": ", ".join(g["after"]) or "nothing",
     }
     text = template.read_text(encoding="utf-8")
@@ -295,12 +329,14 @@ def check_prompt(text: str) -> list[str]:
             problems.append(f"missing section: {s}")
     if "/advisor" not in text:
         problems.append("the prompt must tell the session to use /advisor")
-    left = re.findall(r"<<WRITE:[^>]{0,80}", text)
+    left = re.findall(r"<<[^\n]{0,80}", text)
     if left:
-        problems.append(f"{len(left)} unfilled <<WRITE: ...>> block(s), first: {left[0]}")
-    ph = re.findall(r"\{\{[A-Z_]+\}\}", text)
+        problems.append(f"{len(left)} unfilled or broken <<WRITE: ...>> block(s), first: {left[0]}")
+    ph = re.findall(r"\{\{[^\n]{0,40}", text)
     if ph:
-        problems.append(f"unfilled placeholder(s): {', '.join(sorted(set(ph)))}")
+        problems.append(f"unfilled or broken placeholder(s), first: {ph[0]}")
+    if ">>" in text and not left:
+        problems.append("a stray >> (reword it)")
     if EM_DASH in text:
         problems.append("the prompt contains an em dash (the project style forbids them)")
     return problems
