@@ -209,6 +209,26 @@ def test_bare_refuses_when_a_done_predecessor_check_now_fails(fixture_root: Path
     assert "REFUSED" in result.stdout
 
 
+def test_peek_names_the_next_chunk_without_rerunning_checks(fixture_root: Path):
+    # The same setup as the refusal test: a DONE predecessor whose check now fails. --peek must not run it.
+    subprocess.run(
+        [sys.executable, str(NEXT_CHUNK), "--root", str(fixture_root), "--done", "A0", "--commit", "HEAD"],
+        cwd=str(REPO_ROOT),
+        capture_output=True,
+        text=True,
+    )
+    broken_yaml = CHUNKS_YAML.replace(
+        '- python -c "raise SystemExit(0)"\n  - id: A1',
+        '- python -c "raise SystemExit(1)"\n  - id: A1',
+        1,
+    )
+    (fixture_root / "chunks.yaml").write_text(broken_yaml, encoding="utf-8", newline="\n")
+    result = run_next_chunk(fixture_root, "--peek")
+    assert result.returncode == 0 and "REFUSED" not in result.stdout
+    assert "A1" in result.stdout or "A2" in result.stdout
+    assert "NOT rerun" in result.stderr  # a preview is never mistaken for the real selector
+
+
 def test_block_sets_blocked_with_reason(fixture_root: Path):
     result = run_next_chunk(fixture_root, "--block", "A2", "--reason", "needs Ben's input")
     assert result.returncode == 0
