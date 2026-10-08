@@ -90,8 +90,8 @@ field:
   # slate when `enabled` is true and the family is listed; Showdown and every other family keep `mixtures`.
   # A bucket key is a game count: "3", "1-3" or "7+"; `default` catches every pool, including one whose game
   # count is unknown. Only `default` is filled: the by-slate shares overlap and come from one week. The weights
-  # are a PRIOR, hand-set by one pass of arithmetic (scripts/c19_weights.py: each behavior alone on a synthetic
-  # 6-team stand-in pool, the pooled Field row below as the target), not a fit from standings (C12). They ship
+  # are a PRIOR, solved by one grid search (scripts/c19_weights.py: each behavior alone on a synthetic 6-team
+  # stand-in pool against the shares of the pooled Field row below), not a model fitted from standings (C12). They ship
   # switched OFF: `enabled` becomes true only after the 2026-09-30 gate (flag 46) has passed.
   classic_mixtures:
     enabled: false

@@ -130,9 +130,11 @@ def check(pool, cfg) -> bool:
     legal = sum(check_lineup([pool.by_role_id[r] for r in lu], Mode.CLASSIC).ok for lu in fld.lineups)
     sh = shares(fld, pool)
     mix = fm.stack_shape_mix(fld.lineups, pool)
-    t3 = sum(1 for b in fld.behavior_id if b == "stacker")
+    rule = {b.name: b.stack_rule for b in beh}
+    t3 = sum(1 for b in fld.behavior_id if rule[b] == "team3")
+    print(f"pool: {len(pool.rows)} rows, {len(pool.teams)} teams, {len(pool.games)} games, sha256 {pool.sha256[:12]}")
     print(f"mixture in force: {', '.join(f'{b.name} {b.weight:.2f}' for b in beh)}")
-    print(f"draws {fld.n} legal {legal}; detail: {'; '.join(fld.detail) or 'none'}; team3 (stacker) draws {t3}")
+    print(f"draws {fld.n} legal {legal}; detail: {'; '.join(fld.detail) or 'none'}; team3 draws {t3}")
     for k, label in (("stack3", "3+ stack"), ("stack4", "4+ stack"), ("stack5", "5+ stack (reported)"),
                      ("two3", "two 3+ stacks (reported)"), ("s431", "4-3-1 (reported)")):
         print(f"  {label}: {sh[k]:.1f}% (table {TARGETS[k]})")

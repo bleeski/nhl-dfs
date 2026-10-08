@@ -219,6 +219,23 @@ def test_none_and_team3_jobs_equal_the_old_logic(n):
         assert all(m == 4 for reqs, _ in new for _, m in reqs)
 
 
+def test_double_stack_pairs_are_weighted_by_the_sum_of_implied_totals():
+    pool = stand_in_pool(4)
+    sk: dict[str, list[str]] = {}
+    for r in pool.rows:
+        if not r.is_goalie:
+            sk.setdefault(r.team, []).append(r.role_id)
+    totals = {"AAA": 0.0, "BBB": 1.0, "CCC": 0.0, "DDD": 0.0}
+    jobs, note = fm.stack_jobs("double_stack", Mode.CLASSIC, 1200, pool, sk, totals)
+    per = {(reqs[0][0], reqs[1][0]): k for reqs, k in jobs}
+    w = {(a, b): math.exp(totals[a] + totals[b]) for a in sk for b in sk if a != b}
+    assert note is None and set(per) == set(w) and sum(per.values()) == 1200
+    for pair, k in per.items():
+        assert abs(k - 1200 * w[pair] / sum(w.values())) < 1  # largest remainder: within one draw of its share
+    assert per[("AAA", "BBB")] == per[("BBB", "AAA")] > per[("AAA", "CCC")]
+    assert all(reqs[0][1] == 4 and reqs[1][1] == 3 for reqs, _ in jobs)
+
+
 def test_a_rule_nothing_can_satisfy_degrades_visibly(small):
     pool = small[0]
     sk = {"AAA": ["1", "2", "3"], "BBB": ["4", "5", "6"]}
@@ -313,9 +330,10 @@ def test_vectorized_lineups_are_legal_and_rarely_need_the_milp(rule, which):
 @pytest.mark.parametrize("which", ["small", "big"])
 @pytest.mark.parametrize("rule", ["team4", "double_stack"])
 def test_mean_value_gap_to_the_milp_is_under_one_percent(rule, which):
-    """Flag 45 as written: noise seed 3, team 0 (and team 1), 40 draws. The seed was fixed before the first run; the
-    forcing was then changed (flag 45 outcome) after the first version measured 1.08 to 2.19 percent. Other seeds are
-    in the session log, not here: on fresh seeds double_stack reached 1.05 and 1.25 percent in 2 of 12 cases."""
+    """Flag 45 as written: team 0 (and team 1), 40 draws. Flag 45 does not name a seed; seed 3 is the one the existing
+    C8 test uses and it was run first. The forcing was then changed (flag 45 outcome) after the first version
+    measured 1.08 to 2.19 percent. Other seeds are in the session log, not here: across six seeds and two pools
+    double_stack was above 1 percent (1.05 and 1.25) in 2 of 12 cases."""
     assert agreement(rule, which)[1] < 0.01
 
 
