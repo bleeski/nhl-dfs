@@ -119,6 +119,8 @@ def check(pool, cfg) -> bool:
 
     cfg = copy.deepcopy(cfg)
     cfg["field"]["classic_mixtures"]["enabled"] = True
+    if "classic_mixtures_team5" in cfg["field"]:  # C46: this gate is the C19 table's, whatever the team5 switch says
+        cfg["field"]["classic_mixtures_team5"]["enabled"] = False
     proj = PriorProjection(pool)
     feats = ownership.feature_table(pool, proj, None, cfg=cfg)
     util = ownership.perceived(pool, proj, feats, ownership.family_weights(cfg, "large_gpp"))

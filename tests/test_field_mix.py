@@ -351,6 +351,7 @@ NEW = {"stacker4", "double_stack"}
 def cfg_copy(on: bool):
     cfg = copy.deepcopy(ownership.load_ownership_config())
     cfg["field"]["classic_mixtures"]["enabled"] = on
+    cfg["field"]["classic_mixtures_team5"]["enabled"] = False  # C46: these tests are about the C19 table
     return cfg
 
 

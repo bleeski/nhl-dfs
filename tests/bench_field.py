@@ -141,6 +141,7 @@ def bench(label: str, pool, proj, scen) -> bool:
     cap_mb = float(load_sim_config()["memory_cap_mb"])
     own_cfg = ownership.load_ownership_config()
     own_cfg["field"]["classic_mixtures"]["enabled"] = True  # C19: time the field a run builds once the mixtures are on
+    own_cfg["field"]["classic_mixtures_team5"]["enabled"] = True  # C46: and with the team5 table, whatever the YAML ships
     feats = ownership.feature_table(pool, proj, None, cfg=own_cfg)
     util = ownership.perceived(pool, proj, feats, ownership.family_weights(own_cfg, "large_gpp"))
     behaviors = fm.behaviors_for_pool("large_gpp", pool, own_cfg)

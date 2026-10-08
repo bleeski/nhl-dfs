@@ -107,10 +107,10 @@ field:
   # true. Same shape: family, then game-count bucket (only `default` filled), then weights summing to 1. The
   # weights are a PRIOR from one grid search (scripts/c46_weights.py: each behavior alone on the synthetic 6-team
   # stand-in pool against the pooled Field row, the 3+, 4+ and 5+ shares each within 3 points), not a fit from
-  # standings (C12). It ships switched OFF until the real-pool gate (flag 49) has passed; `classic_mixtures` and its
-  # weights are not edited by C46.
+  # standings (C12). It shipped switched OFF and was switched ON on 2026-10-08, after the real-pool gate (flag 49)
+  # passed; set `enabled` to false to get the C19 table back. `classic_mixtures` and its weights are not edited by C46.
   classic_mixtures_team5:
-    enabled: false
+    enabled: true
     large_gpp:
       default: {optimizer: 0.07, stacker: 0.22, stacker4: 0.08, double_stack: 0.33, stacker5: 0.21, stars_value: 0.03, casual: 0.04, contrarian: 0.02}
     small_field:

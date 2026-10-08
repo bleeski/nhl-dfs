@@ -244,9 +244,9 @@ def shipped_team5():
     return {k: v for k, v in ownership.load_ownership_config()["field"]["classic_mixtures_team5"].items() if k != "enabled"}
 
 
-def test_the_team5_switch_ships_off_and_the_c19_table_is_untouched():
+def test_the_team5_switch_ships_on_after_the_gate_and_the_c19_table_is_untouched():
     cfg = ownership.load_ownership_config()
-    assert cfg["field"]["classic_mixtures_team5"]["enabled"] is False
+    assert cfg["field"]["classic_mixtures_team5"]["enabled"] is True  # switched on 2026-10-08 after the flag 49 gate passed
     assert cfg["field"]["classic_mixtures"]["large_gpp"]["default"] == {
         "optimizer": 0.07, "stacker": 0.21, "stacker4": 0.31, "double_stack": 0.31, "stars_value": 0.03, "casual": 0.05,
         "contrarian": 0.02}
@@ -254,11 +254,13 @@ def test_the_team5_switch_ships_off_and_the_c19_table_is_untouched():
 
 def test_team5_off_is_the_c19_table_even_when_the_team5_table_is_filled():
     pool = stand_in_pool(6)
+    c19_default = {"optimizer": 0.07, "stacker": 0.21, "stacker4": 0.31, "double_stack": 0.31, "stars_value": 0.03,
+                   "casual": 0.05, "contrarian": 0.02}  # the weights C19 shipped, written here and not read from the YAML
+    assert set(shipped_team5()) == {"large_gpp", "small_field"}  # the table is filled
     for fam in ("large_gpp", "small_field"):
-        c19_only = weights(fm.behaviors_for_pool(fam, pool, cfg_copy(True, False)))
-        both = cfg_copy(True, False)
-        assert weights(fm.behaviors_for_pool(fam, pool, both)) == c19_only
-        assert "stacker5" not in c19_only and fm.classic_mixture_name(fam, both) == "classic"
+        off = cfg_copy(True, False)
+        got = weights(fm.behaviors_for_pool(fam, pool, off))
+        assert got == pytest.approx(c19_default) and "stacker5" not in got and fm.classic_mixture_name(fam, off) == "classic"
 
 
 def test_team5_on_uses_its_table_only_with_the_c19_switch_on_and_only_for_listed_families():
