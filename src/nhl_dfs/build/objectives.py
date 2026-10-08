@@ -707,7 +707,7 @@ class OwnContest:
                 twin = next((j for j in range(i) if vals[j] is v), None)
                 if twin is None:
                     z = np.zeros(Gn.shape, v.dtype)
-                    np.put(z, hit, v)
+                    z.reshape(-1)[hit] = v
                     new.append(z)
                 else:
                     new.append(new[twin])
@@ -732,8 +732,8 @@ class OwnContest:
         upto = below + el  # `m - gi - ei` in order; those tied with k follow, up to `m - gi`
         for i in self._distinct(new):  # d_down = effect of being passed once, d_tie = effect of gaining a sharer
             q, t = np.zeros((R, m + 1), base[i].dtype), np.zeros((R, m + 1), base[i].dtype)
-            np.put(q, flat, down[i] - tie[i])  # below k: passed, not tied (the tied ones are added back through t)
-            np.put(t, flat, tie[i] - base[i])
+            q.reshape(-1)[flat] = down[i] - tie[i]  # below k: passed, not tied (the tied ones are added back through t)
+            t.reshape(-1)[flat] = tie[i] - base[i]
             np.cumsum(q, axis=1, out=q)
             np.cumsum(t, axis=1, out=t)
             corr = np.take(q.reshape(-1), below, mode="clip") + np.take(t.reshape(-1), upto, mode="clip")
