@@ -14,9 +14,10 @@ exactly the draw models.field.sample hands to the MILP. Here a batch of draws is
    draw that fails any of them is solved by the MILP instead (counted in the detail).
 
 C19 adds two stack rules, team4 (4 skaters of one team) and double_stack (4 of one team and 3 of another).
-Four forced skaters can already be uncompletable (4 centers, or 3 C + 4 W with no room for two D), so
-`_forced_legal` takes each team's skaters in value order and skips any that would leave the forced set
-unable to reach 8 skaters with 2 C, 3 W and 2 D. For a double stack the other 1 skater must come from a third
+Four forced skaters can already be uncompletable (4 centers, or 3 C + 4 W with no room for two D), and the best
+four by value are not the best four for the lineup, so `_force_one` forces one skater at a time, the one that
+displaces least from the best completion so far, skipping any that would leave the forced set unable to reach 8
+skaters with 2 C, 3 W and 2 D. For a double stack the other 1 skater must come from a third
 team (DraftKings needs 3 skater teams), so both stack teams are blocked from the non-forced fill. team3 keeps
 the original `_forced` and per-team batches, so its draws are unchanged.
 
@@ -43,6 +44,8 @@ from nhl_dfs.intake.salary import SalaryPool
 
 CAP = 50_000
 NEG = -1e18
+BIG = 1e9
+STACK_PRICE_ITERS = 18  # price halvings for the C19 rules; the original rules keep 26 (2^-18 of the bracket is far finer than the values)
 C, W, D, G = 0, 1, 2, 3
 MIN = np.array([2, 3, 2])  # C, W, D minimums; 8 skaters; the surplus skater is UTIL
 
@@ -132,23 +135,82 @@ def _forced(A: ClassicArrays, U: np.ndarray, stack_team: np.ndarray, k: int = 3)
     return forced
 
 
-def _force_group(A: ClassicArrays, U: np.ndarray, sel: np.ndarray, counts: np.ndarray, team: np.ndarray, k: int) -> None:
-    """Add up to k skaters per row from that row's team (-1: none) to `sel`, best U first, skipping a skater whose
-    addition would leave the forced set unable to reach 8 skaters with 2 C, 3 W and 2 D. `counts` (B, 3) holds
-    the forced C, W and D per row and is updated, so a second group sees the first."""
+class _Orders:
+    """Value orders of the C, W, D and all-skater columns of U. They depend on U only, and the forcing takes up to
+    7 steps on one U, so they are sorted once per price and reused (the sorts were half the sampler's time)."""
+
+    def __init__(self, A: ClassicArrays, U: np.ndarray):
+        self.by = {}
+        for key, cols in ((C, A.idx[C]), (W, A.idx[W]), (D, A.idx[D]), (G, A.skaters)):  # G keys the all-skater order
+            order = np.argsort(-U[:, cols], axis=1, kind="stable")
+            inv = np.empty_like(order)
+            np.put_along_axis(inv, order, np.arange(order.shape[1])[None, :].repeat(order.shape[0], axis=0), axis=1)
+            self.by[key] = (cols, order, inv)
+
+    def rows(self, rows: np.ndarray) -> "_Orders":
+        out = _Orders.__new__(_Orders)
+        out.by = {k: (cols, order[rows], inv[rows]) for k, (cols, order, inv) in self.by.items()}
+        return out
+
+
+def _complete(orders: _Orders, forced: np.ndarray) -> np.ndarray:
+    """`_greedy(A, U, forced)` on the skater columns (no goalie, no block), from precomputed orders: the same picks."""
+    sel = forced.copy()
+    for p in (C, W, D):
+        cols, order, inv = orders.by[p]
+        f = forced[:, cols]
+        need = np.maximum(0, MIN[p] - f.sum(axis=1))
+        free = ~np.take_along_axis(f, order, axis=1)
+        sel[:, cols] |= np.take_along_axis(free & (np.cumsum(free, axis=1) <= need[:, None]), inv, axis=1)
+    cols, order, inv = orders.by[G]
+    s = sel[:, cols]
+    free = ~np.take_along_axis(s, order, axis=1)
+    sel[:, cols] |= np.take_along_axis(free & (np.cumsum(free, axis=1) <= (8 - s.sum(axis=1))[:, None]), inv, axis=1)
+    return sel
+
+
+def _force_one(A: ClassicArrays, U: np.ndarray, sel: np.ndarray, counts: np.ndarray, team: np.ndarray,
+               orders: _Orders) -> None:
+    """Force one more skater per row from that row's team (-1: none) into `sel`; `counts` (B, 3) holds the forced
+    C, W and D per row and is updated.
+
+    Which one: the skater whose forcing costs least. S1 is the best completion of what is already forced. A team
+    skater already in S1 costs nothing; any other pushes out the weakest removable skater at its position, or the
+    UTIL skater, and costs that skater's U minus its own (never below 0). Ranking by raw U instead left the
+    vectorized lineups 1.1 to 2.2 percent below the MILP's (flag 45): it ignores what each candidate displaces.
+    A skater is skipped when forcing it would leave the forced set unable to reach 8 skaters with 2 C, 3 W, 2 D."""
     rows = np.nonzero(team >= 0)[0]
     if rows.size == 0:
         return
     b = rows.size
+    Ur, selr = U[rows], sel[rows]
     cols = A.tm[team[rows]]  # (b, M), dummy column R pads short teams
-    Uext = np.concatenate([U[rows], np.full((b, 1), NEG)], axis=1)
-    order = np.argsort(-np.take_along_axis(Uext, cols, axis=1), axis=1, kind="stable")
+    pad = lambda x, v: np.concatenate([x, np.full((b, 1), v, dtype=x.dtype)], axis=1)  # noqa: E731
+    S1 = _complete(orders.rows(rows) if b < U.shape[0] else orders, selr)
+    removable = S1 & ~selr & (A.grp != G)[None, :]
+    weakest = np.empty((b, 3))
+    have = np.empty((b, 3), int)
+    for p in (C, W, D):
+        ip = A.idx[p]
+        weakest[:, p] = np.where(removable[:, ip], Ur[:, ip], BIG).min(axis=1)
+        have[:, p] = S1[:, ip].sum(axis=1)
+    util = np.where(have > MIN[None, :], weakest, BIG).min(axis=1)  # the UTIL skater: removable at any position
+    displaced = np.minimum(weakest, util[:, None])
+    g = A.grp_ext[cols]
+    d = np.take_along_axis(pad(displaced, BIG), np.where(g < 0, 3, g), axis=1)
+    u = np.take_along_axis(pad(Ur, NEG), cols, axis=1)
+    in_s1 = np.take_along_axis(pad(S1, False), cols, axis=1)
+    done = np.take_along_axis(pad(selr, False), cols, axis=1)
+    loss = np.where(in_s1, 0.0, np.maximum(0.0, d - u))
+    score = np.where((cols >= A.R) | done, 2 * NEG, -loss + 1e-9 * u)
+    order = np.argsort(-score, axis=1, kind="stable")
     cols = np.take_along_axis(cols, order, axis=1)
+    score = np.take_along_axis(score, order, axis=1)
     grp = A.grp_ext[cols]
     c = counts[rows].copy()
-    taken = np.zeros(b, int)
+    taken = np.zeros(b, bool)
     for r in range(cols.shape[1]):
-        valid = (cols[:, r] < A.R) & (taken < k)
+        valid = (score[:, r] > NEG) & ~taken
         if not valid.any():
             break
         idx = np.nonzero(valid)[0]
@@ -157,22 +219,30 @@ def _force_group(A: ClassicArrays, U: np.ndarray, sel: np.ndarray, counts: np.nd
         fits = (np.maximum(c2[:, 0], MIN[C]) + np.maximum(c2[:, 1], MIN[W]) + np.maximum(c2[:, 2], MIN[D])) <= 8
         take = valid & fits
         c = np.where(take[:, None], c2, c)
-        taken += take
+        taken |= take
         sel[rows[take], cols[take, r]] = True
     counts[rows] = c
 
 
 def _force(A: ClassicArrays, U: np.ndarray, stack_team: np.ndarray, spec: StackSpec | None):
     """(forced, block): the forced skaters and the columns the non-forced fill must avoid (None: no block).
-    No spec is the original rule, the stack team's best 3 skaters."""
+    No spec is the original rule, the stack team's best 3 skaters. With a spec the skaters are forced one at a time,
+    alternating the two teams of a double stack (A, B, A, B, A, B, A) so each choice sees the other team's."""
     if spec is None:
         return _forced(A, U, stack_team), None
     forced = np.zeros(U.shape, bool)
     counts = np.zeros((U.shape[0], 3), int)
-    _force_group(A, U, forced, counts, stack_team, spec.k)
+    orders = _Orders(A, U)
+    left_a, left_b = spec.k, (spec.k2 if spec.team2 is not None else 0)
+    while left_a or left_b:
+        if left_a:
+            _force_one(A, U, forced, counts, stack_team, orders)
+            left_a -= 1
+        if left_b:
+            _force_one(A, U, forced, counts, spec.team2, orders)
+            left_b -= 1
     block = None
     if spec.team2 is not None:
-        _force_group(A, U, forced, counts, spec.team2, spec.k2)
         skater = (A.grp != G)[None, :]
         block = ((A.team[None, :] == stack_team[:, None]) | (A.team[None, :] == spec.team2[:, None])) & skater
     return forced, block
@@ -298,7 +368,7 @@ def _legal(A: ClassicArrays, lu: tuple[str, ...], stack: int, k: int = 3, stack2
 def solve_batch(A: ClassicArrays, V: np.ndarray, stack_team: np.ndarray, spec: StackSpec | None = None) -> tuple[list, int]:
     """Lineups (canonical role ids, or None where the relaxation failed a check) for (B, R) values.
     spec: the C19 stack requirements (team4, double_stack); None is the original 3-of-one-team rule."""
-    sel = _price_search(A, V, stack_team, spec=spec)
+    sel = _price_search(A, V, stack_team, iters=26 if spec is None else STACK_PRICE_ITERS, spec=spec)
     sel = _improve(A, V, sel, stack_team, spec=spec)
     out, bad = [], 0
     for b in range(V.shape[0]):
