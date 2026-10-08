@@ -395,11 +395,11 @@ def _grow_fields(work, proj, contexts, fb, own_n, prov, st, risk_cfg, seed, over
         if g.get("sampler") == "fast" and work.mode is Mode.CLASSIC:
             from nhl_dfs.models import field_fast
 
-            extra = field_fast.sample_fast(work, util, field_mod.behaviors_for(fam, own_cfg), need - have, seed + 9001, fam,
+            extra = field_fast.sample_fast(work, util, field_mod.behaviors_for_pool(fam, work, own_cfg), need - have, seed + 9001, fam,
                                            proj=proj, feats=feats, cfg=own_cfg)
             sampler = "fast" if extra is not None else "milp (pool not in the compact Classic form)"
         if extra is None:
-            extra = field_mod.sample_parallel(work, work.mode, util, field_mod.behaviors_for(fam, own_cfg), need - have,
+            extra = field_mod.sample_parallel(work, work.mode, util, field_mod.behaviors_for_pool(fam, work, own_cfg), need - have,
                                               seed + 9001, fam, proj=proj, feats=feats, cfg=own_cfg,
                                               time_limit_s=float(g["time_limit_s"]), workers=int(g["workers"]),
                                               sub_size=int(g["sub_size"]), mip_rel_gap=g.get("mip_rel_gap"))

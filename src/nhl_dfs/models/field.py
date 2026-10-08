@@ -24,14 +24,13 @@ from nhl_dfs.build.candidates import generate
 from nhl_dfs.build.milp import GroupConstraint
 from nhl_dfs.contracts.geometry import Mode, lineup_key
 from nhl_dfs.intake.salary import SalaryPool
-from nhl_dfs.models.ownership import feature_table, load_ownership_config, log_floor
+from nhl_dfs.models.ownership import (CLASSIC_ONLY_RULES, STACK_RULES, bucket_range, feature_table,
+                                      load_ownership_config, log_floor)
 from nhl_dfs.models.priors import CAPTAIN_MULTIPLIER
 from nhl_dfs.models.projection import Projection
 
 SALARY_CAP = 50_000
 SALARY_LEFT_EDGES = (0, 100, 300, 500, 1000, 2000)  # histogram bucket upper edges; last is open
-STACK_RULES = ("none", "team3", "team4", "double_stack")
-CLASSIC_ONLY_RULES = ("team4", "double_stack")
 
 
 @dataclass(frozen=True)
@@ -93,16 +92,42 @@ class Marginals:
         return {"total": sum(self.own.values()), "cpt": cpt, "flex": sum(self.own.values()) - cpt}
 
 
-def behaviors_for(family: str, cfg: dict | None = None) -> list[Behavior]:
+def classic_mixture(family: str, games: int | None, cfg: dict) -> dict | None:
+    """The C19 Classic mixture of a family for a slate of `games` games, or None when the switch is off or the
+    family has none (the caller then uses field.mixtures). `default` catches every pool, including one whose
+    game count is unknown (None or 0); a bucket such as "1-3" or "7+" overrides it for its game counts."""
+    cm = (cfg["field"].get("classic_mixtures") or {})
+    if not cm.get("enabled") or family not in cm:
+        return None
+    buckets = cm[family]
+    if games:
+        for key, mix in buckets.items():
+            if key != "default":
+                lo, hi = bucket_range(key)
+                if games >= lo and (hi is None or games <= hi):
+                    return mix
+    return buckets["default"]
+
+
+def behaviors_for(family: str, cfg: dict | None = None, *, mode: Mode | None = None, games: int | None = None) -> list[Behavior]:
+    """The behaviors of a contest family with their mixture weights. With no `mode` (or the C19 switch off, or
+    Showdown) this is field.mixtures exactly as before; Classic with field.classic_mixtures enabled and a mixture
+    for the family uses that one, by game count."""
     cfg = cfg if cfg is not None else load_ownership_config()
     fld = cfg["field"]
-    mix = fld["mixtures"].get(family) or fld["mixtures"]["large_gpp"]
+    mix = classic_mixture(family, games, cfg) if mode is Mode.CLASSIC else None
+    mix = mix or fld["mixtures"].get(family) or fld["mixtures"]["large_gpp"]
     out = []
     for name, w in mix.items():
         b = fld["behaviors"][name]
         out.append(Behavior(name, float(w), float(b["noise_sd"]), b["stack_rule"], b["captain_rule"],
                             float(b["salary_left_pref"]), float(b.get("popularity_weight", 1.0))))
     return out
+
+
+def behaviors_for_pool(family: str, pool: SalaryPool, cfg: dict | None = None) -> list[Behavior]:
+    """behaviors_for for the slate in hand: its mode and its game count. What the run's field builders call."""
+    return behaviors_for(family, cfg, mode=pool.mode, games=len(pool.games) or None)
 
 
 def split_counts(weights: Sequence[float], n: int) -> list[int]:
@@ -360,6 +385,35 @@ def marginals(fld: Field, pool: SalaryPool, field_size: int) -> Marginals:
         repeats=n - len(key_n),
         degraded=fld.degraded,
     )
+
+
+def skater_shape(pool: SalaryPool, lineup: Sequence[str]) -> tuple[int, ...]:
+    """Skaters per team of one Classic lineup, largest first (goalie excluded): (4, 3, 1) is a 4-3-1."""
+    c: Counter[str] = Counter()
+    for rid in lineup:
+        row = pool.by_role_id[rid]
+        if not row.is_goalie:
+            c[row.team] += 1
+    return tuple(sorted(c.values(), reverse=True))
+
+
+def stack_shape_mix(lineups: Sequence[Sequence[str]], pool: SalaryPool) -> dict:
+    """Shares (percent of lineups) of the stack shapes in a Classic field, the numbers of
+    reviews/2026-10-03_standings_synthesis.md section 3: stack3, stack4, stack5 (a team with at least that many
+    skaters), two3 (two teams with at least 3), and every shape such as "4-3-1" by share, largest first."""
+    if pool.mode is not Mode.CLASSIC:
+        raise ValueError("stack shapes are defined for Classic fields only")
+    n = len(lineups)
+    shapes: Counter[tuple[int, ...]] = Counter(skater_shape(pool, lu) for lu in lineups)
+    pct = (lambda k: 100.0 * k / n) if n else (lambda k: 0.0)
+    return {
+        "n": n,
+        "stack3": pct(sum(c for s, c in shapes.items() if s and s[0] >= 3)),
+        "stack4": pct(sum(c for s, c in shapes.items() if s and s[0] >= 4)),
+        "stack5": pct(sum(c for s, c in shapes.items() if s and s[0] >= 5)),
+        "two3": pct(sum(c for s, c in shapes.items() if len(s) > 1 and s[1] >= 3)),
+        "shapes": {"-".join(map(str, s)): pct(c) for s, c in sorted(shapes.items(), key=lambda kv: (-kv[1], kv[0]))},
+    }
 
 
 def salary_left_term(left: int, cfg: dict) -> float:

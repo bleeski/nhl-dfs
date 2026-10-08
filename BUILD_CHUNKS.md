@@ -189,6 +189,9 @@ DONE: C0a, C0b, C1, C2a, C2b, C2c, C3, C4, C5, C6, C7, C8, C9, C10, C11, C14, C1
 | Keep the history store current between runs (B95): a local scheduled `history --refresh` outside the lock windows | Ben registers a local scheduled task for it (a Windows scheduled task is his to create), or C39's first weeks show runs starting on a store a day or more behind | B95 | none |
 | Cloud history backfill observed on the next cloud run (B71: the notes line names the bootstrap backfill, MODEL_STATUS is not PRIOR once it is done) | the next cloud-built slate: its RUN_NOTES History store line says the session's background backfill is running, done or failed, and after it is done the run prices players with history on HISTORY or MIXED | B71 | none |
 | HttpCache body writes are not atomic (B96) | the next change to data/http.py, or a cached body that fails to parse after an interrupted run | B96 | none |
+| B43 acceptance: the forecast's per-team 3+ stack share against the next 5 settled Classic slates, ownership error not rising | 5 settled Classic slates after the C19 mixtures are switched on (field.classic_mixtures.enabled), read with the C11 and C29 settle grades | B43 | none |
+| Pair composition of double stacks (B99) | the next run of scripts/standings_synthesis.py: add the share of two-3+ lineups whose two teams play each other | B99 | none |
+| A team5 rule for 5+ stacks in the field (B100, flag 47) | Ben answers flag 47, or before C21 starts: C21 depends on C19 and would study stack size against a field with almost no 5-stacks | B100 | none |
 <!-- QUEUE:END -->
 ## Chunk cards
 

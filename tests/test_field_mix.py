@@ -317,3 +317,201 @@ def test_mean_value_gap_to_the_milp_is_under_one_percent(rule, which):
     forcing was then changed (flag 45 outcome) after the first version measured 1.08 to 2.19 percent. Other seeds are
     in the session log, not here: on fresh seeds double_stack reached 1.05 and 1.25 percent in 2 of 12 cases."""
     assert agreement(rule, which)[1] < 0.01
+
+
+# -- the Classic mixtures: switch, families, game-count buckets (flags 40, 41, 42) -----------------------------
+
+import copy  # noqa: E402
+import importlib.util  # noqa: E402
+import os  # noqa: E402
+from pathlib import Path  # noqa: E402
+from types import SimpleNamespace  # noqa: E402
+
+NEW = {"stacker4", "double_stack"}
+
+
+def cfg_copy(on: bool):
+    cfg = copy.deepcopy(ownership.load_ownership_config())
+    cfg["field"]["classic_mixtures"]["enabled"] = on
+    return cfg
+
+
+def weights(behaviors) -> dict:
+    return {b.name: b.weight for b in behaviors}
+
+
+def test_switch_off_is_the_old_mixture_for_every_family_and_mode():
+    cfg = cfg_copy(False)
+    pool = stand_in_pool(6)
+    for fam in cfg["field"]["mixtures"]:
+        assert weights(fm.behaviors_for_pool(fam, pool, cfg)) == weights(fm.behaviors_for(fam, cfg))
+
+
+def test_switch_on_changes_only_classic_large_gpp_and_small_field():
+    cfg = cfg_copy(True)
+    pool = stand_in_pool(6)
+    sd = varied_pool(Mode.SHOWDOWN, seed=0)
+    for fam in cfg["field"]["mixtures"]:
+        old = weights(fm.behaviors_for(fam, cfg))
+        got = weights(fm.behaviors_for_pool(fam, pool, cfg))
+        if fam in ("large_gpp", "small_field"):
+            assert NEW <= set(got) and got["double_stack"] > 0 and got["stacker"] > 0  # team3 stays in the mix
+        else:
+            assert got == old
+        assert weights(fm.behaviors_for_pool(fam, sd, cfg)) == old  # Showdown never moves
+    assert weights(fm.behaviors_for("zzz", cfg, mode=Mode.CLASSIC)) == weights(fm.behaviors_for("large_gpp", cfg))
+
+
+def test_a_pool_with_no_game_count_still_gets_the_new_mix_when_on():
+    pool = stand_in_pool(6)
+    assert len(pool.games) == 0  # the test pools carry no games: `default` must catch them
+    assert NEW <= set(weights(fm.behaviors_for_pool("large_gpp", pool, cfg_copy(True))))
+
+
+def test_every_shipped_bucket_sums_to_one_and_names_known_behaviors():
+    cfg = ownership.load_ownership_config()
+    for fam, buckets in cfg["field"]["classic_mixtures"].items():
+        if fam == "enabled":
+            continue
+        assert "default" in buckets
+        for mix in buckets.values():
+            assert sum(mix.values()) == pytest.approx(1.0) and set(mix) <= set(cfg["field"]["behaviors"])
+
+
+def test_game_count_buckets_pick_by_game_count_and_default_catches_the_rest():
+    cfg = cfg_copy(True)
+    a = {"optimizer": 1.0}
+    b = {"stacker": 1.0}
+    c = {"casual": 1.0}
+    cfg["field"]["classic_mixtures"]["large_gpp"] = {"1-3": a, "4+": b, "default": c}
+    ownership.validate_ownership_config(cfg)
+    got = lambda g: weights(fm.behaviors_for("large_gpp", cfg, mode=Mode.CLASSIC, games=g))  # noqa: E731
+    assert got(3) == {"optimizer": 1.0} and got(1) == {"optimizer": 1.0}
+    assert got(4) == {"stacker": 1.0} and got(9) == {"stacker": 1.0}
+    assert got(None) == {"casual": 1.0} and got(0) == {"casual": 1.0}
+
+
+@pytest.mark.parametrize("edit,why", [
+    (lambda m: m["large_gpp"].update({"1-3": {"optimizer": 1.0}, "3-5": {"optimizer": 1.0}}), "overlap"),
+    (lambda m: m["large_gpp"].pop("default"), "default bucket"),
+    (lambda m: m["large_gpp"].update({"default": {"optimizer": 0.5}}), "sum to 1"),
+    (lambda m: m["large_gpp"].update({"default": {"nobody": 1.0}}), "unknown behaviors"),
+    (lambda m: m["large_gpp"].update({"two": {"optimizer": 1.0}}), "not N"),
+    (lambda m: m.update({"enabled": "yes"}), "true or false"),
+])
+def test_the_classic_mixture_table_is_validated(edit, why):
+    cfg = cfg_copy(True)
+    edit(cfg["field"]["classic_mixtures"])
+    with pytest.raises(ValueError, match=why):
+        ownership.validate_ownership_config(cfg)
+
+
+def test_the_new_stack_rules_validate_and_a_typo_does_not():
+    cfg = cfg_copy(True)
+    ownership.validate_ownership_config(cfg)
+    cfg["field"]["behaviors"]["stacker4"]["stack_rule"] = "team5"
+    with pytest.raises(ValueError, match="stack_rule must be one of"):
+        ownership.validate_ownership_config(cfg)
+
+
+def test_field_calibration_stays_prior_with_the_switch_on():
+    from nhl_dfs.build import provisional as prov
+
+    cfg = cfg_copy(True)
+    pool = varied_pool(Mode.CLASSIC, seed=3)
+    proj = PriorProjection(pool)
+    ctx = {"c1": SimpleNamespace(family="large_gpp", field_size=1000)}
+    fb = prov.build_fields(pool, proj, ctx, seed=5, own_cfg=cfg)
+    assert "FIELD_CALIBRATION=PRIOR" in prov.field_summary(pool, fb, ctx)["label"]
+    assert {"stacker4", "double_stack"} <= set(fb.fields["large_gpp"].behavior_id)  # the new mix really was drawn
+
+
+def test_a_showdown_field_is_identical_with_the_switch_on_or_off():
+    pool = varied_pool(Mode.SHOWDOWN, seed=0)
+    out = []
+    for on in (False, True):
+        cfg = cfg_copy(on)
+        proj = PriorProjection(pool)
+        feats = ownership.feature_table(pool, proj, None, cfg=cfg)
+        util = ownership.perceived(pool, proj, feats, ownership.family_weights(cfg, "large_gpp"))
+        f = fm.sample(pool, Mode.SHOWDOWN, util, fm.behaviors_for_pool("large_gpp", pool, cfg), 24, 5, "large_gpp",
+                      proj=proj, feats=feats, cfg=cfg)
+        out.append((f.lineups, f.behavior_id))
+    assert out[0] == out[1]
+
+
+# -- the shape mix and the shipped weights on the stand-in pool ------------------------------------------------------
+
+def test_stack_shape_mix_matches_an_independent_recount(big):
+    pool = big[0]
+    mix = [beh("stacker", "team3", 0.3), beh("stacker4", "team4", 0.3), beh("double_stack", "double_stack", 0.2),
+           beh("optimizer", "none", 0.2, 0.75)]
+    f = fast(big, mix, 600)
+    shapes = [skater_shape(pool, lu) for lu in f.lineups]
+    got = fm.stack_shape_mix(f.lineups, pool)
+    n = len(shapes)
+    assert got["n"] == n
+    assert got["stack3"] == pytest.approx(100 * sum(s[0] >= 3 for s in shapes) / n)
+    assert got["stack4"] == pytest.approx(100 * sum(s[0] >= 4 for s in shapes) / n)
+    assert got["stack5"] == pytest.approx(100 * sum(s[0] >= 5 for s in shapes) / n)
+    assert got["two3"] == pytest.approx(100 * sum(len(s) > 1 and s[1] >= 3 for s in shapes) / n)
+    assert got["shapes"]["4-3-1"] == pytest.approx(100 * shapes.count((4, 3, 1)) / n)
+    assert sum(got["shapes"].values()) == pytest.approx(100.0)
+    with pytest.raises(ValueError, match="Classic"):
+        fm.stack_shape_mix([], varied_pool(Mode.SHOWDOWN, seed=0))
+
+
+def test_the_shipped_mix_reaches_the_table_on_the_stand_in_pool(big):
+    """Information-grade: the weights were solved on this very kind of pool (flag 40), so this shows the sampler
+    produces the intended mix, not that it suits a real slate."""
+    pool, proj, _, feats, util = big
+    cfg = cfg_copy(True)
+    beh_on = fm.behaviors_for_pool("large_gpp", pool, cfg)
+    f = ff.sample_fast(pool, util, beh_on, 2000, 11, "large_gpp", proj=proj, feats=feats, cfg=cfg)
+    shapes = [skater_shape(pool, lu) for lu in f.lineups]
+    n = len(shapes)
+    table = cfg["field"]["classic_stack_table"]
+    assert f.n == 2000
+    assert abs(100 * sum(s[0] >= 3 for s in shapes) / n - table["stack3"]) <= 10
+    assert abs(100 * sum(s[0] >= 4 for s in shapes) / n - table["stack4"]) <= 10
+    assert f.behavior_id.count("stacker") > 0  # team3 draws still exist
+
+
+def script(name: str):
+    path = Path(__file__).resolve().parents[1] / "scripts" / name
+    spec = importlib.util.spec_from_file_location(name[:-3], path)
+    mod = importlib.util.module_from_spec(spec)
+    import sys
+
+    sys.modules[name[:-3]] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_the_shipped_weights_are_the_scripts_solve_in_whole_percent():
+    mod = script("c19_weights.py")
+    block = mod.yaml_block(21, 31, 31, 17)
+    shipped = ownership.load_ownership_config()["field"]["classic_mixtures"]["large_gpp"]["default"]
+    import yaml
+
+    assert yaml.safe_load(block) == pytest.approx(shipped)
+    assert sum(shipped.values()) == pytest.approx(1.0)
+
+
+def test_the_gate_machinery_runs_on_the_stand_in_pool(capsys):
+    """Not the gate: it shows `check` runs end to end and prints the numbers on a pool that exists in CI."""
+    mod = script("c19_weights.py")
+    assert mod.check(stand_in_pool(6), ownership.load_ownership_config())
+    out = capsys.readouterr().out
+    assert "draws 5000 legal 5000" in out and "GATE PASS" in out
+
+
+def test_the_2026_09_30_gate_on_the_real_pool():
+    """Flag 46: the card's gate. NHL_DFS_C19_POOL names a scratch copy of that slate's DKSalaries.csv (it lives only
+    on Ben's machine, in runs/20260930-210607-classic/inputs/). Absent: skipped loudly. A skip is not a pass."""
+    raw = os.environ.get("NHL_DFS_C19_POOL")
+    if not raw or not Path(raw).exists():
+        pytest.skip("C19 GATE NOT RUN: set NHL_DFS_C19_POOL to a copy of the 2026-09-30 DKSalaries.csv (flag 46); "
+                    "the chunk is not DONE until this ran and passed")
+    mod = script("c19_weights.py")
+    assert mod.check(mod.real_pool(Path(raw)), ownership.load_ownership_config())

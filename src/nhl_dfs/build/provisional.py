@@ -188,7 +188,7 @@ def build_fields(pool: SalaryPool, proj: Projection, contexts: Mapping[str, Cont
     fields = {}
     for fam in sorted({c.family for c in contexts.values()}):
         util = ownership.perceived(pool, proj, feats, ownership.family_weights(own_cfg, fam))
-        fields[fam] = field_mod.sample(pool, pool.mode, util, field_mod.behaviors_for(fam, own_cfg), n, seed, fam,
+        fields[fam] = field_mod.sample(pool, pool.mode, util, field_mod.behaviors_for_pool(fam, pool, own_cfg), n, seed, fam,
                                        proj=proj, feats=feats, cfg=own_cfg)
     margs = {cid: field_mod.marginals(fields[c.family], pool, c.field_size) for cid, c in contexts.items()}
     return FieldBuild(fields, margs, time.perf_counter() - t0, feats, inputs)

@@ -29,6 +29,19 @@ OWNERSHIP_YAML = REPO_ROOT / "config" / "ownership.yaml"
 FEATURES = ("appg", "value_z", "salary_rank", "implied_total", "pp1", "line1", "goalie_start_win",
             "questionable", "unknown", "news_recent")
 DEFAULT_FAMILY = "large_gpp"
+STACK_RULES = ("none", "team3", "team4", "double_stack")  # C19 added team4 and double_stack
+CLASSIC_ONLY_RULES = ("team4", "double_stack")
+
+
+def bucket_range(key: str) -> tuple[int, int | None]:
+    """Game-count bucket of a field.classic_mixtures key: "N" (exactly N games), "LO-HI" or "N+" (open end)."""
+    k = str(key).strip()
+    if k.endswith("+"):
+        return int(k[:-1]), None
+    if "-" in k:
+        lo, hi = k.split("-", 1)
+        return int(lo), int(hi)
+    return int(k), int(k)
 
 
 def load_ownership_config(path: Path = OWNERSHIP_YAML) -> dict:
@@ -36,6 +49,39 @@ def load_ownership_config(path: Path = OWNERSHIP_YAML) -> dict:
         cfg = yaml.safe_load(f)
     validate_ownership_config(cfg)
     return cfg
+
+
+def _validate_classic_mixtures(fld: dict, behaviors: dict) -> None:
+    """field.classic_mixtures (C19): enabled, then family -> game-count bucket -> weights. Optional as a whole."""
+    cm = fld.get("classic_mixtures")
+    if cm is None:
+        return
+    if not isinstance(cm.get("enabled"), bool):
+        raise ValueError("field.classic_mixtures.enabled must be true or false")
+    for fam, buckets in cm.items():
+        if fam == "enabled":
+            continue
+        if "default" not in (buckets or {}):
+            raise ValueError(f"classic_mixtures {fam!r} needs a default bucket")
+        spans = []
+        for key, mix in buckets.items():
+            if key != "default":
+                try:
+                    lo, hi = bucket_range(key)
+                except ValueError:
+                    raise ValueError(f"classic_mixtures {fam!r}: bucket {key!r} is not N, LO-HI or N+") from None
+                if hi is not None and hi < lo:
+                    raise ValueError(f"classic_mixtures {fam!r}: bucket {key!r} is empty")
+                spans.append((lo, float("inf") if hi is None else hi, key))
+            unknown = [k for k in mix if k not in behaviors]
+            if unknown:
+                raise ValueError(f"classic_mixtures {fam!r} bucket {key!r} names unknown behaviors {unknown}")
+            if any(float(v) < 0 for v in mix.values()) or abs(sum(float(v) for v in mix.values()) - 1.0) > 1e-6:
+                raise ValueError(f"classic_mixtures {fam!r} bucket {key!r} weights must be non-negative and sum to 1")
+        spans.sort()
+        for (_, hi1, k1), (lo2, _, k2) in zip(spans, spans[1:]):
+            if lo2 <= hi1:
+                raise ValueError(f"classic_mixtures {fam!r}: buckets {k1!r} and {k2!r} overlap")
 
 
 def validate_ownership_config(cfg: dict) -> None:
@@ -60,8 +106,8 @@ def validate_ownership_config(cfg: dict) -> None:
     for name, b in behaviors.items():
         if float(b["noise_sd"]) < 0:
             raise ValueError(f"behavior {name}: noise_sd must be non-negative")
-        if b["stack_rule"] not in ("none", "team3"):
-            raise ValueError(f"behavior {name}: stack_rule must be none or team3")
+        if b["stack_rule"] not in STACK_RULES:
+            raise ValueError(f"behavior {name}: stack_rule must be one of {', '.join(STACK_RULES)}")
         if b["captain_rule"] not in (fld.get("captain_rules") or {}):
             raise ValueError(f"behavior {name}: unknown captain_rule {b['captain_rule']!r}")
     for fam, mix in (fld.get("mixtures") or {}).items():
@@ -72,6 +118,7 @@ def validate_ownership_config(cfg: dict) -> None:
             raise ValueError(f"mixture {fam!r} weights must be non-negative and sum to 1")
     if DEFAULT_FAMILY not in (fld.get("mixtures") or {}):
         raise ValueError(f"ownership field needs a {DEFAULT_FAMILY!r} mixture")
+    _validate_classic_mixtures(fld, behaviors)
     buckets = (cfg.get("dup_proxy") or {}).get("salary_left_buckets") or []
     if not buckets or buckets[-1].get("max_left") is not None:
         raise ValueError("dup_proxy.salary_left_buckets must end with max_left: null")

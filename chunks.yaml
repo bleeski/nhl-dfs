@@ -637,6 +637,15 @@ deferred:
   - item: "HttpCache body writes are not atomic (B96)"
     trigger: "the next change to data/http.py, or a cached body that fails to parse after an interrupted run"
     backlog: [B96]
+  - item: "B43 acceptance: the forecast's per-team 3+ stack share against the next 5 settled Classic slates, ownership error not rising"
+    trigger: "5 settled Classic slates after the C19 mixtures are switched on (field.classic_mixtures.enabled), read with the C11 and C29 settle grades"
+    backlog: [B43]
+  - item: "Pair composition of double stacks (B99)"
+    trigger: "the next run of scripts/standings_synthesis.py: add the share of two-3+ lineups whose two teams play each other"
+    backlog: [B99]
+  - item: "A team5 rule for 5+ stacks in the field (B100, flag 47)"
+    trigger: "Ben answers flag 47, or before C21 starts: C21 depends on C19 and would study stack size against a field with almost no 5-stacks"
+    backlog: [B100]
 flag_recommendations:
   2: "Record Ben's 2026-10-02 answer in the flags table: 40% goalie and game fee share with the LINEUPS fallback (done in this plan); C27 fixes the feasibility test behind it."
   3: "Replace the placeholder mix with the observed one (5 to 10 entries per slate, 1 to 2 per contest, fees $0.10 to $1, 20-max and 150-max GPPs plus Showdown) so family priors and C21's sleeve sizes fit what Ben plays."
