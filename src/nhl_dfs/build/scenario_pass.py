@@ -385,7 +385,7 @@ def _grow_fields(work, proj, contexts, fb, own_n, prov, st, risk_cfg, seed, over
         need = min(target, max(c.field_size - own_n[cid] for cid, c in contexts.items() if c.family == fam))
         have = fields[fam].n
         if need <= have:
-            report[fam] = {"draws": have, "grown_by": 0}
+            report[fam] = {"draws": have, "grown_by": 0, "shape_mix": field_mod.shape_report(fields[fam], work, own_cfg)}
             continue
         if feats is None:  # the table the first draws came from (C17: it carries the odds, lines and news), else a plain one
             feats = fb.feats if fb.feats is not None else ownership.feature_table(work, proj, None, cfg=own_cfg, statuses=statuses)
@@ -411,7 +411,7 @@ def _grow_fields(work, proj, contexts, fb, own_n, prov, st, risk_cfg, seed, over
         report[fam] = {"draws": joined.n, "requested": joined.requested, "grown_by": extra.n,
                        "distinct": len(set(joined.keys)), "seconds": round(time.perf_counter() - t, 2),
                        "sampler": sampler, "mip_rel_gap": g.get("mip_rel_gap") if sampler.startswith("milp") else None,
-                       "detail": extra.detail}
+                       "detail": extra.detail, "shape_mix": field_mod.shape_report(joined, work, own_cfg)}
     return FieldBuild(fields, margs, fb.elapsed_s, fb.feats, fb.inputs), report
 
 

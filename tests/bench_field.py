@@ -127,7 +127,7 @@ def real_scenarios(pool, n, seed):
 
 def bench(label: str, pool, proj, scen) -> bool:
     from nhl_dfs.build import objectives as ob
-    from nhl_dfs.build.milp import LineupModel
+    from nhl_dfs.build.milp import GroupConstraint, LineupModel
     from nhl_dfs.contracts.geometry import Mode, check_lineup, lineup_key
     from nhl_dfs.contracts.statuses import PayoutSource
     from nhl_dfs.models import contests as contests_mod
@@ -140,9 +140,10 @@ def bench(label: str, pool, proj, scen) -> bool:
     fam = contests_mod.load_contest_families()
     cap_mb = float(load_sim_config()["memory_cap_mb"])
     own_cfg = ownership.load_ownership_config()
+    own_cfg["field"]["classic_mixtures"]["enabled"] = True  # C19: time the field a run builds once the mixtures are on
     feats = ownership.feature_table(pool, proj, None, cfg=own_cfg)
     util = ownership.perceived(pool, proj, feats, ownership.family_weights(own_cfg, "large_gpp"))
-    behaviors = fm.behaviors_for("large_gpp", own_cfg)
+    behaviors = fm.behaviors_for_pool("large_gpp", pool, own_cfg)
 
     # candidates (not timed): 150 distinct lineups from the central objective with noise
     central = fm.Behavior("central", 1.0, 2.0, "none", "projection", 0.0, 1.0)
@@ -185,6 +186,29 @@ def bench(label: str, pool, proj, scen) -> bool:
         same += lineup_key([pool.by_role_id[r] for r in got[i]], Mode.CLASSIC) == lineup_key(
             [pool.by_role_id[r] for r in res.lineup], Mode.CLASSIC)
         gaps.append((vm - vf) / abs(vm))
+    stack_lines = []  # C19: the same agreement for the stack rules (flag 45), 40 draws each, team 0 (and team 1)
+    for sb in (x for x in behaviors if x.stack_rule in ("team3", "team4", "double_stack")):
+        k = 3 if sb.stack_rule == "team3" else 4
+        dbl = sb.stack_rule == "double_stack"
+        sobj = fm.behavior_objective(pool, Mode.CLASSIC, util, proj, feats, sb, own_cfg["field"]["captain_rules"])
+        SV = ff.perturbed(A, sobj, 40, sb.noise_sd, 5)
+        sspec = None if sb.stack_rule == "team3" else ff.StackSpec(4, np.full(40, 1) if dbl else None, 3)
+        sgot, sbad = ff.solve_batch(A, SV, np.full(40, 0), sspec)
+        sk = {t: frozenset(r.role_id for r in pool.rows if r.team == A.team_names[t] and not r.is_goalie) for t in (0, 1)}
+        groups = (GroupConstraint(role_ids=sk[0], min_count=k),) + ((GroupConstraint(role_ids=sk[1], min_count=3),) if dbl else ())
+        smodel = LineupModel(pool, Mode.CLASSIC, groups=groups)
+        same_s, gaps_s = 0, []
+        for i in range(40):
+            res = smodel.solve({r: float(SV[i, c]) for c, r in enumerate(A.ids)}, time_limit_s=5.0)
+            if sgot[i] is None or res.lineup is None:
+                continue
+            vm = sum(SV[i, A.ids.index(r)] for r in res.lineup)
+            vf = sum(SV[i, A.ids.index(r)] for r in sgot[i])
+            same_s += lineup_key([pool.by_role_id[r] for r in sgot[i]], Mode.CLASSIC) == lineup_key(
+                [pool.by_role_id[r] for r in res.lineup], Mode.CLASSIC)
+            gaps_s.append((vm - vf) / abs(vm))
+        stack_lines.append(f"{sb.name} {same_s}/{len(gaps_s)} identical, gap mean {np.mean(gaps_s):.2%} max {np.max(gaps_s):.2%}, "
+                           f"{sbad} needing the MILP")
     pk = peak_mb()
     ok_time, ok_mem, ok_legal = total <= BUDGET_S, pk <= cap_mb, legal == fld.n and fld.n == N_FIELD
     print(f"[{label}] rows {len(pool.rows)}; field {fld.n} lineups ({len(set(fld.keys))} distinct) in {t_field:.1f} s "
@@ -196,6 +220,8 @@ def bench(label: str, pool, proj, scen) -> bool:
     print(f"[{label}] legal field lineups {legal}/{fld.n}; MILP agreement on identical objectives ({b.name}): "
           f"{same}/{len(gaps)} identical, value gap mean {np.mean(gaps):.4%} max {np.max(gaps):.4%}; "
           f"best candidate E[payout] ${m.exp_payout.max():.2f} (synthetic payout prior)")
+    print(f"[{label}] field mixture in force: {', '.join(f'{x.name} {x.weight:.2f}' for x in behaviors)}")
+    print(f"[{label}] stack-rule agreement with the MILP (40 draws, seed 5): " + "; ".join(stack_lines))
     return ok_time and ok_mem and ok_legal
 
 

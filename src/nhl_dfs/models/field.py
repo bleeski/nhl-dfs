@@ -416,6 +416,25 @@ def stack_shape_mix(lineups: Sequence[Sequence[str]], pool: SalaryPool) -> dict:
     }
 
 
+def shape_report(fld: Field, pool: SalaryPool, cfg: dict) -> dict | None:
+    """What RUN_NOTES prints about a Classic field's stack shapes (C19): the sampled shares, the pooled table they
+    are compared with (a prior, not a fit), the six most common shapes and which mixture was in force. None for
+    Showdown, whose shapes the table does not describe."""
+    if pool.mode is not Mode.CLASSIC:
+        return None
+    mix = stack_shape_mix(fld.lineups, pool)
+    games = len(pool.games) or None
+    return {
+        "draws": mix["n"],
+        "games": games,
+        "mixture": "classic" if classic_mixture(fld.family, games, cfg) else "old",
+        "stack3": round(mix["stack3"], 1), "stack4": round(mix["stack4"], 1), "stack5": round(mix["stack5"], 1),
+        "two3": round(mix["two3"], 1),
+        "top_shapes": {s: round(v, 1) for s, v in list(mix["shapes"].items())[:6]},
+        "table": cfg["field"].get("classic_stack_table"),
+    }
+
+
 def salary_left_term(left: int, cfg: dict) -> float:
     for b in cfg["dup_proxy"]["salary_left_buckets"]:
         if b["max_left"] is None or left <= int(b["max_left"]):

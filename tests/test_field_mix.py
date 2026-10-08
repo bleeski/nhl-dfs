@@ -515,3 +515,24 @@ def test_the_2026_09_30_gate_on_the_real_pool():
                     "the chunk is not DONE until this ran and passed")
     mod = script("c19_weights.py")
     assert mod.check(mod.real_pool(Path(raw)), ownership.load_ownership_config())
+
+
+# -- the RUN_NOTES shape line ------------------------------------------------------------------------------------
+
+def test_the_shape_report_and_the_run_notes_line(big):
+    from nhl_dfs.build import notes
+
+    pool, proj, _, feats, util = big
+    cfg = cfg_copy(True)
+    f = ff.sample_fast(pool, util, fm.behaviors_for_pool("large_gpp", pool, cfg), 600, 11, "large_gpp", proj=proj,
+                       feats=feats, cfg=cfg)
+    rep = fm.shape_report(f, pool, cfg)
+    assert rep["mixture"] == "classic" and rep["draws"] == 600 and rep["games"] is None
+    assert rep["table"]["stack3"] == 93.5 and "4-3-1" in rep["top_shapes"]
+    line = notes._shape_line("large_gpp", rep)
+    assert line.startswith("- Field shapes, large_gpp (Classic mixture ON; game count unknown; 600 draws; FIELD_CALIBRATION=PRIOR")
+    assert "3+ stack " in line and "(table 93.5)" in line and "4-3-1 " in line and "(table 31.4)" in line
+    off = fm.shape_report(f, pool, cfg_copy(False))
+    assert off["mixture"] == "old" and "old mixture, Classic mixtures off" in notes._shape_line("large_gpp", off)
+    assert notes._shape_line("large_gpp", None) is None
+    assert fm.shape_report(f, varied_pool(Mode.SHOWDOWN, seed=0), cfg) is None  # Showdown prints no shape line
