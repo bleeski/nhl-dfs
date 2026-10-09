@@ -1,10 +1,18 @@
 """After a pull request merges: branch cleanup, and the facts and guard for the next dev-session prompt.
 
+    python tools/post_merge.py classify [--branch NAME] [--file PATH]... [--merge SHA]
     python tools/post_merge.py cleanup [--apply] [--no-fetch] [--keep BRANCH]... [--base origin/master]
     python tools/post_merge.py facts
     python tools/post_merge.py prompt [--out FILE]
     python tools/post_merge.py check-prompt FILE
 
+Only a merged DEV-session pull request triggers cleanup, facts and prompt. A lineup run's pull request (the
+data/entered/<slate>.csv record) does not: classify says which one a merge was. Ben's explicit ask skips classify.
+
+classify  Prints POST_MERGE=DEV or POST_MERGE=RUN with the reason; exit 0 for both. DEV when the head branch starts dev/
+          or the pull request changed any path outside data/entered/; RUN when it changed only data/entered/ (or, with no
+          file list at all, when the branch starts run/). Cannot tell: DEV, said so. --merge SHA reads the files and the
+          branch name from that merge commit (first-parent diff, subject "Merge pull request #N from owner/branch").
 cleanup   Report by default (it only runs `git fetch --prune`). With --apply it deletes LOCAL branches that are fully
           merged into the base and were pushed (the ancestor check is re-run just before each delete, then `git branch -D`:
           `-d` compares with HEAD or a deleted upstream and so refuses exactly the finished branches; the old commit id is
@@ -39,6 +47,8 @@ REQUIRED_SECTIONS = ("STATE OF THE REPO", "1. WHAT TO DO", "2. HOW MUCH EFFORT",
                      "ADVISOR", "PHASE 1: PLAN", "PHASE 2: BUILD", "PHASE 3: REPORT AND ARCHIVE")
 EM_DASH = chr(0x2014)  # spelled out so that no source file contains one
 PROTECTED = ("master", "main", "develop", "trunk")
+RUN_ONLY_PREFIX = "data/entered/"  # the only tracked path a lineup run commits (CLAUDE.md Slate rules)
+MERGE_SUBJECT = re.compile(r"^Merge pull request #\d+ from [^/\s]+/(?P<branch>\S+)")
 
 
 # --- git ---------------------------------------------------------------------------------------
@@ -209,6 +219,37 @@ def powershell_block(plan: dict) -> str:
             "branches the report lists, run its last line again with `--apply` added.")
 
 
+# --- dev merge or lineup-run merge -----------------------------------------------------------------
+
+def classify(branch: str | None, files: list[str] | None) -> tuple[str, str]:
+    """("DEV" | "RUN", reason). The files decide before the branch name does when they are known, because a cloud
+    session's branch is named by the harness (claude/...), not dev/. A cannot-tell merge gets the full routine."""
+    clean = [f.strip().replace("\\", "/").removeprefix("./") for f in files or [] if f.strip()]
+    if branch and branch.startswith("dev/"):
+        return "DEV", f"branch {branch} starts dev/"
+    if clean:
+        outside = [f for f in clean if not f.startswith(RUN_ONLY_PREFIX)]
+        if outside:
+            more = f" (+{len(outside) - 1} more)" if len(outside) > 1 else ""
+            return "DEV", f"it changed {outside[0]}{more}, outside {RUN_ONLY_PREFIX}"
+        return "RUN", f"it changed only {RUN_ONLY_PREFIX} ({len(clean)} file{'s' if len(clean) != 1 else ''})"
+    if branch and branch.startswith("run/"):
+        return "RUN", f"branch {branch} starts run/ and no file list was available"
+    return "DEV", "could not tell (no dev/ or run/ branch and no file list): the full routine runs"
+
+
+def merge_facts(cwd: Path, sha: str) -> tuple[str | None, list[str] | None, str | None]:
+    """(branch from the merge subject, files changed against the first parent, problem) for a merge or squash commit."""
+    rc, subject = git(cwd, "log", "-1", "--format=%s", sha)
+    if rc != 0:
+        return None, None, f"could not read commit {sha}: {subject.splitlines()[0] if subject else 'no output'}"
+    m = MERGE_SUBJECT.match(subject)
+    rc, out = git(cwd, "diff", "--name-only", f"{sha}^1", sha)
+    if rc != 0:
+        return (m.group("branch") if m else None), None, f"could not list the files of {sha}: {out.splitlines()[0] if out else 'no output'}"
+    return (m.group("branch") if m else None), out.splitlines(), None
+
+
 # --- the next prompt -----------------------------------------------------------------------------
 
 def _next_chunk():
@@ -346,6 +387,10 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", type=Path, default=ROOT)
     sub = ap.add_subparsers(dest="cmd", required=True)
+    cl = sub.add_parser("classify")
+    cl.add_argument("--branch", default=None, help="the merged pull request's head branch")
+    cl.add_argument("--file", action="append", default=[], help="a path the pull request changed (repeat)")
+    cl.add_argument("--merge", default=None, metavar="SHA", help="the merge or squash commit: read its files and branch")
     c = sub.add_parser("cleanup")
     c.add_argument("--apply", action="store_true")
     c.add_argument("--no-fetch", action="store_true")
@@ -359,6 +404,14 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
     root = a.root.resolve()
 
+    if a.cmd == "classify":
+        branch, files, problem = a.branch, list(a.file) or None, None
+        if a.merge:
+            m_branch, m_files, problem = merge_facts(root, a.merge)
+            branch, files = branch or m_branch, files or m_files
+        verdict, reason = classify(branch, files)
+        print(f"POST_MERGE={verdict} ({reason}{'; ' + problem if problem else ''})")
+        return 0
     if a.cmd == "cleanup":
         plan = cleanup_plan(root, a.base, tuple(a.keep), fetch=not a.no_fetch)
         print(render_cleanup(plan))

@@ -1,11 +1,21 @@
 ---
 name: nhl-post-merge
-description: "After a pull request merges: clean up merged branches, confirm local and GitHub agree, and write the paste-ready prompt for the next dev session. Use when a pull_request.closed event reports a merge, when Ben says a PR merged, or when he asks for the next prompt or a repo cleanup."
+description: "After a merged DEV-session pull request: clean up merged branches, confirm local and GitHub agree, and write the paste-ready prompt for the next dev session. Use when a pull_request.closed event or Ben reports that a dev pull request merged, or when Ben explicitly asks for the next prompt or a repo cleanup. A lineup run's pull request (the data/entered record) does not trigger it."
 ---
 
 ## When
 
-A watched pull request is reported merged (a `pull_request.closed` event with outcome merged, or Ben says so). Run this before you end the turn. If the pull request was only closed, stop and say so. Never open a new pull request for the merged change.
+A watched pull request is reported merged (a `pull_request.closed` event with outcome merged, or Ben says so) and it was a dev-session merge. Run this before you end the turn. If the pull request was only closed, stop and say so. Never open a new pull request for the merged change.
+
+Ben asked that this run only after a dev session. A lineup run opens its own small pull request (the `data/entered/<slate>.csv` record, branch `run/<slate>-entered`); its merge triggers nothing here: no cleanup, no repo check, no next prompt.
+
+## 0. Dev merge or lineup-run merge (when a merge report started this; skip it when Ben explicitly asks for the next prompt or a cleanup)
+
+1. `git fetch origin`. Get the pull request's merge commit sha from the event, or from `gh pr view <n> --json mergeCommit,headRefName,files` (the GitHub tool in a cloud session). Never use the `origin/master` tip as the sha: a later pull request may have merged since.
+2. `python tools/post_merge.py classify --merge <sha>` (PowerShell on Ben's machine: `.venv\Scripts\python.exe tools\post_merge.py classify --merge <sha>`; add `--branch <head>` when the event names it). It prints `POST_MERGE=DEV (...)` or `POST_MERGE=RUN (...)`. The files it read decide before the branch name does, because a cloud session's branch is named by the harness (`claude/...`), not `dev/`.
+3. `POST_MERGE=RUN`: say one line, "lineup-run merge, no cleanup or next prompt by design", and stop. Do not run section 1 or 2.
+4. `POST_MERGE=DEV`: continue with section 1 and 2 unchanged. If the file lookup failed (the reason says so, for example the sha is not in this checkout), try once more from `gh pr view ... --json files` with `--file <path>` per changed path; only then accept the printed DEV, and say that it was a cannot-tell default.
+5. When Ben explicitly asks for the next prompt or a repo cleanup, in any session, skip this section and run sections 1 and 2 as asked.
 
 ## 1. Confirm and clean up
 

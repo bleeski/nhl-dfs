@@ -294,3 +294,95 @@ def test_the_branch_name_avoids_a_name_that_already_exists(world):
 @pytest.mark.parametrize("junk", ["<<WRITE >>", "<<WRITE", "{{ NEXT_FLAG }}", "{{NEXT_FLAG2}}", "see >> here"])
 def test_check_prompt_catches_malformed_markers_too(junk):
     assert pm.check_prompt(GOOD + junk)
+
+
+# -- dev merge or lineup-run merge: only a dev merge gets the cleanup and the next prompt -------------------------------
+
+def commit_path(cwd: Path, rel: str) -> None:
+    p = cwd / rel
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(rel, encoding="utf-8")
+    sh(cwd, "add", rel)
+    sh(cwd, "commit", "-m", rel)
+
+
+def merge_pr(work: Path, branch: str, number: int, paths: list[str]) -> str:
+    """Land `paths` on master through a GitHub-style merge commit; returns the merge commit's sha."""
+    sh(work, "switch", "-c", branch)
+    for rel in paths:
+        commit_path(work, rel)
+    sh(work, "push", "-u", "origin", branch)
+    sh(work, "switch", "master")
+    sh(work, "merge", "--no-ff", branch, "-m", f"Merge pull request #{number} from bleeski/{branch}")
+    return sh(work, "rev-parse", "HEAD")
+
+
+@pytest.mark.parametrize("branch,files,verdict", [
+    ("dev/c19-x", ["data/entered/a.csv"], "DEV"),  # a dev/ branch is dev work whatever it changed
+    ("claude/kind-einstein", ["CLAUDE.md"], "DEV"),  # a cloud dev session: the harness named the branch, the files give it away
+    ("claude/kind-einstein", ["src/nhl_dfs/x.py", "data/entered/a.csv"], "DEV"),  # one file outside data/entered is enough
+    ("run/classic-20261008-entered", ["data/entered/a.csv"], "RUN"),
+    ("claude/kind-einstein", ["data/entered/a.csv", "data/entered/b.csv"], "RUN"),  # a cloud lineup run on a harness branch
+    ("run/classic-20261008-entered", ["data/entered/a.csv", "tools/post_merge.py"], "DEV"),  # run/ plus a code change
+    ("run/classic-20261008-entered", None, "RUN"),  # no file list: the branch name alone
+    ("run/classic-20261008-entered", [], "RUN"),
+    ("claude/kind-einstein", None, "DEV"),  # cannot tell: the full routine, as before
+    (None, None, "DEV"),
+    (None, [r"data\entered\a.csv"], "RUN"),  # Windows separators
+    (None, ["data/entered_old/a.csv"], "DEV"),  # the folder, not a name that starts the same
+    (None, ["data/identity/accepted.csv"], "DEV"),  # tracked, but a dev chunk's file
+])
+def test_classify_tells_a_dev_merge_from_a_lineup_run_merge(branch, files, verdict):
+    got, reason = pm.classify(branch, files)
+    assert got == verdict and reason
+
+
+def test_merge_facts_reads_the_branch_and_the_files_of_one_merge_not_the_tip(world):
+    _, work, _ = world
+    run_sha = merge_pr(work, "claude/kind-x", 7, ["data/entered/slate.csv"])  # a cloud lineup run on a harness branch
+    dev_sha = merge_pr(work, "claude/other", 8, ["tools/a.py", "BUILD_STATUS.md"])  # a later merge: the tip
+    assert pm.merge_facts(work, run_sha) == ("claude/kind-x", ["data/entered/slate.csv"], None)
+    branch, files, problem = pm.merge_facts(work, dev_sha)
+    assert (branch, sorted(files), problem) == ("claude/other", ["BUILD_STATUS.md", "tools/a.py"], None)
+    assert pm.classify(*pm.merge_facts(work, run_sha)[:2])[0] == "RUN"  # still RUN with a newer merge on top of it
+    assert pm.classify(branch, files)[0] == "DEV"
+
+
+def test_a_squash_commit_has_no_branch_name_and_the_files_decide(world):
+    _, work, _ = world
+    (work / "data" / "entered").mkdir(parents=True)
+    (work / "data" / "entered" / "s.csv").write_text("x", encoding="utf-8")
+    sh(work, "add", "data/entered/s.csv")
+    sh(work, "commit", "-m", "Save entries (#9)")
+    branch, files, problem = pm.merge_facts(work, "HEAD")
+    assert (branch, files, problem) == (None, ["data/entered/s.csv"], None)
+    assert pm.classify(branch, files)[0] == "RUN"
+
+
+def test_the_classify_cli_prints_the_verdict_and_exits_zero(world):
+    _, work, _ = world
+    run_sha = merge_pr(work, "claude/kind-x", 7, ["data/entered/slate.csv"])
+    dev_sha = merge_pr(work, "run/not-really", 8, ["src/x.py"])  # a run/ name cannot hide a code change
+    cli = [sys.executable, str(REPO_ROOT / "tools" / "post_merge.py"), "--root", str(work), "classify"]
+    run = subprocess.run([*cli, "--merge", run_sha], capture_output=True, text=True)
+    dev = subprocess.run([*cli, "--merge", dev_sha], capture_output=True, text=True)
+    assert run.returncode == 0 and run.stdout.startswith("POST_MERGE=RUN"), run.stdout + run.stderr
+    assert dev.returncode == 0 and dev.stdout.startswith("POST_MERGE=DEV") and "src/x.py" in dev.stdout
+    by_hand = subprocess.run([*cli, "--branch", "claude/z", "--file", "data/entered/a.csv"], capture_output=True, text=True)
+    assert by_hand.stdout.startswith("POST_MERGE=RUN")
+
+
+def test_an_unreadable_merge_falls_back_to_dev_and_says_why(world):
+    _, work, _ = world
+    cli = [sys.executable, str(REPO_ROOT / "tools" / "post_merge.py"), "--root", str(work), "classify", "--merge", "deadbeef"]
+    r = subprocess.run(cli, capture_output=True, text=True)
+    assert r.returncode == 0 and r.stdout.startswith("POST_MERGE=DEV") and "could not read commit deadbeef" in r.stdout
+
+
+def test_the_skill_and_claude_md_name_the_classify_check_and_the_skill_stays_model_invoked():
+    skill = " ".join((REPO_ROOT / ".claude" / "skills" / "nhl-post-merge" / "SKILL.md").read_text(encoding="utf-8").split())
+    claude = " ".join((REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8").split())
+    assert "post_merge.py classify --merge" in skill and "POST_MERGE=RUN" in skill and "DEV-session" in skill
+    assert "Only after a dev session" in claude and "post_merge.py classify --merge" in claude and "run/<slate>-entered" in claude
+    assert "disable-model-invocation" not in skill.split("---")[1]  # a merge event must still be able to start it
+    assert "—" not in skill and "—" not in claude
