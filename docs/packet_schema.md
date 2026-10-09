@@ -31,7 +31,10 @@ serialized characters / 4, held by fixed list lengths and then a deterministic t
 
 Written to `runs/<id>/news/research_request.json` and printed after `----- REQUEST JSON (pass inline, verbatim) -----`.
 Code picks the players; the model does not: DK DTD / QUESTIONABLE / UNKNOWN with portfolio exposure, and every
-goalie of a team whose goalie is in the portfolio, most exposed first, at most 25. Each player carries role_id,
+goalie of a team whose goalie is in the portfolio, most exposed first, then (C20, B37, flag 50) both goalies of every
+slate team with no confirmed starter (no DF-confirmed goalie, no DK Starting=P, game not started or in the edit stop),
+soonest game first, in the slots left; a pair that does not fit is skipped and its team is named in
+`unresolved_goalie_teams_not_listed` (`unresolved_goalie_teams` names the teams listed), at most 25 in all. Each player carries role_id,
 team, position, game_id, start_utc, why, entries, and `current` (the role state now: participation, ev_line,
 pp_unit, and for goalies goalie_start and state). `urls`: the Daily Faceoff starting goalies page and the slate
 teams' line pages. The researcher may also search the web (a deviation from the card's WebFetch-only list, because

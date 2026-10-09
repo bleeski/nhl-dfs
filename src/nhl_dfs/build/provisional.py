@@ -29,7 +29,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Mapping, Sequence
 
-from nhl_dfs.build.assign import Assignment, Caps, assign
+from nhl_dfs.build import own_goalie
+from nhl_dfs.build.assign import Assignment, Caps, Relaxation, assign
 from nhl_dfs.build.candidates import Candidate
 from nhl_dfs.contracts.geometry import Mode, lineup_key
 from nhl_dfs.contracts.statuses import Participation
@@ -124,9 +125,12 @@ def select(
     statuses: Mapping[str, Participation] | None = None,
     later_start_utc: Mapping[str, datetime] | None = None,
     own_cfg: dict | None = None,
+    rule_families: frozenset[str] = frozenset(),
 ) -> tuple[Assignment, dict[str, Scored]]:
     """Fill every entry by its contest's provisional order. Returns the assignment and, per
-    entry, the scored candidate it received (for the manifest and RUN_NOTES)."""
+    entry, the scored candidate it received (for the manifest and RUN_NOTES). rule_families (C20, flags 51 and 52): for a
+    contest of one of these families the candidates without a skater against their goalie are tried first, in their own
+    order, then the rest; an entry that still gets a conflicted lineup is recorded as an OWN_GOALIE relaxation."""
     rows = list(getattr(entries, "entries", entries))
     by_contest: dict[str, list[str]] = defaultdict(list)
     for e in rows:
@@ -138,20 +142,50 @@ def select(
     fixed: dict[str, tuple[str, ...]] = {}
     scored_by_entry: dict[str, Scored] = {}
     relaxations = []
+    opp = own_goalie.opponent_map(pool) if rule_families and pool.mode is Mode.CLASSIC else {}
     for cid in contest_order:
         ctx = contests[cid]
         policy = cfg["families"][ctx.family]["selection"]
         ranked = rank(candidates, pool, proj, marginals_by_contest.get(cid), policy, cfg,
                       statuses=statuses, own_cfg=own_cfg)
+        ruled = bool(opp) and ctx.family in rule_families
         pos = {s.cand.key: i for i, s in enumerate(ranked)}
-        a = assign(candidates, by_contest[cid], pool, pool.mode, caps, seed=seed, later_start_utc=later_start_utc,
-                   fixed=fixed, order_key=lambda c: pos[c.key], cap_entries=len(rows))
+        entries_here = by_contest[cid]
+
+        def fill(cands, todo, fix):
+            return assign(cands, todo, pool, pool.mode, caps, seed=seed, later_start_utc=later_start_utc, fixed=fix,
+                          order_key=lambda c: pos[c.key], cap_entries=len(rows))
+
+        if ruled:
+            # flag 51: compliant candidates first, through the overlap and exposure relaxations; only an entry the compliant
+            # ones could fill only by REPEAT is filled again from every candidate (still compliant first, a repeat last)
+            bad = {s.cand.key for s in ranked if own_goalie.faces_own_goalie(s.cand.role_ids, pool, opp)}
+            comp = [c for c in candidates if c.key not in bad]
+            a1 = fill(comp, entries_here, fixed) if comp else None
+            redo = (list(entries_here) if a1 is None else
+                    [r.entry_id for r in a1.relaxations if r.kind == "REPEAT" and r.entry_id in set(entries_here)])
+            lineups = {e: a1.by_entry[e] for e in entries_here if a1 is not None and e not in redo}
+            relax_here = [r for r in (a1.relaxations if a1 is not None else []) if r.entry_id in lineups]
+            if redo:
+                rank2 = {s.cand.key: i for i, s in enumerate([x for x in ranked if x.cand.key not in bad]
+                                                              + [x for x in ranked if x.cand.key in bad])}
+                a2 = assign(candidates, redo, pool, pool.mode, caps, seed=seed, later_start_utc=later_start_utc,
+                            fixed={**fixed, **lineups}, order_key=lambda c: rank2[c.key], cap_entries=len(rows))
+                lineups.update({e: a2.by_entry[e] for e in redo})
+                relax_here += [r for r in a2.relaxations if r.entry_id in set(redo)]
+        else:
+            a = fill(candidates, entries_here, fixed)
+            lineups = {e: a.by_entry[e] for e in entries_here}
+            relax_here = [r for r in a.relaxations if r.entry_id in set(entries_here)]
         by_key = {s.cand.key: s for s in ranked}
-        for eid in by_contest[cid]:
-            lineup = a.by_entry[eid]
+        for eid in entries_here:
+            lineup = lineups[eid]
             fixed[eid] = lineup
             scored_by_entry[eid] = by_key[lineup_key([pool.by_role_id[r] for r in lineup], pool.mode)]
-        relaxations += [r for r in a.relaxations if r.entry_id in by_contest[cid]]
+        relaxations += relax_here
+        if ruled:
+            relaxations += [Relaxation(eid, "OWN_GOALIE", "no candidate without a skater against its goalie passed the caps")
+                            for eid in entries_here if own_goalie.faces_own_goalie(fixed[eid], pool, opp)]
     final = assign(candidates, [e.entry_id for e in rows], pool, pool.mode, caps, seed=seed,
                    later_start_utc=later_start_utc, fixed=fixed)
     final.relaxations = relaxations

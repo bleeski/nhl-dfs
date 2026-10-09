@@ -1,0 +1,44 @@
+# origin/master 3eec8d3 (a git archive export), run 2026-10-09T21:30:26Z with PYTHONHASHSEED=0: python scripts/c20_equality_check.py --tree <export>
+{
+ "tree_src": "/tmp/claude-0/-home-user-nhl-dfs/c930544d-33dc-57b1-b2eb-9658cfbaa036/scratchpad/export_master/src/nhl_dfs/build/objectives.py",
+ "sample_fast_nofallback": "7d7f4f5bbf47a943",
+ "sample_fast_fallback": "16ad109b2fde33d1",
+ "field_sample_milp_path": "224d0964d357c9c4",
+ "sample_fast_standin": "3b07e282f28c4bc6",
+ "generate_classic_menu": "fe5bc6d45f263a99",
+ "generate_classic_base": "5b86038180ac8d72",
+ "generate_showdown": "41a49193b9dd5ce9",
+ "solve_lineup_classic": "bfa578759e67ce98",
+ "solve_lineup_showdown": "8339346d6b87a905",
+ "discover_rule_off_or_unasked": "01e2357bcec7b496",
+ "whole_run_keys_off_lineups": "d9e733baad71e1bc",
+ "whole_run_phases": [
+  "A",
+  "P",
+  "S"
+ ]
+}
+
+# this branch (commit 7787c7d plus the review-fix edits of scripts/), same command with --tree <checkout>
+{
+ "tree_src": "/home/user/nhl-dfs/src/nhl_dfs/build/objectives.py",
+ "sample_fast_nofallback": "7d7f4f5bbf47a943",
+ "sample_fast_fallback": "16ad109b2fde33d1",
+ "field_sample_milp_path": "224d0964d357c9c4",
+ "sample_fast_standin": "3b07e282f28c4bc6",
+ "generate_classic_menu": "fe5bc6d45f263a99",
+ "generate_classic_base": "5b86038180ac8d72",
+ "generate_showdown": "41a49193b9dd5ce9",
+ "solve_lineup_classic": "bfa578759e67ce98",
+ "solve_lineup_showdown": "8339346d6b87a905",
+ "discover_rule_off_or_unasked": "01e2357bcec7b496",
+ "discover_rule_on": "e31ada4ac8ffd63f",
+ "whole_run_keys_off_lineups": "d9e733baad71e1bc",
+ "whole_run_phases": [
+  "A",
+  "P",
+  "S"
+ ]
+}
+
+# comparison: 12 keys printed by both trees, all equal; discover_rule_on exists only on the branch

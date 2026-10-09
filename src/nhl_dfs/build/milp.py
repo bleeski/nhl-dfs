@@ -21,6 +21,7 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Iterable, Mapping, Sequence
 
+from nhl_dfs.build.own_goalie import opponent_map
 from nhl_dfs.contracts.geometry import (
     CLASSIC_SLOTS,
     SALARY_CAP,
@@ -107,8 +108,12 @@ class LineupModel:
         locked: Mapping[int, str] | None = None,
         groups: Sequence[GroupConstraint] = (),
         compact: bool | None = None,
+        avoid_own_goalie: bool = False,
     ) -> None:
         from scipy.sparse import coo_array
+
+        if avoid_own_goalie and mode is not Mode.CLASSIC:
+            raise ValueError("the own-goalie rule is Classic only (C20, flag 53)")
 
         self.pool, self.mode = pool, mode
         self.slots = slots_for(mode)
@@ -198,6 +203,33 @@ class LineupModel:
         for g in groups:
             hi = inf if g.max_count is None else float(g.max_count)
             add(((i, 1.0) for i in range(n_x) if self.var_row[i].role_id in g.role_ids), float(g.min_count), hi)
+        # The own-goalie rule (C20, flags 51 to 53): one row per goalie team T with opponent O,
+        #   sum(skater vars of O) + M * sum(goalie vars of T) <= M + k.
+        # With a T goalie chosen the skaters of O must be none; with none chosen the row is slack, because a legal
+        # lineup holds at most M = skater slots - (min teams - 1) skaters of one team (the team rule above). k counts
+        # the O skaters already pinned, and only when a T goalie is pinned too: a conflict the pins force stays legal
+        # and no further O skater is added. The rows never touch a locked variable's bounds.
+        self.own_goalie_forced: list[tuple[str, str, int]] = []  # (goalie team, opponent, pinned skaters)
+        self.own_goalie_unknown: list[str] = []  # goalie teams with no known opponent (the rule cannot bind them)
+        if avoid_own_goalie:
+            opp = opponent_map(pool)
+            big_m = (len(self.slots) - counts["G"]) - (MIN_TEAMS[mode] - 1)
+            locked_rows = [pool.by_role_id[rid] for rid in self.locked.values()]
+            for team in sorted({r.team for r in self.var_row if r.is_goalie}):
+                o = opp.get(team)
+                if o is None:
+                    self.own_goalie_unknown.append(team)
+                    continue
+                sk = [i for i in range(n_x) if not self.var_row[i].is_goalie and self.var_row[i].team == o]
+                gl = [i for i in range(n_x) if self.var_row[i].is_goalie and self.var_row[i].team == team]
+                if not sk or not gl:
+                    continue
+                k = 0
+                if any(r.is_goalie and r.team == team for r in locked_rows):
+                    k = sum(1 for r in locked_rows if not r.is_goalie and r.team == o)
+                    if k:
+                        self.own_goalie_forced.append((team, o, k))
+                add([(i, 1.0) for i in sk] + [(j, float(big_m)) for j in gl], -inf, float(big_m + k))
 
         self.A = coo_array((vals, (rows_i, cols_i)), shape=(len(cl), self.n_vars)).tocsr()
         self.cl, self.cu = cl, cu
@@ -328,16 +360,18 @@ def solve_lineup(
     groups: Sequence[GroupConstraint] = (),
     max_overlap_with: Sequence[tuple[Sequence[str], int]] = (),
     time_limit_s: float = 5.0,
+    avoid_own_goalie: bool = False,
 ) -> SolveResult:
     """Best legal lineup for `objective` (role_id -> value; missing ids count 0).
 
     locked: canonical slot index -> role_id; it wins over exclude (a started game's cell
     cannot change). max_overlap_with: (lineup role_ids, max shared units) pairs, where
-    shared units are persons in Classic and role IDs in Showdown (overlap_units).
+    shared units are persons in Classic and role IDs in Showdown (overlap_units). avoid_own_goalie: the C20 rule
+    (no skater who plays against the lineup's goalie; Classic only; off unless asked).
     """
     t0 = time.perf_counter()
     try:
-        model = LineupModel(pool, mode, exclude=exclude, locked=locked, groups=groups)
+        model = LineupModel(pool, mode, exclude=exclude, locked=locked, groups=groups, avoid_own_goalie=avoid_own_goalie)
     except InfeasibleInput as exc:
         return SolveResult(SearchStatus.INFEASIBLE, None, None, time.perf_counter() - t0, None, str(exc))
     overlaps = [model.overlap_row(lu, k) for lu, k in max_overlap_with]

@@ -362,6 +362,18 @@ def apply_round(run, round_no: int, proposals, cfg: dict | None = None, *, now: 
     ls = v.locks(now)
     pins = {eid: ls.pinned(eid) for eid in v.lineups}
     risk_cfg = load_risk_config()
+    # C20 (flags 51, 52): entries of a rule family are re-solved with no skater against their goalie, and a QA swap that
+    # would put one there is refused; the family comes from the scenario cache, the run manifest or a name pattern
+    from nhl_dfs.build import own_goalie as og_mod
+    from nhl_dfs.models.contests import load_contest_families
+
+    og_error, rule_fams, fam_of = None, frozenset(), {}
+    try:  # a failure here is a report line, and QA goes on without the rule: it runs minutes before lock
+        rule_fams = og_mod.rule_families(risk_cfg, mode)
+        fam_of = (og_mod.entry_families(v.entries, cache_family=getattr(v.cache, "contest_family", None), manifest=v.m,
+                                        fam_cfg=load_contest_families()) if mode is Mode.CLASSIC else {})
+    except Exception as exc:
+        og_error, rule_fams, fam_of = og_mod.error_line(exc), frozenset(), {}
     cur = {e: list(lu) for e, lu in v.lineups.items()}
     excluded_people: dict[str, str] = {}  # person_key -> reason (correctness)
     so = None
@@ -471,6 +483,9 @@ def apply_round(run, round_no: int, proposals, cfg: dict | None = None, *, now: 
                 if not chk.ok:
                     reject(i, p, typ, "illegal lineup: " + "; ".join(chk.reasons[:3]))
                     continue
+                if fam_of.get(eid) in rule_fams and set(og_mod.conflict_rows(lu, pool)) - set(og_mod.conflict_rows(cur[eid], pool)):
+                    reject(i, p, typ, "the swap puts a skater against the entry's own goalie (own-goalie rule, flag 51)")
+                    continue
                 new[eid] = lu
                 changed.add(eid)
             elif typ == "exclude":
@@ -488,7 +503,8 @@ def apply_round(run, round_no: int, proposals, cfg: dict | None = None, *, now: 
                 for e in holders:
                     lu, route, _, detail = late_swap._solve_entry(
                         pool, mode, so.linear, cur[e], pins[e], fast=True, exclude_rows=frozenset(rows) | ls.not_addable,
-                        capped_rows=frozenset(), overlaps=[], time_limit_s=float(rt.get("late_swap", {}).get("per_entry_time_limit_s", 2.0)))
+                        capped_rows=frozenset(), overlaps=[], time_limit_s=float(rt.get("late_swap", {}).get("per_entry_time_limit_s", 2.0)),
+                        own_goalie=fam_of.get(e) in rule_fams)
                     if lu is None:
                         failed = f"entry {e}: {detail}"
                         break
@@ -530,7 +546,8 @@ def apply_round(run, round_no: int, proposals, cfg: dict | None = None, *, now: 
                 continue
             got, route, _, detail = late_swap._solve_entry(
                 pool, mode, linear, lu, pins[e], fast=True, exclude_rows=ex_rows | ls.not_addable, capped_rows=frozenset(),
-                overlaps=[], time_limit_s=float(rt.get("late_swap", {}).get("per_entry_time_limit_s", 2.0)))
+                overlaps=[], time_limit_s=float(rt.get("late_swap", {}).get("per_entry_time_limit_s", 2.0)),
+                own_goalie=fam_of.get(e) in rule_fams)
             if got is None:
                 repair_notes.append(f"entry {e}: no legal repair ({detail}); cells kept")
                 continue
@@ -587,6 +604,12 @@ def apply_round(run, round_no: int, proposals, cfg: dict | None = None, *, now: 
                                        "accepted_strategic": res.accepted_strategic, "version": pub.version,
                                        "changed_entries": sorted(changes), "notes": repair_notes})
         m["messages"] = list(m.get("messages", [])) + [f"QA round {round_no} published v{pub.version}"] + repair_notes
+        try:  # the version just published; never lets a published file go without its manifest record
+            m["statuses"]["OWN_GOALIE"] = og_error or og_mod.audit(cur, fam_of, pool, risk_cfg, pins=pins)
+        except Exception as exc:
+            m["statuses"]["OWN_GOALIE"] = og_mod.error_line(exc)
+        if fam_of:
+            m["families"] = {e: f for e, f in fam_of.items() if f}
         if "RISK_BUDGET" in m["statuses"]:  # B40: the scenario pass measured the version before these changes
             m["statuses"]["RISK_BUDGET"] = (f"NOT_EVALUATED (v{pub.version} changed {len(changes)} entr"
                                             f"{'y' if len(changes) == 1 else 'ies'} after the scenario pass)")
