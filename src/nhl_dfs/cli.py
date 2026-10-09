@@ -206,7 +206,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     return _print_result(result)
 
 
-REPORTED_EXTRA = ("MARKET_COVERAGE", "RISK_BUDGET")  # B40: printed on every run, late swap and refresh
+REPORTED_EXTRA = ("MARKET_COVERAGE", "RISK_BUDGET", "OWN_GOALIE")  # B40, C20: printed on every run, late swap and refresh
 
 
 def _print_result(result) -> int:
@@ -236,6 +236,7 @@ def _print_risk_budget(run) -> None:
     except (OSError, ValueError):
         return
     print(f"RISK_BUDGET={st.get('RISK_BUDGET', 'NOT_EVALUATED')}")
+    print(f"OWN_GOALIE={st.get('OWN_GOALIE', 'NOT_EVALUATED')}")  # C20
 
 
 def _print_goalies(rec) -> None:

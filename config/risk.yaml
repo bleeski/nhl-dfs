@@ -34,6 +34,13 @@ tiebreak:
   band_pct: 0.03
   se_mult: 1.0
 
+# The own-goalie rule (C20, [BEN] flags 13 and 51 to 53; build/own_goalie.py): an entry of one of these contest families
+# never holds a skater who plays against its own goalie. Classic only (Showdown is out). Cash and satellite are exempt.
+# enabled: false switches the rule off everywhere (discovery, selection, late swap, QA); the OWN_GOALIE line then says OFF.
+own_goalie:
+  enabled: true
+  families: [large_gpp, small_field, wta]
+
 # Candidate discovery (build/portfolio.discover): search allocation, not scenario probabilities.
 discovery:
   families: [0.65, 0.25, 0.10]   # central case, alternate viable cores, "priors wrong"

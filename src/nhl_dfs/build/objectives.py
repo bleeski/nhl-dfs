@@ -74,6 +74,13 @@ def validate_risk_config(cfg: dict) -> None:
     ks = (cfg.get("frontier") or {}).get("kappas") or []
     if len(ks) != 5 or any(float(k) < 0 for k in ks):
         raise ValueError("risk.yaml frontier.kappas must list five non-negative knob settings")
+    og = cfg.get("own_goalie")
+    if og is not None:
+        if not isinstance(og.get("enabled"), bool):
+            raise ValueError("risk.yaml own_goalie.enabled must be true or false")
+        bad = [f for f in (og.get("families") or []) if f not in FAMILY_OBJECTIVE]
+        if bad:
+            raise ValueError(f"risk.yaml own_goalie.families names unknown families {bad}")
     o = cfg.get("objectives") or {}
     if not 0 < float(o.get("top_pct", 0)) < 1:
         raise ValueError("risk.yaml objectives.top_pct must be in (0, 1)")

@@ -257,12 +257,13 @@ def _alternatives(pool, mode, objective, before, pins, first, *, fast, exclude_r
     if fast:
         for rid in keep:
             obj[rid] = obj.get(rid, 0.0) + KEEP_BONUS
-    caps_ex, ovl = step
+    caps_ex, ovl, avoid = step  # the ladder step (and whether it still held the own-goalie rule) that produced `first`
     kept_first = len(keep & set(first))
     out = [list(first)]
     while len(out) < k:
         res = milp.solve_lineup(pool, mode, obj, exclude=frozenset(exclude_rows | caps_ex), locked=pins,
-                                max_overlap_with=list(ovl) + [(lu, size - 1) for lu in out], time_limit_s=time_limit_s)
+                                max_overlap_with=list(ovl) + [(lu, size - 1) for lu in out], time_limit_s=time_limit_s,
+                                avoid_own_goalie=avoid)
         if res.lineup is None:
             break
         if fast and len(keep & set(res.lineup)) < kept_first:
@@ -272,9 +273,13 @@ def _alternatives(pool, mode, objective, before, pins, first, *, fast, exclude_r
 
 
 def _solve_entry(pool, mode, objective, before, pins, *, fast, exclude_rows, capped_rows, overlaps, time_limit_s,
-                 steps: list | None = None):
+                 steps: list | None = None, own_goalie: bool = False):
     """(lineup | None, route, relaxations, detail). steps: when a list, the successful MILP ladder step's
-    (excluded capped rows, overlap pairs) is appended to it (for _alternatives)."""
+    (excluded capped rows, overlap pairs, own-goalie rule held) is appended to it (for _alternatives). own_goalie (C20,
+    flags 51 and 52): the entry's family is a rule family, so the whole ladder is tried with the rule first; only when
+    every step of it is infeasible is the ladder tried again without it and "OWN_GOALIE" added to the relaxations. A
+    pinned goalie and a pinned skater against him stay legal (the model allows exactly the pinned ones). The feasibility
+    fallback below has no rule: the OWN_GOALIE line audits the lineups that were actually written."""
     keep = {rid for k, rid in enumerate(before) if rid is not None and k not in pins and rid not in exclude_rows}
     obj = dict(objective)
     if fast:
@@ -285,18 +290,22 @@ def _solve_entry(pool, mode, objective, before, pins, *, fast, exclude_rows, cap
     if not overlaps:
         ladder = [ladder[0], (("EXPOSURE",), frozenset(), ())]
     if milp.solver_available():
-        last = ""
-        for relax, caps_ex, ovl in ladder:
-            res = milp.solve_lineup(pool, mode, obj, exclude=frozenset(exclude_rows | caps_ex), locked=pins,
-                                    max_overlap_with=ovl, time_limit_s=time_limit_s)
-            if res.lineup is not None:
-                if steps is not None:
-                    steps.append((caps_ex, ovl))
-                return res.lineup, "milp", relax, ""
-            last = res.detail or res.status.value
-            if res.status is not SearchStatus.INFEASIBLE:
-                break  # ERROR: go to the feasibility fallback
-        else:
+        last, errored = "", False
+        for avoid in ((True, False) if own_goalie and mode is Mode.CLASSIC else (False,)):
+            for relax, caps_ex, ovl in ladder:
+                res = milp.solve_lineup(pool, mode, obj, exclude=frozenset(exclude_rows | caps_ex), locked=pins,
+                                        max_overlap_with=ovl, time_limit_s=time_limit_s, avoid_own_goalie=avoid)
+                if res.lineup is not None:
+                    if steps is not None:
+                        steps.append((caps_ex, ovl, avoid))
+                    return res.lineup, "milp", (relax if avoid or not own_goalie else (*relax, "OWN_GOALIE")), ""
+                last = res.detail or res.status.value
+                if res.status is not SearchStatus.INFEASIBLE:
+                    errored = True  # ERROR: go to the feasibility fallback
+                    break
+            if errored:
+                break
+        if not errored:
             return None, "milp", (), f"no legal repair with the pinned cells ({last})"
     # Fallback: pin the good open occupants too, then only the locks.
     for extra in ({k: rid for k, rid in enumerate(before) if rid in keep}, {}):
@@ -595,6 +604,16 @@ def swap_core(
                           "notes": ["no entry needs a change, so no objective was evaluated (nothing was simulated)"]}
     so = resolved.scenario if resolved is not None else None
     contest_of = {e.entry_id: str(e.contest_id) for e in current.entries}
+    # C20 (flags 51, 52): entries of a rule family are re-solved with no skater against their goalie; the family comes from
+    # the scenario cache, the parent run's manifest or a contest-name pattern, never from the config default
+    from nhl_dfs.build import own_goalie as og_mod
+    from nhl_dfs.build.objectives import load_risk_config
+    from nhl_dfs.models.contests import load_contest_families
+
+    risk_cfg = so.risk_cfg if so is not None else load_risk_config()
+    rule_fams = og_mod.rule_families(risk_cfg, mode)
+    fam_of = (og_mod.entry_families(current, cache_family=(getattr(so.cache, "contest_family", None) if so is not None else None),
+                                    manifest=parent_m, fam_cfg=load_contest_families()) if mode is Mode.CLASSIC else {})
     if so is not None:
         targets.sort(key=lambda x: contest_of[x])  # one sorted field per contest at a time (memory)
     final: dict[str, list[str | None]] = {eid: list(b) for eid, b in befores.items()}
@@ -619,7 +638,7 @@ def swap_core(
         lineup, route, relax, detail = _solve_entry(
             spool, mode, linear, before, pin, fast=fast,
             exclude_rows=excluded_rows | ls.not_addable, capped_rows=capped, overlaps=overlaps, time_limit_s=time_limit,
-            steps=steps)
+            steps=steps, own_goalie=fam_of.get(eid) in rule_fams)
         if lineup is not None and so is not None and route == "milp" and so.has_contest(contest_of[eid]):
             if time.perf_counter() - t_sc < budget:
                 cands = _alternatives(spool, mode, linear, before, pin, lineup, fast=fast,
@@ -664,6 +683,7 @@ def swap_core(
     m["entries"] = [{"entry_id": o.entry_id, "action": o.action, "route": o.route, "detail": o.detail,
                      "relaxations": list(o.relaxations)} for o in outcomes.values()]
     m["relaxations"] = [{"entry_id": o.entry_id, "kind": k, "detail": "late swap"} for o in outcomes.values() for k in o.relaxations]
+    m["statuses"]["OWN_GOALIE"] = og_mod.audit({eid: lu for eid, lu in final.items()}, fam_of, spool, risk_cfg, pins=pins)
     for eid in sorted(ls.unreadable_entries):
         messages.append(f"entry {eid}: a cell could not be read or is not in the salary pool; entry left unchanged")
     unrepaired = [o for o in outcomes.values() if o.action == "unrepairable"]

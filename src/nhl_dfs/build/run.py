@@ -230,8 +230,10 @@ class SearchOutcome:
 
 
 def build_bank(pool: SalaryPool, objective: dict[str, float], n_entries: int, runtime: dict, *, seed: int,
-               time_limit_s: float | None = None) -> SearchOutcome:
-    """MILP candidate bank, or the find_one fallback when the solver is missing or the bank is empty."""
+               time_limit_s: float | None = None, avoid_own_goalie: bool = False) -> SearchOutcome:
+    """MILP candidate bank, or the find_one fallback when the solver is missing or the bank is empty. avoid_own_goalie
+    (C20): every candidate has no skater against its goalie; the provisional pass asks for a sleeve of these once the
+    contests' families are known (Phase A cannot: it runs before they are)."""
     c = runtime["candidates"]
     n = min(int(c["bank_per_entry"]) * n_entries + int(c["bank_extra"]), int(c["bank_max"]))
     bank: list[Candidate] = []
@@ -241,7 +243,7 @@ def build_bank(pool: SalaryPool, objective: dict[str, float], n_entries: int, ru
             bank = cand_mod.generate(
                 pool, pool.mode, objective, n, seed=seed, perturb_sd=float(c["perturb_sd_points"]),
                 time_limit_total_s=float(time_limit_s if time_limit_s is not None else c["time_limit_total_s"]),
-                min_pairwise_diff=int(c["min_pairwise_diff"]),
+                min_pairwise_diff=int(c["min_pairwise_diff"]), avoid_own_goalie=avoid_own_goalie,
             )
         except cand_mod.SolverUnavailable:
             why = "solver import failed"
@@ -611,6 +613,10 @@ def run_slate(
             "with the entries file you have now" if m.get("lock_stops") else None))
     _set_assignment_fields(m, a, spool)
     m["statuses"]["FILE_VALID"] = FileStatus.TRUE.value
+    from nhl_dfs.build import own_goalie as og_base
+    from nhl_dfs.build.objectives import load_risk_config as load_risk
+
+    m["statuses"]["OWN_GOALIE"] = og_base.baseline_line(a.by_entry, spool, load_risk())  # C20: informational, v1 is family-blind
     degraded = (search.route != "milp" or any(r.kind == "REPEAT" for r in a.relaxations) or unknown
                 or not v1["public_replaced"] or bool(unrepaired))
     m["statuses"]["DELIVERY_STATUS"] = (DeliveryStatus.DEGRADED_REVIEW if degraded else DeliveryStatus.CHECKED).value
@@ -1136,8 +1142,20 @@ def _provisional_pass(run, entries, pool, after_b, st, starts, offline, runtime,
         priced = {k for k, r in rm.roles.persons.items() if r.p_play < 1.0 and _absence_priced(k, r, rm.roles)}
         sel_statuses = {rid: (Participation.PLAYING if p is Participation.QUESTIONABLE and work.by_role_id[rid].person_key in priced
                               else p) for rid, p in statuses.items()}
+    from nhl_dfs.build import own_goalie as og_mod
+    from nhl_dfs.build.objectives import load_risk_config
+
+    risk_cfg = load_risk_config()
+    rule_fams = og_mod.rule_families(risk_cfg, work.mode)  # C20: entries of these families avoid a skater against their goalie
+    if rule_fams & {c.family for c in contexts.values()}:
+        # Phase A's bank was built before the families were known, and about two thirds of it holds a skater against its own
+        # goalie: add a sleeve of the same size that cannot, so a rule-family entry has compliant candidates to take
+        sleeve = build_bank(work, objective_from(work, proj), len(entries.entries), runtime, seed=seed + 3,
+                            avoid_own_goalie=True).bank
+        have = {c.key for c in bank}
+        bank = list(bank) + [c for c in sleeve if c.key not in have]
     a_p, scored = prov.select(bank, proj, fb.marginals, contexts, entries, caps, fam_cfg, seed=seed, pool=work,
-                              statuses=sel_statuses, later_start_utc=starts, own_cfg=own_cfg)
+                              statuses=sel_statuses, later_start_utc=starts, own_cfg=own_cfg, rule_families=rule_fams)
 
     evidence = {
         "MODEL_STATUS": proj.source().value,
@@ -1189,6 +1207,8 @@ def _provisional_pass(run, entries, pool, after_b, st, starts, offline, runtime,
     m["provisional"]["version"] = vp["version"]
     _set_assignment_fields(m, a_p, pool)
     m["statuses"].update(evidence)
+    m["statuses"]["OWN_GOALIE"] = og_mod.audit(a_p.by_entry, {e.entry_id: contexts[e.contest_id].family for e in entries.entries},
+                                               work, risk_cfg)
     if (not vp["public_replaced"] or any(r.kind == "REPEAT" for r in a_p.relaxations)
             or any(f["degraded"] for f in fields.values())):
         m["statuses"]["DELIVERY_STATUS"] = DeliveryStatus.DEGRADED_REVIEW.value

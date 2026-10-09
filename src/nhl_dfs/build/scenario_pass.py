@@ -258,8 +258,12 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
     n_total = min(int(c["bank_per_entry"]) * len(entries.entries) + int(c["bank_extra"]), int(c["bank_max"]))
     big = max(contexts.values(), key=lambda x: x.field_size)
     chalk = _chalk_team(work, fb.marginals[big.contest_id].own)
+    from nhl_dfs.build import own_goalie as og_mod
+
+    # C20 (flags 51, 52): the families of this slate's contests that the own-goalie rule covers (empty: off, Showdown, or none)
+    rule_fams = og_mod.rule_families(risk_cfg, work.mode) & {ctx.family for ctx in contexts.values()}
     found, disc = pf.discover(work, sets["design"], n_total, runtime, risk_cfg, seed=seed + 7, chalk_team=chalk,
-                              goalies=exposure.usable_goalie_keys(proj, work))
+                              goalies=exposure.usable_goalie_keys(proj, work), avoid_own_goalie=bool(rule_fams))
     cands = list(found)
     seen = {x.key for x in cands}
     extra = [(lu, "central:provisional") for lu in (prov["assignment"].by_entry.values() if prov else [])]
@@ -295,7 +299,7 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
     t = time.perf_counter()
     sel = pf.select(cands, sets["selection"], fields["selection"], contests, entries, caps, budget, seed=seed, pool=work,
                     fam_cfg=fam_cfg, risk_cfg=risk_cfg, own_by_contest=own_by, dup_by_contest=dup_by,
-                    field_cal=field_cal, fees_cents=fees)
+                    field_cal=field_cal, fees_cents=fees, rule_families=rule_fams)
     timings["selection_s"] = round(time.perf_counter() - t, 3)
     timings["selection_peak_mb"] = peak_mb()
     by_entry = {e: arrange_util(lu, work, starts) for e, lu in sel.by_entry.items()}
@@ -354,6 +358,8 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
     set_fields_fn(m, a_s, pool)
     m["statuses"].update({k: evidence[k] for k in ("PAYOUT_SOURCE", "OUTCOME_CALIBRATION", "FIELD_CALIBRATION")})
     m["statuses"].update(risk_statuses(sel, caps))
+    m["statuses"]["OWN_GOALIE"] = og_mod.audit(a_s.by_entry, {e.entry_id: contests[str(e.contest_id)].family for e in entries.entries},
+                                               work, risk_cfg)
     if not vs["public_replaced"] or any(r.kind == "REPEAT" for r in sel.relaxations):
         m["statuses"]["DELIVERY_STATUS"] = DeliveryStatus.DEGRADED_REVIEW.value
     m["worked"].append(f"scenario pass published v{vs['version']} ({sets['selection'].n} selection and "

@@ -56,12 +56,17 @@ def generate(
     distinct: bool = True,
     min_pairwise_diff: int = 2,
     mip_rel_gap: float | None = None,
+    avoid_own_goalie: bool = False,
 ) -> list[Candidate]:
     """Up to n candidates. Fewer come back when the budget ends or every family is exhausted.
 
     groups_menu: (family name, group constraints) entries; draw i uses entry i mod len.
     An empty menu is one family, "base", with no groups.
     mip_rel_gap: HiGHS relative MIP gap (None: the solver default); C8's field sampler loosens it.
+    avoid_own_goalie: C20 (flags 51 to 53): every family's model also forbids a skater who plays against the lineup's
+    goalie (Classic only). Off by default, and the field sampler never asks, so the modeled field is unchanged. A
+    family the rule makes infeasible is exhausted like any other, with fewer or no candidates returned; the selection
+    step, not this one, decides what an entry gets when that happens.
     """
     import numpy as np
 
@@ -79,7 +84,7 @@ def generate(
     models: dict[str, LineupModel | None] = {}
     for name, groups in menu:
         try:
-            models[name] = LineupModel(pool, mode, groups=tuple(groups))
+            models[name] = LineupModel(pool, mode, groups=tuple(groups), avoid_own_goalie=avoid_own_goalie)
         except InfeasibleInput:
             models[name] = None
     exhausted = {name for name, m in models.items() if m is None}
