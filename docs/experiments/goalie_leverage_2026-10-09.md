@@ -90,3 +90,66 @@ same rule. INCONCLUSIVE counts as not accepted. C20 is DONE on any verdict with 
 - Five seeds is a small sample; the rule above is stated for that sample.
 
 <!-- RESULT MARKER: everything below was appended after the arms ran; nothing above this line is edited -->
+
+## Result (appended 2026-10-09 after the arms ran; nothing above the marker was edited)
+
+**Verdict, by the rule above: A3 against A1 is INCONCLUSIVE. The term ships OFF (it always did). Nothing here promotes it.**
+
+What ran: `PYTHONHASHSEED=0 python scripts/c20_goalie_experiment.py --out <scratch> --scenario-n medium` on the code of commit `c385afc`
+(the term and the script) plus `6f6b9c0` (the script's own checks, committed before any arm), in a Linux cloud container with no other python
+process (checked at start), 22 runs in 577 seconds, interleaved by seed with the arm order rotated. Every run is the whole offline scenario
+pass in a scratch folder; the per-run records are `docs/experiments/goalie_leverage_2026-10-09_results.json`. The write guard refused 132
+writes, all appends of the line "dailyfaceoff offline: not cached" to `data/raw/observations/2026-10-09.jsonl` (the known gap: nothing
+redirects that log), and no network attempt was made. No other file under `data/`, `runs/` or `outputs/` was touched.
+
+Noise baseline (first, as written): A0 twice at seed 20261009 gave the identical ordered lineups (sha256 `d9e733baad71e1bc` both times, and the same as the
+A0 seed-0 run of the main sweep) and a metric difference of 0.000000, so the B98 nondeterminism did not appear on this idle container. The
+five-seed spread of A1 is sd 0.000342 (1.6 percent of its mean), so the minimum detectable effect is 2.78 x 0.000342 / sqrt(5) = 0.000425,
+1.96 percent of A1's mean: well under the 10 percent line, so step 1 of the rule did not fire.
+
+| Arm | Mean P(top 1%) per large_gpp entry, 5 seeds | Seeds (20261009 to 20261013) | Entries facing their own goalie (per seed) |
+|---|---:|---|---|
+| A0 today's tree | 0.019922 | 0.019822, 0.019187, 0.020630, 0.020260, 0.019710 | 18, 15, 23, 15, 14 |
+| A1 rule only (ships) | 0.021648 | 0.021385, 0.021380, 0.022143, 0.021465, 0.021868 | 0 in every seed |
+| A2 term only | 0.020732 | 0.021535, 0.020073, 0.021138, 0.020383, 0.020533 | 15, 15, 23, 14, 17 |
+| A3 rule and term | 0.022341 | 0.022305, 0.021233, 0.023370, 0.021815, 0.022980 | 0 in every seed |
+
+The decision, A3 minus A1 by seed: +0.000920, -0.000148, +0.001228, +0.000350, +0.001113. Mean 0.000692, standard error 0.000259.
+- Step 2 needs all of: mean >= 2.78 x se (0.000719): **not met, 0.000692 is 2.68 se**; mean >= 3 percent of A1's mean: met (3.20 percent);
+  RISK_BUDGET not BREACHED in any A3 seed where A1's was not: met (OK in all 22 runs); the GOALIE_CAP mode the same in A3 and A1:
+  met (DOLLARS 0.40 in all runs); at least 4 of 5 seeds above zero: met (4 of 5).
+- Step 3 (REJECT) needs a mean of 0 or less, or under 1 percent of A1's mean: not the case.
+- Step 4: INCONCLUSIVE. It missed the t test by 0.09 standard errors. The threshold is not moved: it was written before the run.
+
+Information only, deciding nothing: the rule against today's tree (A1 minus A0) is +0.001726 (+8.7 percent of A0's mean), and every one of
+the five seeds is higher; the term alone (A2 minus A0) is +0.000810 (+4.1 percent). These are modeled figures on the synthetic bed.
+
+Deviations from, and things the preregistration did not say, all decided before any arm was run unless marked:
+1. The bed is the committed `tests/fixtures/late_swap/classic` fixture (6 teams in 3 games, 2 goalies per team) with its entries file cloned
+   to 40 entries by the script, not a slate the script writes. It carries one OUT and one DTD skater. The contest is the fixture's
+   "NHL Synthetic Classic", which has no name pattern, so its family is the config default large_gpp; its field is the family prior (5,000
+   entries, FIELD_SIZE_SOURCE=PRIOR) of which 40 entries are ours, not a 40-entry field.
+2. Scenario counts are the script's "medium": design 1,000, selection 3,000, referee 3,000, field_target 1,000, against `risk.yaml`'s 5,000,
+   20,000 and 20,000. The preregistration did not state them. One plumbing run (A1, seed 20261009, medium) was made before the script's
+   checks were added; its metric, 0.021385, was seen, and it equals the later A1 seed-0 run exactly. It was not used to choose anything.
+3. The two goalies of a team have no history in this offline bed, so the sim gives each the same start probability and skill; the term
+   still moved them apart (the goalie points it added at seed 0 range from 2.41 to 4.50, higher for the second goalie of each team), but
+   the bed cannot say whether that is the right direction on a real slate.
+4. GOALIE_CAP was in DOLLARS mode in every run and does not depend on the arm, so the GOALIE_CAP condition of step 2 is vacuous here; RISK_BUDGET was OK
+   everywhere, so its condition is also uninformative here.
+5. The rule-on arms hold 474 candidates against 324: the provisional pass adds a second bank built with the rule (flag 52). A whole offline
+   run took 28.6 to 31.0 s with the rule on against 21.5 to 23.7 s with it off; `candidates.generate` alone took 1.4 s against 1.0 to 1.4 s for 150
+   candidates and 3.1 s against 2.0 s for 300 (one measurement, the 72-row fixture).
+6. The script sets the four NHL_DFS roots to the scratch folder and refuses writes under `data/`, `runs/` and `outputs/`, but `cache=None`
+   makes the offline run read the repo's own `data/raw` and history, which are nearly empty in this container (so the field and roles carry
+   no news and no odds: MODEL_STATUS, FIELD_CALIBRATION and PAYOUT_SOURCE are all PRIOR in every run, which the script asserts).
+
+What this does and does not say: on a synthetic, priors-only bed, the term's gain over the rule is about 3 percent of the metric with
+4 of 5 seeds positive and a t statistic just under the preregistered cut. That is a reason to run the real caches, not a finding about any
+real slate. The rule's own gain on the bed (8.7 percent) is a modeled figure from a simulator whose goalie and opponent-skater
+correlation is the mechanism the rule leans on; it is not a measured ROI.
+
+Next, and not done here (backlog B102): the same script on the real 2026-09-29 and 2026-09-30 inputs on Ben's machine
+(`--salary <runs folder>\<id>\inputs\DKSalaries.csv --entries <same folder>\DKEntries.csv --clock <the run's UTC start>`), which are in-sample for
+the rule and cannot support a claim about a new slate. Only a run that satisfies this same rule on real inputs can turn the term on, and
+turning it on is Ben's call.

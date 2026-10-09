@@ -1,0 +1,1421 @@
+[
+ {
+  "arm": "A0",
+  "seed": 20261009,
+  "tag": "noise-A0-first",
+  "ok": true,
+  "seconds": 24.4,
+  "candidates": 324,
+  "made": {
+   "central": 98,
+   "alternate": 37,
+   "priors_wrong": 15,
+   "goalie": 24
+  },
+  "goalie_term": {
+   "enabled": false,
+   "points": {}
+  },
+  "discovery_avoid_own_goalie": false,
+  "metric": 0.0198225,
+  "n_entries": 40,
+  "statuses": {
+   "RISK_BUDGET": "OK",
+   "GOALIE_CAP": "DOLLARS 0.40 (fee floor 0.10 <= budget)",
+   "GAME_CAP": "DOLLARS 0.40 (fee floor 0.35 <= budget)",
+   "OWN_GOALIE": "OFF(config own_goalie.enabled is false)",
+   "DELIVERY_STATUS": "CHECKED"
+  },
+  "own_goalie_conflicts": 18,
+  "goalie_entries": {
+   "alpha g1": 1,
+   "alpha g2": 5,
+   "bravo g1": 3,
+   "bravo g2": 9,
+   "charlie g2": 4,
+   "delta g2": 5,
+   "echo g1": 1,
+   "echo g2": 9,
+   "foxtrot g2": 3
+  },
+  "shared_failure_worst": [
+   {
+    "team": "BBB",
+    "fee_share_cashing_nothing": 0.7876,
+    "scenarios": 600
+   },
+   {
+    "team": "EEE",
+    "fee_share_cashing_nothing": 0.7856,
+    "scenarios": 600
+   },
+   {
+    "team": "FFF",
+    "fee_share_cashing_nothing": 0.7685,
+    "scenarios": 600
+   }
+  ],
+  "relaxations": [],
+  "lineups_sha": "d9e733baad71e1bc",
+  "failed": []
+ },
+ {
+  "arm": "A0",
+  "seed": 20261009,
+  "tag": "noise-A0-second",
+  "ok": true,
+  "seconds": 23.5,
+  "candidates": 324,
+  "made": {
+   "central": 98,
+   "alternate": 37,
+   "priors_wrong": 15,
+   "goalie": 24
+  },
+  "goalie_term": {
+   "enabled": false,
+   "points": {}
+  },
+  "discovery_avoid_own_goalie": false,
+  "metric": 0.0198225,
+  "n_entries": 40,
+  "statuses": {
+   "RISK_BUDGET": "OK",
+   "GOALIE_CAP": "DOLLARS 0.40 (fee floor 0.10 <= budget)",
+   "GAME_CAP": "DOLLARS 0.40 (fee floor 0.35 <= budget)",
+   "OWN_GOALIE": "OFF(config own_goalie.enabled is false)",
+   "DELIVERY_STATUS": "CHECKED"
+  },
+  "own_goalie_conflicts": 18,
+  "goalie_entries": {
+   "alpha g1": 1,
+   "alpha g2": 5,
+   "bravo g1": 3,
+   "bravo g2": 9,
+   "charlie g2": 4,
+   "delta g2": 5,
+   "echo g1": 1,
+   "echo g2": 9,
+   "foxtrot g2": 3
+  },
+  "shared_failure_worst": [
+   {
+    "team": "BBB",
+    "fee_share_cashing_nothing": 0.7876,
+    "scenarios": 600
+   },
+   {
+    "team": "EEE",
+    "fee_share_cashing_nothing": 0.7856,
+    "scenarios": 600
+   },
+   {
+    "team": "FFF",
+    "fee_share_cashing_nothing": 0.7685,
+    "scenarios": 600
+   }
+  ],
+  "relaxations": [],
+  "lineups_sha": "d9e733baad71e1bc",
+  "failed": []
+ },
+ {
+  "arm": "A0",
+  "seed": 20261009,
+  "tag": "A0-s0",
+  "ok": true,
+  "seconds": 23.0,
+  "candidates": 324,
+  "made": {
+   "central": 98,
+   "alternate": 37,
+   "priors_wrong": 15,
+   "goalie": 24
+  },
+  "goalie_term": {
+   "enabled": false,
+   "points": {}
+  },
+  "discovery_avoid_own_goalie": false,
+  "metric": 0.0198225,
+  "n_entries": 40,
+  "statuses": {
+   "RISK_BUDGET": "OK",
+   "GOALIE_CAP": "DOLLARS 0.40 (fee floor 0.10 <= budget)",
+   "GAME_CAP": "DOLLARS 0.40 (fee floor 0.35 <= budget)",
+   "OWN_GOALIE": "OFF(config own_goalie.enabled is false)",
+   "DELIVERY_STATUS": "CHECKED"
+  },
+  "own_goalie_conflicts": 18,
+  "goalie_entries": {
+   "alpha g1": 1,
+   "alpha g2": 5,
+   "bravo g1": 3,
+   "bravo g2": 9,
+   "charlie g2": 4,
+   "delta g2": 5,
+   "echo g1": 1,
+   "echo g2": 9,
+   "foxtrot g2": 3
+  },
+  "shared_failure_worst": [
+   {
+    "team": "BBB",
+    "fee_share_cashing_nothing": 0.7876,
+    "scenarios": 600
+   },
+   {
+    "team": "EEE",
+    "fee_share_cashing_nothing": 0.7856,
+    "scenarios": 600
+   },
+   {
+    "team": "FFF",
+    "fee_share_cashing_nothing": 0.7685,
+    "scenarios": 600
+   }
+  ],
+  "relaxations": [],
+  "lineups_sha": "d9e733baad71e1bc",
+  "failed": []
+ },
+ {
+  "arm": "A1",
+  "seed": 20261009,
+  "tag": "A1-s0",
+  "ok": true,
+  "seconds": 31.0,
+  "candidates": 474,
+  "made": {
+   "central": 98,
+   "alternate": 37,
+   "priors_wrong": 15,
+   "goalie": 24
+  },
+  "goalie_term": {
+   "enabled": false,
+   "points": {}
+  },
+  "discovery_avoid_own_goalie": true,
+  "metric": 0.021385,
+  "n_entries": 40,
+  "statuses": {
+   "RISK_BUDGET": "OK",
+   "GOALIE_CAP": "DOLLARS 0.40 (fee floor 0.10 <= budget)",
+   "GAME_CAP": "DOLLARS 0.40 (fee floor 0.35 <= budget)",
+   "OWN_GOALIE": "OK (rule on for 40 of 40 entries (large_gpp 40); 0 face their own goalie)",
+   "DELIVERY_STATUS": "CHECKED"
+  },
+  "own_goalie_conflicts": 0,
+  "goalie_entries": {
+   "alpha g2": 5,
+   "bravo g1": 1,
+   "bravo g2": 8,
+   "charlie g1": 1,
+   "charlie g2": 5,
+   "delta g2": 7,
+   "echo g2": 6,
+   "foxtrot g2": 7
+  },
+  "shared_failure_worst": [
+   {
+    "team": "BBB",
+    "fee_share_cashing_nothing": 0.7816,
+    "scenarios": 600
+   },
+   {
+    "team": "FFF",
+    "fee_share_cashing_nothing": 0.7796,
+    "scenarios": 600
+   },
+   {
+    "team": "DDD",
+    "fee_share_cashing_nothing": 0.7773,
+    "scenarios": 603
+   }
+  ],
+  "relaxations": [],
+  "lineups_sha": "39b40fde53f6eefb",
+  "failed": []
+ },
+ {
+  "arm": "A2",
+  "seed": 20261009,
+  "tag": "A2-s0",
+  "ok": true,
+  "seconds": 23.2,
+  "candidates": 324,
+  "made": {
+   "central": 98,
+   "alternate": 37,
+   "priors_wrong": 15,
+   "goalie": 24
+  },
+  "goalie_term": {
+   "enabled": true,
+   "points": {
+    "81000011": 2.413,
+    "81000012": 4.181,
+    "81000023": 3.313,
+    "81000024": 3.762,
+    "81000035": 2.449,
+    "81000036": 4.169,
+    "81000047": 3.054,
+    "81000048": 4.107,
+    "81000059": 2.665,
+    "81000060": 4.191,
+    "81000071": 3.151,
+    "81000072": 4.503
+   }
+  },
+  "discovery_avoid_own_goalie": false,
+  "metric": 0.021535000000000002,
+  "n_entries": 40,
+  "statuses": {
+   "RISK_BUDGET": "OK",
+   "GOALIE_CAP": "DOLLARS 0.40 (fee floor 0.10 <= budget)",
+   "GAME_CAP": "DOLLARS 0.40 (fee floor 0.35 <= budget)",
+   "OWN_GOALIE": "OFF(config own_goalie.enabled is false)",
+   "DELIVERY_STATUS": "CHECKED"
+  },
+  "own_goalie_conflicts": 15,
+  "goalie_entries": {
+   "alpha g2": 5,
+   "bravo g1": 1,
+   "bravo g2": 7,
+   "charlie g2": 3,
+   "delta g1": 1,
+   "delta g2": 6,
+   "echo g2": 10,
+   "foxtrot g2": 7
+  },
+  "shared_failure_worst": [
+   {
+    "team": "BBB",
+    "fee_share_cashing_nothing": 0.7815,
+    "scenarios": 600
+   },
+   {
+    "team": "DDD",
+    "fee_share_cashing_nothing": 0.7733,
+    "scenarios": 603
+   },
+   {
+    "team": "EEE",
+    "fee_share_cashing_nothing": 0.7708,
+    "scenarios": 600
+   }
+  ],
+  "relaxations": [],
+  "lineups_sha": "9bf02e03f88d817c",
+  "failed": []
+ },
+ {
+  "arm": "A3",
+  "seed": 20261009,
+  "tag": "A3-s0",
+  "ok": true,
+  "seconds": 30.6,
+  "candidates": 474,
+  "made": {
+   "central": 98,
+   "alternate": 37,
+   "priors_wrong": 15,
+   "goalie": 24
+  },
+  "goalie_term": {
+   "enabled": true,
+   "points": {
+    "81000011": 2.413,
+    "81000012": 4.181,
+    "81000023": 3.313,
+    "81000024": 3.762,
+    "81000035": 2.449,
+    "81000036": 4.169,
+    "81000047": 3.054,
+    "81000048": 4.107,
+    "81000059": 2.665,
+    "81000060": 4.191,
+    "81000071": 3.151,
+    "81000072": 4.503
+   }
+  },
+  "discovery_avoid_own_goalie": true,
+  "metric": 0.022305,
+  "n_entries": 40,
+  "statuses": {
+   "RISK_BUDGET": "OK",
+   "GOALIE_CAP": "DOLLARS 0.40 (fee floor 0.10 <= budget)",
+   "GAME_CAP": "DOLLARS 0.40 (fee floor 0.35 <= budget)",
+   "OWN_GOALIE": "OK (rule on for 40 of 40 entries (large_gpp 40); 0 face their own goalie)",
+   "DELIVERY_STATUS": "CHECKED"
+  },
+  "own_goalie_conflicts": 0,
+  "goalie_entries": {
+   "alpha g2": 4,
+   "bravo g1": 1,
+   "bravo g2": 7,
+   "charlie g1": 1,
+   "charlie g2": 4,
+   "delta g2": 8,
+   "echo g2": 9,
+   "foxtrot g2": 6
+  },
+  "shared_failure_worst": [
+   {
+    "team": "EEE",
+    "fee_share_cashing_nothing": 0.7832,
+    "scenarios": 600
+   },
+   {
+    "team": "DDD",
+    "fee_share_cashing_nothing": 0.7698,
+    "scenarios": 603
+   },
+   {
+    "team": "BBB",
+    "fee_share_cashing_nothing": 0.767,
+    "scenarios": 600
+   }
+  ],
+  "relaxations": [],
+  "lineups_sha": "5661f431af1ab610",
+  "failed": []
+ },
+ {
+  "arm": "A1",
+  "seed": 20261010,
+  "tag": "A1-s1",
+  "ok": true,
+  "seconds": 30.2,
+  "candidates": 474,
+  "made": {
+   "central": 98,
+   "alternate": 37,
+   "priors_wrong": 15,
+   "goalie": 24
+  },
+  "goalie_term": {
+   "enabled": false,
+   "points": {}
+  },
+  "discovery_avoid_own_goalie": true,
+  "metric": 0.02138,
+  "n_entries": 40,
+  "statuses": {
+   "RISK_BUDGET": "OK",
+   "GOALIE_CAP": "DOLLARS 0.40 (fee floor 0.10 <= budget)",
+   "GAME_CAP": "DOLLARS 0.40 (fee floor 0.35 <= budget)",
+   "OWN_GOALIE": "OK (rule on for 40 of 40 entries (large_gpp 40); 0 face their own goalie)",
+   "DELIVERY_STATUS": "CHECKED"
+  },
+  "own_goalie_conflicts": 0,
+  "goalie_entries": {
+   "alpha g1": 1,
+   "alpha g2": 5,
+   "bravo g1": 3,
+   "bravo g2": 13,
+   "charlie g2": 6,
+   "delta g2": 3,
+   "echo g2": 4,
+   "foxtrot g2": 5
+  },
+  "shared_failure_worst": [
+   {
+    "team": "BBB",
+    "fee_share_cashing_nothing": 0.8005,
+    "scenarios": 601
+   },
+   {
+    "team": "FFF",
+    "fee_share_cashing_nothing": 0.7714,
+    "scenarios": 603
+   },
+   {
+    "team": "DDD",
+    "fee_share_cashing_nothing": 0.7665,
+    "scenarios": 604
+   }
+  ],
+  "relaxations": [],
+  "lineups_sha": "d6867aefa943322e",
+  "failed": []
+ },
+ {
+  "arm": "A2",
+  "seed": 20261010,
+  "tag": "A2-s1",
+  "ok": true,
+  "seconds": 23.7,
+  "candidates": 324,
+  "made": {
+   "central": 98,
+   "alternate": 37,
+   "priors_wrong": 15,
+   "goalie": 24
+  },
+  "goalie_term": {
+   "enabled": true,
+   "points": {
+    "81000011": 2.529,
+    "81000012": 4.197,
+    "81000023": 3.558,
+    "81000024": 4.136,
+    "81000035": 2.396,
+    "81000036": 4.541,
+    "81000047": 2.806,
+    "81000048": 4.165,
+    "81000059": 3.08,
+    "81000060": 4.007,
+    "81000071": 2.868,
+    "81000072": 4.235
+   }
+  },
+  "discovery_avoid_own_goalie": false,
+  "metric": 0.0200725,
+  "n_entries": 40,
+  "statuses": {
+   "RISK_BUDGET": "OK",
+   "GOALIE_CAP": "DOLLARS 0.40 (fee floor 0.10 <= budget)",
+   "GAME_CAP": "DOLLARS 0.40 (fee floor 0.35 <= budget)",
+   "OWN_GOALIE": "OFF(config own_goalie.enabled is false)",
+   "DELIVERY_STATUS": "CHECKED"
+  },
+  "own_goalie_conflicts": 15,
+  "goalie_entries": {
+   "alpha g2": 5,
+   "bravo g1": 2,
+   "bravo g2": 12,
+   "charlie g2": 4,
+   "delta g2": 8,
+   "echo g2": 6,
+   "foxtrot g1": 1,
+   "foxtrot g2": 2
+  },
+  "shared_failure_worst": [
+   {
+    "team": "DDD",
+    "fee_share_cashing_nothing": 0.7939,
+    "scenarios": 604
+   },
+   {
+    "team": "BBB",
+    "fee_share_cashing_nothing": 0.7775,
+    "scenarios": 601
+   },
+   {
+    "team": "EEE",
+    "fee_share_cashing_nothing": 0.7742,
+    "scenarios": 605
+   }
+  ],
+  "relaxations": [],
+  "lineups_sha": "eb92e73c5fbaf32a",
+  "failed": []
+ },
+ {
+  "arm": "A3",
+  "seed": 20261010,
+  "tag": "A3-s1",
+  "ok": true,
+  "seconds": 30.3,
+  "candidates": 474,
+  "made": {
+   "central": 98,
+   "alternate": 37,
+   "priors_wrong": 15,
+   "goalie": 24
+  },
+  "goalie_term": {
+   "enabled": true,
+   "points": {
+    "81000011": 2.529,
+    "81000012": 4.197,
+    "81000023": 3.558,
+    "81000024": 4.136,
+    "81000035": 2.396,
+    "81000036": 4.541,
+    "81000047": 2.806,
+    "81000048": 4.165,
+    "81000059": 3.08,
+    "81000060": 4.007,
+    "81000071": 2.868,
+    "81000072": 4.235
+   }
+  },
+  "discovery_avoid_own_goalie": true,
+  "metric": 0.0212325,
+  "n_entries": 40,
+  "statuses": {
+   "RISK_BUDGET": "OK",
+   "GOALIE_CAP": "DOLLARS 0.40 (fee floor 0.10 <= budget)",
+   "GAME_CAP": "DOLLARS 0.40 (fee floor 0.35 <= budget)",
+   "OWN_GOALIE": "OK (rule on for 40 of 40 entries (large_gpp 40); 0 face their own goalie)",
+   "DELIVERY_STATUS": "CHECKED"
+  },
+  "own_goalie_conflicts": 0,
+  "goalie_entries": {
+   "alpha g1": 1,
+   "alpha g2": 6,
+   "bravo g1": 2,
+   "bravo g2": 11,
+   "charlie g2": 6,
+   "delta g2": 4,
+   "echo g2": 5,
+   "foxtrot g2": 5
+  },
+  "shared_failure_worst": [
+   {
+    "team": "BBB",
+    "fee_share_cashing_nothing": 0.7847,
+    "scenarios": 601
+   },
+   {
+    "team": "DDD",
+    "fee_share_cashing_nothing": 0.7726,
+    "scenarios": 604
+   },
+   {
+    "team": "FFF",
+    "fee_share_cashing_nothing": 0.7724,
+    "scenarios": 603
+   }
+  ],
+  "relaxations": [],
+  "lineups_sha": "19c6dd76be26ea74",
+  "failed": []
+ },
+ {
+  "arm": "A0",
+  "seed": 20261010,
+  "tag": "A0-s1",
+  "ok": true,
+  "seconds": 23.3,
+  "candidates": 324,
+  "made": {
+   "central": 98,
+   "alternate": 37,
+   "priors_wrong": 15,
+   "goalie": 24
+  },
+  "goalie_term": {
+   "enabled": false,
+   "points": {}
+  },
+  "discovery_avoid_own_goalie": false,
+  "metric": 0.0191875,
+  "n_entries": 40,
+  "statuses": {
+   "RISK_BUDGET": "OK",
+   "GOALIE_CAP": "DOLLARS 0.40 (fee floor 0.10 <= budget)",
+   "GAME_CAP": "DOLLARS 0.40 (fee floor 0.35 <= budget)",
+   "OWN_GOALIE": "OFF(config own_goalie.enabled is false)",
+   "DELIVERY_STATUS": "CHECKED"
+  },
+  "own_goalie_conflicts": 15,
+  "goalie_entries": {
+   "alpha g2": 7,
+   "bravo g1": 2,
+   "bravo g2": 11,
+   "charlie g1": 1,
+   "charlie g2": 4,
+   "delta g1": 1,
+   "delta g2": 5,
+   "echo g2": 6,
+   "foxtrot g1": 1,
+   "foxtrot g2": 2
+  },
+  "shared_failure_worst": [
+   {
+    "team": "DDD",
+    "fee_share_cashing_nothing": 0.7886,
+    "scenarios": 604
+   },
+   {
+    "team": "BBB",
+    "fee_share_cashing_nothing": 0.7738,
+    "scenarios": 601
+   },
+   {
+    "team": "FFF",
+    "fee_share_cashing_nothing": 0.7719,
+    "scenarios": 603
+   }
+  ],
+  "relaxations": [],
+  "lineups_sha": "e106a54395489969",
+  "failed": []
+ },
+ {
+  "arm": "A2",
+  "seed": 20261011,
+  "tag": "A2-s2",
+  "ok": true,
+  "seconds": 23.7,
+  "candidates": 324,
+  "made": {
+   "central": 98,
+   "alternate": 37,
+   "priors_wrong": 15,
+   "goalie": 24
+  },
+  "goalie_term": {
+   "enabled": true,
+   "points": {
+    "81000011": 2.789,
+    "81000012": 4.374,
+    "81000023": 3.053,
+    "81000024": 3.957,
+    "81000035": 2.825,
+    "81000036": 3.955,
+    "81000047": 3.078,
+    "81000048": 4.881,
+    "81000059": 2.266,
+    "81000060": 4.264,
+    "81000071": 2.786,
+    "81000072": 4.246
+   }
+  },
+  "discovery_avoid_own_goalie": false,
+  "metric": 0.0211375,
+  "n_entries": 40,
+  "statuses": {
+   "RISK_BUDGET": "OK",
+   "GOALIE_CAP": "DOLLARS 0.40 (fee floor 0.10 <= budget)",
+   "GAME_CAP": "DOLLARS 0.40 (fee floor 0.35 <= budget)",
+   "OWN_GOALIE": "OFF(config own_goalie.enabled is false)",
+   "DELIVERY_STATUS": "CHECKED"
+  },
+  "own_goalie_conflicts": 23,
+  "goalie_entries": {
+   "alpha g2": 5,
+   "bravo g2": 8,
+   "charlie g2": 7,
+   "delta g2": 8,
+   "echo g2": 4,
+   "foxtrot g2": 8
+  },
+  "shared_failure_worst": [
+   {
+    "team": "DDD",
+    "fee_share_cashing_nothing": 0.7807,
+    "scenarios": 601
+   },
+   {
+    "team": "BBB",
+    "fee_share_cashing_nothing": 0.7784,
+    "scenarios": 602
+   },
+   {
+    "team": "FFF",
+    "fee_share_cashing_nothing": 0.7767,
+    "scenarios": 601
+   }
+  ],
+  "relaxations": [],
+  "lineups_sha": "786a6b6a9ab5bd92",
+  "failed": []
+ },
+ {
+  "arm": "A3",
+  "seed": 20261011,
+  "tag": "A3-s2",
+  "ok": true,
+  "seconds": 30.3,
+  "candidates": 474,
+  "made": {
+   "central": 98,
+   "alternate": 37,
+   "priors_wrong": 15,
+   "goalie": 24
+  },
+  "goalie_term": {
+   "enabled": true,
+   "points": {
+    "81000011": 2.789,
+    "81000012": 4.374,
+    "81000023": 3.053,
+    "81000024": 3.957,
+    "81000035": 2.825,
+    "81000036": 3.955,
+    "81000047": 3.078,
+    "81000048": 4.881,
+    "81000059": 2.266,
+    "81000060": 4.264,
+    "81000071": 2.786,
+    "81000072": 4.246
+   }
+  },
+  "discovery_avoid_own_goalie": true,
+  "metric": 0.02337,
+  "n_entries": 40,
+  "statuses": {
+   "RISK_BUDGET": "OK",
+   "GOALIE_CAP": "DOLLARS 0.40 (fee floor 0.10 <= budget)",
+   "GAME_CAP": "DOLLARS 0.40 (fee floor 0.35 <= budget)",
+   "OWN_GOALIE": "OK (rule on for 40 of 40 entries (large_gpp 40); 0 face their own goalie)",
+   "DELIVERY_STATUS": "CHECKED"
+  },
+  "own_goalie_conflicts": 0,
+  "goalie_entries": {
+   "alpha g2": 6,
+   "bravo g2": 10,
+   "charlie g1": 1,
+   "charlie g2": 6,
+   "delta g1": 1,
+   "delta g2": 8,
+   "echo g2": 4,
+   "foxtrot g2": 4
+  },
+  "shared_failure_worst": [
+   {
+    "team": "FFF",
+    "fee_share_cashing_nothing": 0.7812,
+    "scenarios": 601
+   },
+   {
+    "team": "BBB",
+    "fee_share_cashing_nothing": 0.7685,
+    "scenarios": 602
+   },
+   {
+    "team": "DDD",
+    "fee_share_cashing_nothing": 0.7585,
+    "scenarios": 601
+   }
+  ],
+  "relaxations": [],
+  "lineups_sha": "8d3b69de8e3bb7cc",
+  "failed": []
+ },
+ {
+  "arm": "A0",
+  "seed": 20261011,
+  "tag": "A0-s2",
+  "ok": true,
+  "seconds": 23.6,
+  "candidates": 324,
+  "made": {
+   "central": 98,
+   "alternate": 37,
+   "priors_wrong": 15,
+   "goalie": 24
+  },
+  "goalie_term": {
+   "enabled": false,
+   "points": {}
+  },
+  "discovery_avoid_own_goalie": false,
+  "metric": 0.020630000000000003,
+  "n_entries": 40,
+  "statuses": {
+   "RISK_BUDGET": "OK",
+   "GOALIE_CAP": "DOLLARS 0.40 (fee floor 0.10 <= budget)",
+   "GAME_CAP": "DOLLARS 0.40 (fee floor 0.35 <= budget)",
+   "OWN_GOALIE": "OFF(config own_goalie.enabled is false)",
+   "DELIVERY_STATUS": "CHECKED"
+  },
+  "own_goalie_conflicts": 23,
+  "goalie_entries": {
+   "alpha g2": 6,
+   "bravo g2": 8,
+   "charlie g2": 7,
+   "delta g1": 1,
+   "delta g2": 6,
+   "echo g2": 4,
+   "foxtrot g2": 8
+  },
+  "shared_failure_worst": [
+   {
+    "team": "FFF",
+    "fee_share_cashing_nothing": 0.7815,
+    "scenarios": 601
+   },
+   {
+    "team": "BBB",
+    "fee_share_cashing_nothing": 0.776,
+    "scenarios": 602
+   },
+   {
+    "team": "DDD",
+    "fee_share_cashing_nothing": 0.7745,
+    "scenarios": 601
+   }
+  ],
+  "relaxations": [],
+  "lineups_sha": "08f9ec084b4957bd",
+  "failed": []
+ },
+ {
+  "arm": "A1",
+  "seed": 20261011,
+  "tag": "A1-s2",
+  "ok": true,
+  "seconds": 29.9,
+  "candidates": 474,
+  "made": {
+   "central": 98,
+   "alternate": 37,
+   "priors_wrong": 15,
+   "goalie": 24
+  },
+  "goalie_term": {
+   "enabled": false,
+   "points": {}
+  },
+  "discovery_avoid_own_goalie": true,
+  "metric": 0.022142500000000002,
+  "n_entries": 40,
+  "statuses": {
+   "RISK_BUDGET": "OK",
+   "GOALIE_CAP": "DOLLARS 0.40 (fee floor 0.10 <= budget)",
+   "GAME_CAP": "DOLLARS 0.40 (fee floor 0.35 <= budget)",
+   "OWN_GOALIE": "OK (rule on for 40 of 40 entries (large_gpp 40); 0 face their own goalie)",
+   "DELIVERY_STATUS": "CHECKED"
+  },
+  "own_goalie_conflicts": 0,
+  "goalie_entries": {
+   "alpha g2": 6,
+   "bravo g2": 11,
+   "charlie g1": 1,
+   "charlie g2": 7,
+   "delta g2": 6,
+   "echo g2": 3,
+   "foxtrot g2": 6
+  },
+  "shared_failure_worst": [
+   {
+    "team": "FFF",
+    "fee_share_cashing_nothing": 0.7837,
+    "scenarios": 601
+   },
+   {
+    "team": "BBB",
+    "fee_share_cashing_nothing": 0.7772,
+    "scenarios": 602
+   },
+   {
+    "team": "DDD",
+    "fee_share_cashing_nothing": 0.769,
+    "scenarios": 601
+   }
+  ],
+  "relaxations": [],
+  "lineups_sha": "d5a670e804a1c537",
+  "failed": []
+ },
+ {
+  "arm": "A3",
+  "seed": 20261012,
+  "tag": "A3-s3",
+  "ok": true,
+  "seconds": 30.2,
+  "candidates": 474,
+  "made": {
+   "central": 98,
+   "alternate": 37,
+   "priors_wrong": 15,
+   "goalie": 24
+  },
+  "goalie_term": {
+   "enabled": true,
+   "points": {
+    "81000011": 2.802,
+    "81000012": 4.402,
+    "81000023": 3.272,
+    "81000024": 4.442,
+    "81000035": 2.29,
+    "81000036": 4.327,
+    "81000047": 2.715,
+    "81000048": 4.106,
+    "81000059": 2.484,
+    "81000060": 3.904,
+    "81000071": 3.381,
+    "81000072": 3.957
+   }
+  },
+  "discovery_avoid_own_goalie": true,
+  "metric": 0.021815,
+  "n_entries": 40,
+  "statuses": {
+   "RISK_BUDGET": "OK",
+   "GOALIE_CAP": "DOLLARS 0.40 (fee floor 0.10 <= budget)",
+   "GAME_CAP": "DOLLARS 0.40 (fee floor 0.35 <= budget)",
+   "OWN_GOALIE": "OK (rule on for 40 of 40 entries (large_gpp 40); 0 face their own goalie)",
+   "DELIVERY_STATUS": "CHECKED"
+  },
+  "own_goalie_conflicts": 0,
+  "goalie_entries": {
+   "alpha g2": 10,
+   "bravo g2": 9,
+   "charlie g2": 9,
+   "delta g2": 6,
+   "echo g2": 2,
+   "foxtrot g2": 4
+  },
+  "shared_failure_worst": [
+   {
+    "team": "FFF",
+    "fee_share_cashing_nothing": 0.7742,
+    "scenarios": 604
+   },
+   {
+    "team": "EEE",
+    "fee_share_cashing_nothing": 0.7678,
+    "scenarios": 600
+   },
+   {
+    "team": "CCC",
+    "fee_share_cashing_nothing": 0.7666,
+    "scenarios": 601
+   }
+  ],
+  "relaxations": [],
+  "lineups_sha": "e5d1d89286ba0db0",
+  "failed": []
+ },
+ {
+  "arm": "A0",
+  "seed": 20261012,
+  "tag": "A0-s3",
+  "ok": true,
+  "seconds": 22.7,
+  "candidates": 324,
+  "made": {
+   "central": 98,
+   "alternate": 37,
+   "priors_wrong": 15,
+   "goalie": 24
+  },
+  "goalie_term": {
+   "enabled": false,
+   "points": {}
+  },
+  "discovery_avoid_own_goalie": false,
+  "metric": 0.02026,
+  "n_entries": 40,
+  "statuses": {
+   "RISK_BUDGET": "OK",
+   "GOALIE_CAP": "DOLLARS 0.40 (fee floor 0.10 <= budget)",
+   "GAME_CAP": "DOLLARS 0.40 (fee floor 0.35 <= budget)",
+   "OWN_GOALIE": "OFF(config own_goalie.enabled is false)",
+   "DELIVERY_STATUS": "CHECKED"
+  },
+  "own_goalie_conflicts": 15,
+  "goalie_entries": {
+   "alpha g2": 8,
+   "bravo g2": 11,
+   "charlie g2": 8,
+   "delta g2": 5,
+   "echo g2": 3,
+   "foxtrot g1": 1,
+   "foxtrot g2": 4
+  },
+  "shared_failure_worst": [
+   {
+    "team": "FFF",
+    "fee_share_cashing_nothing": 0.793,
+    "scenarios": 604
+   },
+   {
+    "team": "DDD",
+    "fee_share_cashing_nothing": 0.7769,
+    "scenarios": 600
+   },
+   {
+    "team": "CCC",
+    "fee_share_cashing_nothing": 0.7742,
+    "scenarios": 601
+   }
+  ],
+  "relaxations": [],
+  "lineups_sha": "23279306a7539df8",
+  "failed": []
+ },
+ {
+  "arm": "A1",
+  "seed": 20261012,
+  "tag": "A1-s3",
+  "ok": true,
+  "seconds": 29.5,
+  "candidates": 474,
+  "made": {
+   "central": 98,
+   "alternate": 37,
+   "priors_wrong": 15,
+   "goalie": 24
+  },
+  "goalie_term": {
+   "enabled": false,
+   "points": {}
+  },
+  "discovery_avoid_own_goalie": true,
+  "metric": 0.021465,
+  "n_entries": 40,
+  "statuses": {
+   "RISK_BUDGET": "OK",
+   "GOALIE_CAP": "DOLLARS 0.40 (fee floor 0.10 <= budget)",
+   "GAME_CAP": "DOLLARS 0.40 (fee floor 0.35 <= budget)",
+   "OWN_GOALIE": "OK (rule on for 40 of 40 entries (large_gpp 40); 0 face their own goalie)",
+   "DELIVERY_STATUS": "CHECKED"
+  },
+  "own_goalie_conflicts": 0,
+  "goalie_entries": {
+   "alpha g2": 10,
+   "bravo g2": 9,
+   "charlie g2": 9,
+   "delta g2": 5,
+   "echo g2": 2,
+   "foxtrot g2": 5
+  },
+  "shared_failure_worst": [
+   {
+    "team": "FFF",
+    "fee_share_cashing_nothing": 0.7779,
+    "scenarios": 604
+   },
+   {
+    "team": "CCC",
+    "fee_share_cashing_nothing": 0.7741,
+    "scenarios": 601
+   },
+   {
+    "team": "DDD",
+    "fee_share_cashing_nothing": 0.762,
+    "scenarios": 600
+   }
+  ],
+  "relaxations": [],
+  "lineups_sha": "4272ca2ffc1a5b08",
+  "failed": []
+ },
+ {
+  "arm": "A2",
+  "seed": 20261012,
+  "tag": "A2-s3",
+  "ok": true,
+  "seconds": 22.8,
+  "candidates": 324,
+  "made": {
+   "central": 98,
+   "alternate": 37,
+   "priors_wrong": 15,
+   "goalie": 24
+  },
+  "goalie_term": {
+   "enabled": true,
+   "points": {
+    "81000011": 2.802,
+    "81000012": 4.402,
+    "81000023": 3.272,
+    "81000024": 4.442,
+    "81000035": 2.29,
+    "81000036": 4.327,
+    "81000047": 2.715,
+    "81000048": 4.106,
+    "81000059": 2.484,
+    "81000060": 3.904,
+    "81000071": 3.381,
+    "81000072": 3.957
+   }
+  },
+  "discovery_avoid_own_goalie": false,
+  "metric": 0.0203825,
+  "n_entries": 40,
+  "statuses": {
+   "RISK_BUDGET": "OK",
+   "GOALIE_CAP": "DOLLARS 0.40 (fee floor 0.10 <= budget)",
+   "GAME_CAP": "DOLLARS 0.40 (fee floor 0.35 <= budget)",
+   "OWN_GOALIE": "OFF(config own_goalie.enabled is false)",
+   "DELIVERY_STATUS": "CHECKED"
+  },
+  "own_goalie_conflicts": 14,
+  "goalie_entries": {
+   "alpha g2": 8,
+   "bravo g2": 9,
+   "charlie g2": 9,
+   "delta g2": 6,
+   "echo g2": 3,
+   "foxtrot g1": 1,
+   "foxtrot g2": 4
+  },
+  "shared_failure_worst": [
+   {
+    "team": "FFF",
+    "fee_share_cashing_nothing": 0.7964,
+    "scenarios": 604
+   },
+   {
+    "team": "DDD",
+    "fee_share_cashing_nothing": 0.7716,
+    "scenarios": 600
+   },
+   {
+    "team": "CCC",
+    "fee_share_cashing_nothing": 0.7679,
+    "scenarios": 601
+   }
+  ],
+  "relaxations": [],
+  "lineups_sha": "476900033671a4de",
+  "failed": []
+ },
+ {
+  "arm": "A0",
+  "seed": 20261013,
+  "tag": "A0-s4",
+  "ok": true,
+  "seconds": 21.6,
+  "candidates": 324,
+  "made": {
+   "central": 98,
+   "alternate": 37,
+   "priors_wrong": 15,
+   "goalie": 24
+  },
+  "goalie_term": {
+   "enabled": false,
+   "points": {}
+  },
+  "discovery_avoid_own_goalie": false,
+  "metric": 0.01971,
+  "n_entries": 40,
+  "statuses": {
+   "RISK_BUDGET": "OK",
+   "GOALIE_CAP": "DOLLARS 0.40 (fee floor 0.10 <= budget)",
+   "GAME_CAP": "DOLLARS 0.40 (fee floor 0.35 <= budget)",
+   "OWN_GOALIE": "OFF(config own_goalie.enabled is false)",
+   "DELIVERY_STATUS": "CHECKED"
+  },
+  "own_goalie_conflicts": 14,
+  "goalie_entries": {
+   "alpha g2": 8,
+   "bravo g2": 6,
+   "charlie g2": 3,
+   "delta g1": 1,
+   "delta g2": 7,
+   "echo g1": 2,
+   "echo g2": 6,
+   "foxtrot g2": 7
+  },
+  "shared_failure_worst": [
+   {
+    "team": "DDD",
+    "fee_share_cashing_nothing": 0.7992,
+    "scenarios": 605
+   },
+   {
+    "team": "EEE",
+    "fee_share_cashing_nothing": 0.7722,
+    "scenarios": 603
+   },
+   {
+    "team": "AAA",
+    "fee_share_cashing_nothing": 0.7706,
+    "scenarios": 601
+   }
+  ],
+  "relaxations": [],
+  "lineups_sha": "ece23ce69f537f85",
+  "failed": []
+ },
+ {
+  "arm": "A1",
+  "seed": 20261013,
+  "tag": "A1-s4",
+  "ok": true,
+  "seconds": 29.1,
+  "candidates": 474,
+  "made": {
+   "central": 98,
+   "alternate": 37,
+   "priors_wrong": 15,
+   "goalie": 24
+  },
+  "goalie_term": {
+   "enabled": false,
+   "points": {}
+  },
+  "discovery_avoid_own_goalie": true,
+  "metric": 0.0218675,
+  "n_entries": 40,
+  "statuses": {
+   "RISK_BUDGET": "OK",
+   "GOALIE_CAP": "DOLLARS 0.40 (fee floor 0.10 <= budget)",
+   "GAME_CAP": "DOLLARS 0.40 (fee floor 0.35 <= budget)",
+   "OWN_GOALIE": "OK (rule on for 40 of 40 entries (large_gpp 40); 0 face their own goalie)",
+   "DELIVERY_STATUS": "CHECKED"
+  },
+  "own_goalie_conflicts": 0,
+  "goalie_entries": {
+   "alpha g2": 7,
+   "bravo g2": 8,
+   "charlie g2": 4,
+   "delta g2": 7,
+   "echo g2": 7,
+   "foxtrot g2": 7
+  },
+  "shared_failure_worst": [
+   {
+    "team": "DDD",
+    "fee_share_cashing_nothing": 0.7929,
+    "scenarios": 605
+   },
+   {
+    "team": "AAA",
+    "fee_share_cashing_nothing": 0.7718,
+    "scenarios": 601
+   },
+   {
+    "team": "FFF",
+    "fee_share_cashing_nothing": 0.7717,
+    "scenarios": 600
+   }
+  ],
+  "relaxations": [],
+  "lineups_sha": "70afb4c1166e14c5",
+  "failed": []
+ },
+ {
+  "arm": "A2",
+  "seed": 20261013,
+  "tag": "A2-s4",
+  "ok": true,
+  "seconds": 21.5,
+  "candidates": 324,
+  "made": {
+   "central": 98,
+   "alternate": 37,
+   "priors_wrong": 15,
+   "goalie": 24
+  },
+  "goalie_term": {
+   "enabled": true,
+   "points": {
+    "81000011": 2.73,
+    "81000012": 3.992,
+    "81000023": 3.315,
+    "81000024": 4.212,
+    "81000035": 2.153,
+    "81000036": 4.156,
+    "81000047": 2.958,
+    "81000048": 4.514,
+    "81000059": 2.513,
+    "81000060": 4.183,
+    "81000071": 3.007,
+    "81000072": 4.206
+   }
+  },
+  "discovery_avoid_own_goalie": false,
+  "metric": 0.020532500000000002,
+  "n_entries": 40,
+  "statuses": {
+   "RISK_BUDGET": "OK",
+   "GOALIE_CAP": "DOLLARS 0.40 (fee floor 0.10 <= budget)",
+   "GAME_CAP": "DOLLARS 0.40 (fee floor 0.35 <= budget)",
+   "OWN_GOALIE": "OFF(config own_goalie.enabled is false)",
+   "DELIVERY_STATUS": "CHECKED"
+  },
+  "own_goalie_conflicts": 17,
+  "goalie_entries": {
+   "alpha g2": 8,
+   "bravo g2": 6,
+   "charlie g2": 5,
+   "delta g2": 8,
+   "echo g1": 1,
+   "echo g2": 5,
+   "foxtrot g2": 7
+  },
+  "shared_failure_worst": [
+   {
+    "team": "DDD",
+    "fee_share_cashing_nothing": 0.797,
+    "scenarios": 605
+   },
+   {
+    "team": "FFF",
+    "fee_share_cashing_nothing": 0.7752,
+    "scenarios": 600
+   },
+   {
+    "team": "AAA",
+    "fee_share_cashing_nothing": 0.7719,
+    "scenarios": 601
+   }
+  ],
+  "relaxations": [],
+  "lineups_sha": "372cb0a0e862f9ab",
+  "failed": []
+ },
+ {
+  "arm": "A3",
+  "seed": 20261013,
+  "tag": "A3-s4",
+  "ok": true,
+  "seconds": 28.6,
+  "candidates": 474,
+  "made": {
+   "central": 98,
+   "alternate": 37,
+   "priors_wrong": 15,
+   "goalie": 24
+  },
+  "goalie_term": {
+   "enabled": true,
+   "points": {
+    "81000011": 2.73,
+    "81000012": 3.992,
+    "81000023": 3.315,
+    "81000024": 4.212,
+    "81000035": 2.153,
+    "81000036": 4.156,
+    "81000047": 2.958,
+    "81000048": 4.514,
+    "81000059": 2.513,
+    "81000060": 4.183,
+    "81000071": 3.007,
+    "81000072": 4.206
+   }
+  },
+  "discovery_avoid_own_goalie": true,
+  "metric": 0.02298,
+  "n_entries": 40,
+  "statuses": {
+   "RISK_BUDGET": "OK",
+   "GOALIE_CAP": "DOLLARS 0.40 (fee floor 0.10 <= budget)",
+   "GAME_CAP": "DOLLARS 0.40 (fee floor 0.35 <= budget)",
+   "OWN_GOALIE": "OK (rule on for 40 of 40 entries (large_gpp 40); 0 face their own goalie)",
+   "DELIVERY_STATUS": "CHECKED"
+  },
+  "own_goalie_conflicts": 0,
+  "goalie_entries": {
+   "alpha g2": 7,
+   "bravo g2": 7,
+   "charlie g2": 4,
+   "delta g1": 1,
+   "delta g2": 6,
+   "echo g2": 8,
+   "foxtrot g2": 7
+  },
+  "shared_failure_worst": [
+   {
+    "team": "DDD",
+    "fee_share_cashing_nothing": 0.7886,
+    "scenarios": 605
+   },
+   {
+    "team": "AAA",
+    "fee_share_cashing_nothing": 0.7698,
+    "scenarios": 601
+   },
+   {
+    "team": "EEE",
+    "fee_share_cashing_nothing": 0.7674,
+    "scenarios": 603
+   }
+  ],
+  "relaxations": [],
+  "lineups_sha": "fd45d2c0bd5a21b0",
+  "failed": []
+ }
+]
