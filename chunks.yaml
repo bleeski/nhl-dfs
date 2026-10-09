@@ -656,6 +656,9 @@ deferred:
   - item: "Pair composition of double stacks (B99)"
     trigger: "the next run of scripts/standings_synthesis.py: add the share of two-3+ lineups whose two teams play each other"
     backlog: [B99]
+  - item: "Composition of the sampled 5-stacks: 6-1-1 absent, 5-1-1-1 too frequent (B101)"
+    trigger: "C21's study needs 6-1-1 shapes in the field, or Ben asks: C46 landed the 5+ share (21.5 against 21.3) and not the shapes (6-1-1 0.0 against 6.3, 5-1-1-1 10.6)"
+    backlog: [B101]
 flag_recommendations:
   2: "Record Ben's 2026-10-02 answer in the flags table: 40% goalie and game fee share with the LINEUPS fallback (done in this plan); C27 fixes the feasibility test behind it."
   3: "Replace the placeholder mix with the observed one (5 to 10 entries per slate, 1 to 2 per contest, fees $0.10 to $1, 20-max and 150-max GPPs plus Showdown) so family priors and C21's sleeve sizes fit what Ben plays."
