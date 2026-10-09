@@ -97,6 +97,7 @@ def run_arm(arm: str, seed: int, salary: Path, entries: Path, clock: datetime, s
     conc = (sc.get("portfolio") or {}).get("concentration") or {}
     goalies = [next(v.row(r).person_key for r in lu if v.row(r).is_goalie) for lu in lineups]
     return {
+        "families": {f: sum(1 for e in sc.get("entries", []) if e["family"] == f) for f in sorted({e["family"] for e in sc.get("entries", [])})},
         "arm": arm, "seed": seed, "tag": tag, "ok": bool(res.ok and sc.get("version") and sc.get("version") == v.version),
         "seconds": round(time.perf_counter() - t0, 1), "candidates": disc.get("candidates"), "made": disc.get("made"),
         "goalie_term": disc.get("goalie_term"), "discovery_avoid_own_goalie": disc.get("avoid_own_goalie"),
@@ -148,7 +149,9 @@ def main(argv=None) -> int:
     ap.add_argument("--salary", type=Path, default=None, help="a real DKSalaries.csv (default: the committed synthetic bed)")
     ap.add_argument("--entries", type=Path, default=None, help="a real DKEntries.csv (with --salary)")
     ap.add_argument("--clock", default=None, help="UTC clock for a real slate, e.g. 2026-09-29T20:00:00Z (before its first game)")
-    ap.add_argument("--n-entries", type=int, default=40, help="entries cloned into the bed's contest")
+    ap.add_argument("--n-entries", type=int, default=None,
+                    help="entries cloned into one contest: the synthetic bed's default is 40; with --entries, the real file's first "
+                         "contest is cloned to this many (default: the file as it is). The metric is the mean over the large_gpp entries")
     ap.add_argument("--scenario-n", choices=sorted(SCENARIO_N), default="medium")
     ap.add_argument("--arms", nargs="+", default=list(ARMS), choices=list(ARMS))
     ap.add_argument("--seeds", type=int, default=5, help="5 is the preregistered sample")
@@ -166,13 +169,21 @@ def main(argv=None) -> int:
     if args.salary:
         salary, entries = args.salary.resolve(), args.entries.resolve()
         clock = datetime.fromisoformat(args.clock.replace("Z", "+00:00")) if args.clock else BED_CLOCK
-        source = f"real inputs {salary.name} / {entries.name} (in-sample if it is a 09-29 or 09-30 slate)"
+        if args.n_entries:  # B102: a real file holds a handful of entries; clone its first contest up so the metric has power
+            from pool_builder import clone_entries
+
+            cloned = out / "real_DKEntries_cloned.csv"
+            clone_entries(entries, cloned, args.n_entries)
+            entries = cloned
+        source = (f"real inputs {salary.name} / {args.entries.name}"
+                  f"{f' cloned to {args.n_entries} entries' if args.n_entries else ''} (in-sample if it is a 09-29 or 09-30 slate)")
     else:
         from pool_builder import clone_entries
 
+        n_bed = args.n_entries or 40
         salary, entries, clock = BED / "DKSalaries.csv", out / "bed_DKEntries.csv", BED_CLOCK
-        clone_entries(BED / "DKEntries.template.csv", entries, args.n_entries)
-        source = f"synthetic bed (late_swap fixture, {args.n_entries} entries): decides nothing about adoption"
+        clone_entries(BED / "DKEntries.template.csv", entries, n_bed)
+        source = f"synthetic bed (late_swap fixture, {n_bed} entries): decides nothing about adoption"
     n = SCENARIO_N[args.scenario_n]
     print(f"source: {source}; scenario_n {args.scenario_n} {n}", flush=True)
     results: list[dict] = []
