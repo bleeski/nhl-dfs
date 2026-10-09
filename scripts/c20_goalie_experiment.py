@@ -84,11 +84,22 @@ def run_arm(arm: str, seed: int, salary: Path, entries: Path, clock: datetime, s
     sc = m.get("scenario") or {}
     rows = [e for e in sc.get("entries", []) if e["family"] == "large_gpp"]
     v = packet.RunView(res.run)
+    # prove the arm ran its keys: a run that quietly ignored them (no solver, a swallowed error) must not reach a verdict
+    disc = sc.get("discovery") or {}
+    tm = (disc.get("goalie_term") or {}).get("enabled")
+    if disc.get("avoid_own_goalie") != rule or tm != term or not sum((disc.get("made") or {}).values()):
+        raise RuntimeError(f"{tag}: the run did not use the arm's keys (avoid_own_goalie={disc.get('avoid_own_goalie')}, "
+                           f"goalie_term={tm}, made={disc.get('made')}); expected rule={rule} term={term}")
+    for k in ("MODEL_STATUS", "FIELD_CALIBRATION", "PAYOUT_SOURCE"):
+        if m["statuses"].get(k) != "PRIOR":
+            raise RuntimeError(f"{tag}: {k}={m['statuses'].get(k)} (the preregistration says PRIOR)")
     lineups = list(v.lineups.values())
     conc = (sc.get("portfolio") or {}).get("concentration") or {}
     goalies = [next(v.row(r).person_key for r in lu if v.row(r).is_goalie) for lu in lineups]
     return {
-        "arm": arm, "seed": seed, "tag": tag, "ok": bool(res.ok and sc.get("version")), "seconds": round(time.perf_counter() - t0, 1),
+        "arm": arm, "seed": seed, "tag": tag, "ok": bool(res.ok and sc.get("version") and sc.get("version") == v.version),
+        "seconds": round(time.perf_counter() - t0, 1), "candidates": disc.get("candidates"), "made": disc.get("made"),
+        "goalie_term": disc.get("goalie_term"), "discovery_avoid_own_goalie": disc.get("avoid_own_goalie"),
         "metric": (sum(e["p_top1pct"] for e in rows) / len(rows)) if rows else None, "n_entries": len(rows),
         "statuses": {k: m["statuses"].get(k) for k in ("RISK_BUDGET", "GOALIE_CAP", "GAME_CAP", "OWN_GOALIE", "DELIVERY_STATUS")},
         "own_goalie_conflicts": sum(1 for lu in lineups if og.faces_own_goalie(lu, v.pool)),
@@ -103,6 +114,8 @@ def run_arm(arm: str, seed: int, salary: Path, entries: Path, clock: datetime, s
 def verdict(a1: list[dict], a3: list[dict]) -> dict:
     """The preregistered rule, in its order. a1 and a3 are the five seed runs of each arm, in seed order."""
     n = len(a1)
+    if n != len(a3) or not all(r["ok"] and r["metric"] is not None for r in (*a1, *a3)):
+        return {"verdict": "NO VERDICT: a run failed or its scenario version was not the published one", "n_seeds": n}
     x1 = [r["metric"] for r in a1]
     d = [b["metric"] - a["metric"] for a, b in zip(a1, a3)]
     mean1, mean_d = statistics.fmean(x1), statistics.fmean(d)
@@ -149,7 +162,7 @@ def main(argv=None) -> int:
 
     guard.install_guards(out)
     others = [p for p in os.popen("ps -eo pid,cmd | grep -E 'python|pytest' | grep -v grep | grep -v c20_goalie").read().splitlines()]
-    print(f"other python processes at start: {len(others)}", flush=True)
+    print(f"other python processes at start: {len(others)} {others[:3]}; PYTHONHASHSEED={os.environ.get('PYTHONHASHSEED')}", flush=True)
     if args.salary:
         salary, entries = args.salary.resolve(), args.entries.resolve()
         clock = datetime.fromisoformat(args.clock.replace("Z", "+00:00")) if args.clock else BED_CLOCK
@@ -180,10 +193,11 @@ def main(argv=None) -> int:
     same = a["lineups_sha"] == b["lineups_sha"]
     print(f"NOISE: same tree twice, identical lineups: {same}; metric difference {abs(a['metric'] - b['metric']):.6f}", flush=True)
     if not args.noise_only:
-        for arm in args.arms:
-            for i, s in enumerate(SEEDS[:args.seeds]):
+        for i, s in enumerate(SEEDS[:args.seeds]):  # seeds outer, arms inner with the order rotated, so no arm owns a time of day
+            order = args.arms[i % len(args.arms):] + args.arms[:i % len(args.arms)]
+            for arm in order:
                 go(arm, s, f"{arm}-s{i}")
-        by = {arm: [r for r in results if r["tag"].startswith(f"{arm}-s")] for arm in args.arms}
+        by = {arm: sorted((r for r in results if r["tag"].startswith(f"{arm}-s")), key=lambda r: r["seed"]) for arm in args.arms}
         summary = {"source": source, "scenario_n": args.scenario_n, "noise_identical_lineups": same,
                    "noise_metric_difference": abs(a["metric"] - b["metric"]),
                    "arm_means": {k: statistics.fmean(r["metric"] for r in v) for k, v in by.items() if v}}
@@ -196,7 +210,8 @@ def main(argv=None) -> int:
         (out / "summary.json").write_text(json.dumps(summary, indent=1, default=str), encoding="utf-8")
         print(json.dumps(summary, indent=1, default=str))
     print(f"writes refused: {len(guard.WRITES)}; network attempts blocked: {len(guard.NET)}; roots: {roots}", flush=True)
-    return 0
+    (out / "guard.json").write_text(json.dumps({"writes_refused": guard.WRITES, "network_blocked": guard.NET, "other_python_at_start": others}), encoding="utf-8")
+    return 1 if guard.WRITES else 0
 
 
 if __name__ == "__main__":
