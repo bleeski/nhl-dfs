@@ -651,7 +651,7 @@ deferred:
     trigger: "the next change to data/http.py, or a cached body that fails to parse after an interrupted run"
     backlog: [B96]
   - item: "B43 acceptance: the forecast's per-team 3+ stack share against the next 5 settled Classic slates, ownership error not rising"
-    trigger: "5 settled Classic slates after the C19 mixtures are switched on (field.classic_mixtures.enabled), read with the C11 and C29 settle grades"
+    trigger: "5 settled Classic slates built on one mixture, counted from the first live Classic run after the C46 pull request merges (field.classic_mixtures_team5.enabled; the RUN_NOTES shape line says `Classic mixture ON, team5 table`); runs built on the C19 table alone do not count; read with the C11 and C29 settle grades"
     backlog: [B43]
   - item: "Pair composition of double stacks (B99)"
     trigger: "the next run of scripts/standings_synthesis.py: add the share of two-3+ lineups whose two teams play each other"

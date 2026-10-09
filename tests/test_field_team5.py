@@ -301,13 +301,11 @@ def test_the_run_notes_line_names_the_table_in_force(big):
     from nhl_dfs.build import notes
 
     pool, proj, _, feats, util = big
-    for on, label in ((cfg_copy(True, True), "Classic mixture ON, team5 table"), (cfg_copy(True, False), "Classic mixture ON;"),
-                      (cfg_copy(False, True), "old mixture, Classic mixtures off")):
-        if on["field"]["classic_mixtures_team5"]["enabled"] and on["field"]["classic_mixtures"]["enabled"] and not shipped_team5():
-            continue  # no team5 table filled yet: nothing to name
+    for on, label in ((cfg_copy(True, True), "(Classic mixture ON, team5 table;"), (cfg_copy(True, False), "(Classic mixture ON;"),
+                      (cfg_copy(False, True), "(old mixture, Classic mixtures off;")):
         f = ff.sample_fast(pool, util, fm.behaviors_for_pool("large_gpp", pool, on), 300, 11, "large_gpp", proj=proj, feats=feats, cfg=on)
         line = notes._shape_line("large_gpp", fm.shape_report(f, pool, on))
-        assert f"({label}" in line or label in line
+        assert line.startswith(f"- Field shapes, large_gpp {label}")
 
 
 # -- the solve and the gate ------------------------------------------------------------------------------------------
