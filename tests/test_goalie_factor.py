@@ -117,8 +117,7 @@ def test_b37_a_dk_starting_p_goalie_resolves_the_team(run0, tmp_path):
     in_portfolio = _portfolio_goalie_teams(r.run)
     req = packet.research_request(r.run, now=BEFORE)
     teams = {p["team"] for p in _unresolved(req)}
-    if team not in in_portfolio:  # DK names its starter: nothing to ask about that team
-        assert team not in teams
+    assert team not in teams  # DK names its starter: that team is never asked about under the new reason, in the portfolio or not
     assert teams <= SLATE_TEAMS - in_portfolio - {team}
 
 
@@ -126,7 +125,7 @@ def test_b37_a_game_that_started_adds_no_goalies(run0):
     req = packet.research_request(run0.run, now=AFTER_FIRST)
     assert not any(p["team"] in {"AAA", "BBB"} for p in _unresolved(req))  # its rows are not selectable
     later = {"CCC", "DDD", "EEE", "FFF"} - _portfolio_goalie_teams(run0.run)
-    assert later <= {p["team"] for p in _unresolved(req)} or req["unresolved_goalie_teams_not_listed"]
+    assert {p["team"] for p in _unresolved(req)} == later and req["unresolved_goalie_teams_not_listed"] == []
 
 
 def test_b37_without_a_role_state_every_open_team_counts_as_unresolved(run0, monkeypatch):
@@ -181,7 +180,7 @@ def test_without_the_rule_a_conflict_is_the_optimum_and_with_it_none_is_ever_ret
     assert off.lineup is not None and og.faces_own_goalie(off.lineup, pool)  # the detector can fail
     on = milp.solve_lineup(pool, Mode.CLASSIC, obj, avoid_own_goalie=True)
     assert on.status in (SearchStatus.FEASIBLE, SearchStatus.TIME_LIMIT_WITH_INCUMBENT) and on.lineup is not None
-    assert not og.faces_own_goalie(on.lineup, pool) and on.objective_value <= off.objective_value + 1e-9
+    assert not og.faces_own_goalie(on.lineup, pool) and on.objective_value <= off.objective_value + 0.05  # the solver's 1e-4 gap
     rng = random.Random(7)
     for _ in range(25):
         rnd = {r.role_id: rng.uniform(0.0, 10.0) for r in pool.rows}
@@ -199,11 +198,11 @@ def test_the_constrained_optimum_equals_an_independent_formulation(pool):
         best = None
         for g in (r for r in pool.rows if r.is_goalie):
             ban = frozenset(r.role_id for r in pool.rows if not r.is_goalie and r.team == opp[g.team])
-            res = milp.solve_lineup(pool, Mode.CLASSIC, obj, exclude=ban,
-                                    groups=(milp.GroupConstraint(frozenset({g.role_id}), min_count=1),))
+            m = milp.LineupModel(pool, Mode.CLASSIC, exclude=ban, groups=(milp.GroupConstraint(frozenset({g.role_id}), min_count=1),))
+            res = m.solve(obj, mip_rel_gap=0.0)  # exact: the solver's default gap (1e-4) could differ by platform
             if res.lineup is not None and (best is None or res.objective_value > best):
                 best = res.objective_value
-        got = milp.solve_lineup(pool, Mode.CLASSIC, obj, avoid_own_goalie=True)
+        got = milp.LineupModel(pool, Mode.CLASSIC, avoid_own_goalie=True).solve(obj, mip_rel_gap=0.0)
         assert best is not None and got.objective_value == pytest.approx(best, abs=1e-6)
 
 
@@ -626,3 +625,64 @@ def test_the_config_validates_and_the_rule_ships_on_for_the_three_families():
         obj_mod.validate_risk_config(bad)
     with pytest.raises(ValueError):
         obj_mod.validate_risk_config({**cfg, "own_goalie": {"enabled": True, "families": ["lottery"]}})
+
+
+# ---- families survive a chain of late swaps; a failing check never stops a swap (review findings) -----------------
+
+from datetime import timedelta
+
+G1 = datetime(2026, 10, 15, 23, 0, tzinfo=timezone.utc)
+
+
+def test_the_family_survives_a_chain_of_late_swaps_and_the_rule_keeps_applying(ctrl_run, tmp_path):
+    tmp, r0 = ctrl_run
+    runs = tmp_path / "runs"
+    shutil.copytree(r0.run.path, runs / r0.run.run_id)
+    l1 = late_swap.run(r0.run.run_id, LS / "DKEntries.current.csv", runs_root=runs, outputs_root=tmp_path / "outputs",
+                       as_of=G1 + timedelta(minutes=10), offline=True)
+    assert l1.statuses["FILE_VALID"] == "TRUE"
+    s1 = l1.statuses["OWN_GOALIE"]
+    assert not s1.startswith("NOT_EVALUATED(contest family unknown"), s1
+    assert l1.manifest["families"] and set(l1.manifest["families"].values()) == {"large_gpp"}  # recorded for the next link
+    l2 = late_swap.run(l1.run.run_id, l1.run.version_file(1), runs_root=runs, outputs_root=tmp_path / "outputs",
+                       as_of=G1 + timedelta(minutes=20), offline=True, fast=True)
+    s2 = l2.statuses["OWN_GOALIE"]
+    assert not s2.startswith("NOT_EVALUATED(contest family unknown"), s2
+    assert l2.manifest["families"] == l1.manifest["families"]
+
+
+def test_a_failing_own_goalie_setup_is_a_line_and_the_swap_still_runs(ctrl_run, tmp_path, monkeypatch):
+    tmp, r0 = ctrl_run
+    runs = tmp_path / "runs"
+    shutil.copytree(r0.run.path, runs / r0.run.run_id)
+
+    def boom(*a, **k):
+        raise RuntimeError("risk config unreadable")
+
+    monkeypatch.setattr(og, "entry_families", boom)
+    res = late_swap.run(r0.run.run_id, LS / "DKEntries.current.csv", runs_root=runs, outputs_root=tmp_path / "outputs",
+                        as_of=G1 + timedelta(minutes=10), offline=True)
+    assert res.statuses["FILE_VALID"] == "TRUE" and res.manifest["versions"]  # the swap published
+    assert res.statuses["OWN_GOALIE"].startswith("NOT_EVALUATED(the own-goalie check failed: RuntimeError")
+
+
+def test_a_rule_on_solver_error_tries_the_rule_off_solve_before_the_fallback(pool, monkeypatch):
+    obj, g = _invite(pool)
+    real = milp.solve_lineup
+    seen = []
+
+    def fake(*a, avoid_own_goalie=False, **k):
+        seen.append(avoid_own_goalie)
+        if avoid_own_goalie:  # a time limit with no incumbent on the rule-on pass
+            return milp.SolveResult(SearchStatus.ERROR, None, None, 0.0, 1, "time limit with no incumbent")
+        return real(*a, avoid_own_goalie=False, **k)
+
+    monkeypatch.setattr(milp, "solve_lineup", fake)
+    lineup, route, relax, _ = _solve(pool, obj, {G_SLOT: g.role_id}, own=True)
+    assert route == "milp" and lineup is not None and seen[:2] == [True, False]
+    assert relax == (("OWN_GOALIE",) if og.faces_own_goalie(lineup, pool) else ())  # named only when the lineup really conflicts
+
+
+def test_an_explicit_empty_family_list_means_no_family_not_the_default_three():
+    assert og.settings({"own_goalie": {"enabled": True, "families": []}}) == (True, frozenset())
+    assert og.settings({"own_goalie": {"enabled": True}}) == (True, frozenset(og.DEFAULT_FAMILIES))

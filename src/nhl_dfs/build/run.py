@@ -613,10 +613,13 @@ def run_slate(
             "with the entries file you have now" if m.get("lock_stops") else None))
     _set_assignment_fields(m, a, spool)
     m["statuses"]["FILE_VALID"] = FileStatus.TRUE.value
-    from nhl_dfs.build import own_goalie as og_base
-    from nhl_dfs.build.objectives import load_risk_config as load_risk
+    try:  # C20: informational (v1 is family-blind); a failure is a line, never a failed Phase A
+        from nhl_dfs.build import own_goalie as og_base
+        from nhl_dfs.build.objectives import load_risk_config as load_risk
 
-    m["statuses"]["OWN_GOALIE"] = og_base.baseline_line(a.by_entry, spool, load_risk())  # C20: informational, v1 is family-blind
+        m["statuses"]["OWN_GOALIE"] = og_base.baseline_line(a.by_entry, spool, load_risk())
+    except Exception as exc:
+        m["statuses"]["OWN_GOALIE"] = f"NOT_EVALUATED(the own-goalie check failed: {type(exc).__name__}: {str(exc)[:100]})"
     degraded = (search.route != "milp" or any(r.kind == "REPEAT" for r in a.relaxations) or unknown
                 or not v1["public_replaced"] or bool(unrepaired))
     m["statuses"]["DELIVERY_STATUS"] = (DeliveryStatus.DEGRADED_REVIEW if degraded else DeliveryStatus.CHECKED).value
@@ -1145,15 +1148,21 @@ def _provisional_pass(run, entries, pool, after_b, st, starts, offline, runtime,
     from nhl_dfs.build import own_goalie as og_mod
     from nhl_dfs.build.objectives import load_risk_config
 
-    risk_cfg = load_risk_config()
-    rule_fams = og_mod.rule_families(risk_cfg, work.mode)  # C20: entries of these families avoid a skater against their goalie
-    if rule_fams & {c.family for c in contexts.values()}:
-        # Phase A's bank was built before the families were known, and about two thirds of it holds a skater against its own
-        # goalie: add a sleeve of the same size that cannot, so a rule-family entry has compliant candidates to take
-        sleeve = build_bank(work, objective_from(work, proj), len(entries.entries), runtime, seed=seed + 3,
-                            avoid_own_goalie=True).bank
-        have = {c.key for c in bank}
-        bank = list(bank) + [c for c in sleeve if c.key not in have]
+    og_error, risk_cfg, rule_fams = None, None, frozenset()
+    try:  # C20: entries of these families avoid a skater against their goalie; a failure is a report line, not a failed pass
+        risk_cfg = load_risk_config()
+        rule_fams = og_mod.rule_families(risk_cfg, work.mode)
+        if rule_fams & {c.family for c in contexts.values()} and milp.solver_available():
+            # Phase A's bank was built before the families were known, and about two thirds of it holds a skater against its own
+            # goalie: add a sleeve of the same size (the same time limit, at most 10 s) that cannot, so a rule-family entry has
+            # compliant candidates to take
+            sleeve = build_bank(work, objective_from(work, proj), len(entries.entries), runtime, seed=seed + 3,
+                                time_limit_s=min(float(runtime["candidates"]["time_limit_total_s"]), 10.0),
+                                avoid_own_goalie=True).bank
+            have = {c.key for c in bank}
+            bank = list(bank) + [c for c in sleeve if c.key not in have]
+    except Exception as exc:
+        og_error, rule_fams = og_mod.error_line(exc), frozenset()
     a_p, scored = prov.select(bank, proj, fb.marginals, contexts, entries, caps, fam_cfg, seed=seed, pool=work,
                               statuses=sel_statuses, later_start_utc=starts, own_cfg=own_cfg, rule_families=rule_fams)
 
@@ -1207,8 +1216,12 @@ def _provisional_pass(run, entries, pool, after_b, st, starts, offline, runtime,
     m["provisional"]["version"] = vp["version"]
     _set_assignment_fields(m, a_p, pool)
     m["statuses"].update(evidence)
-    m["statuses"]["OWN_GOALIE"] = og_mod.audit(a_p.by_entry, {e.entry_id: contexts[e.contest_id].family for e in entries.entries},
-                                               work, risk_cfg)
+    fam_of = {e.entry_id: contexts[e.contest_id].family for e in entries.entries}
+    m["families"] = dict(fam_of)  # every later version and child run reads the family from here (C20, flag 52)
+    try:
+        m["statuses"]["OWN_GOALIE"] = og_error or og_mod.audit(a_p.by_entry, fam_of, work, risk_cfg)
+    except Exception as exc:
+        m["statuses"]["OWN_GOALIE"] = og_mod.error_line(exc)
     if (not vp["public_replaced"] or any(r.kind == "REPEAT" for r in a_p.relaxations)
             or any(f["degraded"] for f in fields.values())):
         m["statuses"]["DELIVERY_STATUS"] = DeliveryStatus.DEGRADED_REVIEW.value

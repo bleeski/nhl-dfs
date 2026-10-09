@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from nhl_dfs.build import feasible, goalies, milp
+from nhl_dfs.build import own_goalie as og_mod
 from nhl_dfs.build import live as live_mod
 from nhl_dfs.build import swap_objective
 from nhl_dfs.build import locks as locks_mod
@@ -292,19 +293,19 @@ def _solve_entry(pool, mode, objective, before, pins, *, fast, exclude_rows, cap
     if milp.solver_available():
         last, errored = "", False
         for avoid in ((True, False) if own_goalie and mode is Mode.CLASSIC else (False,)):
+            errored = False
             for relax, caps_ex, ovl in ladder:
                 res = milp.solve_lineup(pool, mode, obj, exclude=frozenset(exclude_rows | caps_ex), locked=pins,
                                         max_overlap_with=ovl, time_limit_s=time_limit_s, avoid_own_goalie=avoid)
                 if res.lineup is not None:
                     if steps is not None:
                         steps.append((caps_ex, ovl, avoid))
-                    return res.lineup, "milp", (relax if avoid or not own_goalie else (*relax, "OWN_GOALIE")), ""
+                    dropped = own_goalie and not avoid and og_mod.faces_own_goalie(res.lineup, pool)
+                    return res.lineup, "milp", ((*relax, "OWN_GOALIE") if dropped else relax), ""
                 last = res.detail or res.status.value
                 if res.status is not SearchStatus.INFEASIBLE:
-                    errored = True  # ERROR: go to the feasibility fallback
+                    errored = True  # ERROR (a time limit is never infeasibility): try the pass without the rule, then the fallback
                     break
-            if errored:
-                break
         if not errored:
             return None, "milp", (), f"no legal repair with the pinned cells ({last})"
     # Fallback: pin the good open occupants too, then only the locks.
@@ -605,15 +606,31 @@ def swap_core(
     so = resolved.scenario if resolved is not None else None
     contest_of = {e.entry_id: str(e.contest_id) for e in current.entries}
     # C20 (flags 51, 52): entries of a rule family are re-solved with no skater against their goalie; the family comes from
-    # the scenario cache, the parent run's manifest or a contest-name pattern, never from the config default
-    from nhl_dfs.build import own_goalie as og_mod
-    from nhl_dfs.build.objectives import load_risk_config
-    from nhl_dfs.models.contests import load_contest_families
+    # the scenario cache (also when this run has none of its own: the nearest one up the parent chain), the run manifests
+    # (every child keeps a `families` record) or a contest-name pattern, never from the config default. A failure here is
+    # a line in the report and the swap goes on without the rule: this path runs minutes before lock.
+    og_error = None
+    risk_cfg, rule_fams, fam_of = None, frozenset(), {}
+    try:
+        from nhl_dfs.build import scenario_cache as sc_mod
+        from nhl_dfs.build.objectives import load_risk_config
+        from nhl_dfs.models.contests import load_contest_families
 
-    risk_cfg = so.risk_cfg if so is not None else load_risk_config()
-    rule_fams = og_mod.rule_families(risk_cfg, mode)
-    fam_of = (og_mod.entry_families(current, cache_family=(getattr(so.cache, "contest_family", None) if so is not None else None),
-                                    manifest=parent_m, fam_cfg=load_contest_families()) if mode is Mode.CLASSIC else {})
+        risk_cfg = so.risk_cfg if so is not None else load_risk_config()
+        if mode is Mode.CLASSIC:
+            cache_family = None
+            if so is not None:
+                cache_family = getattr(so.cache, "contest_family", None)
+            else:
+                found, _ = sc_mod.find(runs_root, parent.run_id)
+                cache_family = getattr(found, "contest_family", None)
+            rule_fams = og_mod.rule_families(risk_cfg, mode)
+            fam_of = og_mod.entry_families(current, cache_family=cache_family, manifest=parent_m,
+                                           fam_cfg=load_contest_families())
+            m["families"] = {eid: fam for eid, fam in fam_of.items() if fam}
+    except Exception as exc:
+        og_error = og_mod.error_line(exc)
+        rule_fams, fam_of = frozenset(), {}
     if so is not None:
         targets.sort(key=lambda x: contest_of[x])  # one sorted field per contest at a time (memory)
     final: dict[str, list[str | None]] = {eid: list(b) for eid, b in befores.items()}
@@ -683,7 +700,10 @@ def swap_core(
     m["entries"] = [{"entry_id": o.entry_id, "action": o.action, "route": o.route, "detail": o.detail,
                      "relaxations": list(o.relaxations)} for o in outcomes.values()]
     m["relaxations"] = [{"entry_id": o.entry_id, "kind": k, "detail": "late swap"} for o in outcomes.values() for k in o.relaxations]
-    m["statuses"]["OWN_GOALIE"] = og_mod.audit({eid: lu for eid, lu in final.items()}, fam_of, spool, risk_cfg, pins=pins)
+    try:
+        m["statuses"]["OWN_GOALIE"] = og_error or og_mod.audit({eid: lu for eid, lu in final.items()}, fam_of, spool, risk_cfg, pins=pins)
+    except Exception as exc:
+        m["statuses"]["OWN_GOALIE"] = og_mod.error_line(exc)
     for eid in sorted(ls.unreadable_entries):
         messages.append(f"entry {eid}: a cell could not be read or is not in the salary pool; entry left unchanged")
     unrepaired = [o for o in outcomes.values() if o.action == "unrepairable"]

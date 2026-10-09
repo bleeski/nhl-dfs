@@ -358,8 +358,12 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
     set_fields_fn(m, a_s, pool)
     m["statuses"].update({k: evidence[k] for k in ("PAYOUT_SOURCE", "OUTCOME_CALIBRATION", "FIELD_CALIBRATION")})
     m["statuses"].update(risk_statuses(sel, caps))
-    m["statuses"]["OWN_GOALIE"] = og_mod.audit(a_s.by_entry, {e.entry_id: contests[str(e.contest_id)].family for e in entries.entries},
-                                               work, risk_cfg)
+    fam_of = {e.entry_id: contests[str(e.contest_id)].family for e in entries.entries}
+    m["families"] = dict(fam_of)
+    try:
+        m["statuses"]["OWN_GOALIE"] = og_mod.audit(a_s.by_entry, fam_of, work, risk_cfg)
+    except Exception as exc:
+        m["statuses"]["OWN_GOALIE"] = og_mod.error_line(exc)
     if not vs["public_replaced"] or any(r.kind == "REPEAT" for r in sel.relaxations):
         m["statuses"]["DELIVERY_STATUS"] = DeliveryStatus.DEGRADED_REVIEW.value
     m["worked"].append(f"scenario pass published v{vs['version']} ({sets['selection'].n} selection and "

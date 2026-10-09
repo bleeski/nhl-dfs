@@ -25,7 +25,7 @@ DEFAULT_FAMILIES = ("large_gpp", "small_field", "wta")
 def settings(risk_cfg: Mapping | None) -> tuple[bool, frozenset[str]]:
     """(enabled, families) from config/risk.yaml own_goalie. A config without the block means off."""
     block = (risk_cfg or {}).get("own_goalie") or {}
-    return bool(block.get("enabled", False)), frozenset(block.get("families") or DEFAULT_FAMILIES)
+    return bool(block.get("enabled", False)), frozenset(block["families"] if "families" in block else DEFAULT_FAMILIES)
 
 
 def rule_families(risk_cfg: Mapping | None, mode: Mode) -> frozenset[str]:
@@ -49,7 +49,7 @@ def opponent_map(pool) -> dict[str, str]:
             continue
         try:
             info = parse_game_info(r.game_info)[1]
-        except ValueError:
+        except ValueError:  # DraftKings' "In-Progress" marker carries no teams: those teams stay unknown, and the audit names them
             continue
         out.setdefault(info.home, info.away)
         out.setdefault(info.away, info.home)
@@ -149,13 +149,20 @@ def baseline_line(by_entry: Mapping[str, Sequence[str | None]], pool, risk_cfg: 
 
 
 def families_from_manifest(m: Mapping) -> dict[str, str]:
-    """entry id -> contest family from a run manifest: the scenario pass's entry rows, else the provisional pass's."""
+    """entry id -> contest family from a run manifest: its `families` record (every child of a run keeps it, so the
+    family survives a chain of late swaps), else the scenario pass's entry rows, else the provisional pass's."""
     out: dict[str, str] = {}
     for block in ("provisional", "scenario"):  # the later pass wins
         for row in ((m.get(block) or {}).get("entries") or []):
             if row.get("entry_id") is not None and row.get("family"):
                 out[str(row["entry_id"])] = str(row["family"])
+    out.update({str(k): str(v) for k, v in (m.get("families") or {}).items() if v})
     return out
+
+
+def error_line(exc: BaseException) -> str:
+    """The OWN_GOALIE value when the rule's own setup or audit failed: the run goes on without the rule and says so."""
+    return f"NOT_EVALUATED(the own-goalie check failed: {type(exc).__name__}: {str(exc)[:100]}; the rule was not applied)"
 
 
 def families_by_name(entries, fam_cfg: Mapping) -> dict[str, str | None]:

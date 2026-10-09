@@ -367,9 +367,13 @@ def apply_round(run, round_no: int, proposals, cfg: dict | None = None, *, now: 
     from nhl_dfs.build import own_goalie as og_mod
     from nhl_dfs.models.contests import load_contest_families
 
-    rule_fams = og_mod.rule_families(risk_cfg, mode)
-    fam_of = (og_mod.entry_families(v.entries, cache_family=getattr(v.cache, "contest_family", None), manifest=v.m,
-                                    fam_cfg=load_contest_families()) if mode is Mode.CLASSIC else {})
+    og_error, rule_fams, fam_of = None, frozenset(), {}
+    try:  # a failure here is a report line, and QA goes on without the rule: it runs minutes before lock
+        rule_fams = og_mod.rule_families(risk_cfg, mode)
+        fam_of = (og_mod.entry_families(v.entries, cache_family=getattr(v.cache, "contest_family", None), manifest=v.m,
+                                        fam_cfg=load_contest_families()) if mode is Mode.CLASSIC else {})
+    except Exception as exc:
+        og_error, rule_fams, fam_of = og_mod.error_line(exc), frozenset(), {}
     cur = {e: list(lu) for e, lu in v.lineups.items()}
     excluded_people: dict[str, str] = {}  # person_key -> reason (correctness)
     so = None
@@ -600,7 +604,12 @@ def apply_round(run, round_no: int, proposals, cfg: dict | None = None, *, now: 
                                        "accepted_strategic": res.accepted_strategic, "version": pub.version,
                                        "changed_entries": sorted(changes), "notes": repair_notes})
         m["messages"] = list(m.get("messages", [])) + [f"QA round {round_no} published v{pub.version}"] + repair_notes
-        m["statuses"]["OWN_GOALIE"] = og_mod.audit(cur, fam_of, pool, risk_cfg, pins=pins)  # the version just published
+        try:  # the version just published; never lets a published file go without its manifest record
+            m["statuses"]["OWN_GOALIE"] = og_error or og_mod.audit(cur, fam_of, pool, risk_cfg, pins=pins)
+        except Exception as exc:
+            m["statuses"]["OWN_GOALIE"] = og_mod.error_line(exc)
+        if fam_of:
+            m["families"] = {e: f for e, f in fam_of.items() if f}
         if "RISK_BUDGET" in m["statuses"]:  # B40: the scenario pass measured the version before these changes
             m["statuses"]["RISK_BUDGET"] = (f"NOT_EVALUATED (v{pub.version} changed {len(changes)} entr"
                                             f"{'y' if len(changes) == 1 else 'ies'} after the scenario pass)")
