@@ -9,6 +9,9 @@ Arms (two keys of config/risk.yaml, flipped in memory for each run; the file is 
 The decision is A3 against A1, paired by seed. Every run is the whole OFFLINE scenario pass (`run_slate(scenario=True)`) in a
 scratch folder, because the scenario cache keeps only the selection and referee draws, not the design draws discovery uses.
 
+Set PYTHONHASHSEED=0 for the runs (PowerShell: $env:PYTHONHASHSEED="0"). Exit code 1 means a write other than the known observation-log
+append was refused.
+
 Data safety: the four NHL_DFS_* roots point into --out, the network is blocked and every write under the repo's data/, runs/,
 outputs/ or BACKLOG.md is refused and counted (the guard of scripts/c17_replay.py). Inputs are copied, never changed.
 
@@ -58,7 +61,8 @@ def set_roots(out: Path) -> dict[str, str]:
     return {k: str(v) for k, v in roots.items()}
 
 
-def run_arm(arm: str, seed: int, salary: Path, entries: Path, clock: datetime, scenario_n: dict, out: Path, tag: str) -> dict:
+def run_arm(arm: str, seed: int, salary: Path, entries: Path, clock: datetime, scenario_n: dict, out: Path, tag: str,
+            synthetic: bool = True) -> dict:
     """One whole offline scenario pass under the arm's two keys. Returns the figures the preregistration names."""
     import numpy  # noqa: F401  (imported before the guard's hooks matter)
 
@@ -90,15 +94,17 @@ def run_arm(arm: str, seed: int, salary: Path, entries: Path, clock: datetime, s
     if disc.get("avoid_own_goalie") != rule or tm != term or not sum((disc.get("made") or {}).values()):
         raise RuntimeError(f"{tag}: the run did not use the arm's keys (avoid_own_goalie={disc.get('avoid_own_goalie')}, "
                            f"goalie_term={tm}, made={disc.get('made')}); expected rule={rule} term={term}")
-    for k in ("MODEL_STATUS", "FIELD_CALIBRATION", "PAYOUT_SOURCE"):
-        if m["statuses"].get(k) != "PRIOR":
-            raise RuntimeError(f"{tag}: {k}={m['statuses'].get(k)} (the preregistration says PRIOR)")
+    ev = {k: m["statuses"].get(k) for k in ("MODEL_STATUS", "FIELD_CALIBRATION", "PAYOUT_SOURCE")}
+    if synthetic:  # the synthetic bed has no history, so the preregistration says PRIOR; a real slate may be MIXED or HISTORY (recorded)
+        for k, v_ in ev.items():
+            if v_ != "PRIOR":
+                raise RuntimeError(f"{tag}: {k}={v_} (the preregistration says PRIOR on the synthetic bed)")
     lineups = list(v.lineups.values())
     conc = (sc.get("portfolio") or {}).get("concentration") or {}
     goalies = [next(v.row(r).person_key for r in lu if v.row(r).is_goalie) for lu in lineups]
     return {
         "families": {f: sum(1 for e in sc.get("entries", []) if e["family"] == f) for f in sorted({e["family"] for e in sc.get("entries", [])})},
-        "arm": arm, "seed": seed, "tag": tag, "ok": bool(res.ok and sc.get("version") and sc.get("version") == v.version),
+        "evidence_states": ev, "arm": arm, "seed": seed, "tag": tag, "ok": bool(res.ok and sc.get("version") and sc.get("version") == v.version),
         "seconds": round(time.perf_counter() - t0, 1), "candidates": disc.get("candidates"), "made": disc.get("made"),
         "goalie_term": disc.get("goalie_term"), "discovery_avoid_own_goalie": disc.get("avoid_own_goalie"),
         "metric": (sum(e["p_top1pct"] for e in rows) / len(rows)) if rows else None, "n_entries": len(rows),
@@ -164,7 +170,8 @@ def main(argv=None) -> int:
     import c17_replay as guard  # the repo's write guard and network block
 
     guard.install_guards(out)
-    others = [p for p in os.popen("ps -eo pid,cmd | grep -E 'python|pytest' | grep -v grep | grep -v c20_goalie").read().splitlines()]
+    listing = os.popen("tasklist" if os.name == "nt" else "ps -eo pid,cmd").read().splitlines()
+    others = [x.strip() for x in listing if ("python" in x.lower() or "pytest" in x.lower()) and "c20_goalie" not in x]
     print(f"other python processes at start: {len(others)} {others[:3]}; PYTHONHASHSEED={os.environ.get('PYTHONHASHSEED')}", flush=True)
     if args.salary:
         salary, entries = args.salary.resolve(), args.entries.resolve()
@@ -189,7 +196,7 @@ def main(argv=None) -> int:
     results: list[dict] = []
 
     def go(arm, seed, tag):
-        r = run_arm(arm, seed, salary, entries, clock, n, out, tag)
+        r = run_arm(arm, seed, salary, entries, clock, n, out, tag, synthetic=not args.salary)
         results.append(r)
         print(f"{tag}: ok={r['ok']} metric={r['metric']} conflicts={r['own_goalie_conflicts']} {r['seconds']}s "
               f"{r['statuses']['RISK_BUDGET']} | {r['statuses']['OWN_GOALIE']}", flush=True)
@@ -222,7 +229,9 @@ def main(argv=None) -> int:
         print(json.dumps(summary, indent=1, default=str))
     print(f"writes refused: {len(guard.WRITES)}; network attempts blocked: {len(guard.NET)}; roots: {roots}", flush=True)
     (out / "guard.json").write_text(json.dumps({"writes_refused": guard.WRITES, "network_blocked": guard.NET, "other_python_at_start": others}), encoding="utf-8")
-    return 1 if guard.WRITES else 0
+    # the only write the offline run tries outside --out is the observation log (the known gap, refused and counted): exit 1 only
+    # for any other refused write
+    return 1 if [w for w in guard.WRITES if "observations" not in w] else 0
 
 
 if __name__ == "__main__":

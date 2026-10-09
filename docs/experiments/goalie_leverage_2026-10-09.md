@@ -119,7 +119,7 @@ The decision, A3 minus A1 by seed: +0.000920, -0.000148, +0.001228, +0.000350, +
   RISK_BUDGET not BREACHED in any A3 seed where A1's was not: met (OK in all 22 runs); the GOALIE_CAP mode the same in A3 and A1:
   met (DOLLARS 0.40 in all runs); at least 4 of 5 seeds above zero: met (4 of 5).
 - Step 3 (REJECT) needs a mean of 0 or less, or under 1 percent of A1's mean: not the case.
-- Step 4: INCONCLUSIVE. It missed the t test by 0.09 standard errors. The threshold is not moved: it was written before the run.
+- Step 4: INCONCLUSIVE. It missed the t test by 0.10 standard errors (2.68 against 2.78). The threshold is not moved: it was written before the run.
 
 Information only, deciding nothing: the rule against today's tree (A1 minus A0) is +0.001726 (+8.7 percent of A0's mean), and every one of
 the five seeds is higher; the term alone (A2 minus A0) is +0.000810 (+4.1 percent). These are modeled figures on the synthetic bed.
@@ -138,7 +138,7 @@ Deviations from, and things the preregistration did not say, all decided before 
 4. GOALIE_CAP was in DOLLARS mode in every run and does not depend on the arm, so the GOALIE_CAP condition of step 2 is vacuous here; RISK_BUDGET was OK
    everywhere, so its condition is also uninformative here.
 5. The rule-on arms hold 474 candidates against 324: the provisional pass adds a second bank built with the rule (flag 52). A whole offline
-   run took 28.6 to 31.0 s with the rule on against 21.5 to 23.7 s with it off; `candidates.generate` alone took 1.4 s against 1.0 to 1.4 s for 150
+   run took 28.6 to 31.0 s with the rule on against 21.5 to 24.4 s with it off; `candidates.generate` alone took 1.4 s against 1.0 to 1.4 s for 150
    candidates and 3.1 s against 2.0 s for 300 (one measurement, the 72-row fixture).
 6. The script sets the four NHL_DFS roots to the scratch folder and refuses writes under `data/`, `runs/` and `outputs/`, but `cache=None`
    makes the offline run read the repo's own `data/raw` and history, which are nearly empty in this container (so the field and roles carry
@@ -153,3 +153,18 @@ Next, and not done here (backlog B102): the same script on the real 2026-09-29 a
 (`--salary <runs folder>\<id>\inputs\DKSalaries.csv --entries <same folder>\DKEntries.csv --clock <the run's UTC start>`), which are in-sample for
 the rule and cannot support a claim about a new slate. Only a run that satisfies this same rule on real inputs can turn the term on, and
 turning it on is Ben's call.
+
+Corrections and additions after the final review (2026-10-09, same session, nothing here changes the verdict):
+- Two numbers above were wrong and are corrected in place: the t test was missed by 0.10 standard errors (mean 0.0006925, se 0.0002586,
+  t 2.678 against 2.78), not 0.09; and the rule-off runs took 21.5 to 24.4 s (the first noise run, 24.4 s, was left out).
+- The preregistration called "the sha256 check against origin/master" the proof that A0 is today's tree. It is
+  `scripts/c20_equality_check.py`, run on a `git archive` export of origin/master 3eec8d3 and on this checkout; the output is
+  `docs/experiments/goalie_leverage_2026-10-09_equality.txt`: 12 hashes printed by both trees (the field sampler four ways, `generate` as cash,
+  satellite and Showdown callers call it, `solve_lineup`, discovery with no rule asked, and the lineups of a whole offline run with both keys
+  off, `d9e733baad71e1bc`, which is also A0's hash in the sweep) are all equal.
+- The write guard's record of the sweep (132 refused writes, all to `data/raw/observations`; no network attempt; no other python process at
+  start) is committed as `docs/experiments/goalie_leverage_2026-10-09_guard.json`.
+- `scripts/c20_goalie_experiment.py` asserted PRIOR evidence states in every run, which would abort a real slate that has history
+  (MODEL_STATUS MIXED or HISTORY). It now asserts them on the synthetic bed only and records the three states for every run; the arms, seeds,
+  metric and verdict rule are untouched, and the sweep above ran on the previous version, whose only difference is that assertion. Its
+  `verdict()` is pinned to this result by `tests/test_goalie_factor.py`.

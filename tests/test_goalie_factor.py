@@ -769,3 +769,28 @@ def test_the_goalie_term_config_is_validated():
         c["discovery"]["goalie_term"] = bad
         with pytest.raises(ValueError):
             obj_mod.validate_risk_config(c)
+
+
+# ---- the experiment's verdict is pinned to the committed result ---------------------------------------------------
+
+def test_the_experiment_verdict_function_reproduces_the_committed_result():
+    """docs/experiments/goalie_leverage_2026-10-09.md says A3 against A1 is INCONCLUSIVE at 2.68 standard errors: the
+    script's verdict(), run on the committed per-run record, must say the same, and must refuse a failed run."""
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(root / "scripts"))
+    import c20_goalie_experiment as exp
+
+    runs = json.loads((root / "docs" / "experiments" / "goalie_leverage_2026-10-09_results.json").read_text(encoding="utf-8"))
+    by = {arm: sorted((r for r in runs if r["tag"].startswith(f"{arm}-s")), key=lambda r: r["seed"]) for arm in ("A1", "A3")}
+    assert [len(by["A1"]), len(by["A3"])] == [5, 5]
+    v = exp.verdict(by["A1"], by["A3"])
+    assert v["verdict"] == "INCONCLUSIVE" and v["positive_seeds"] == 4 and not v["mde_over_10pct"]
+    assert v["mean_diff"] == pytest.approx(0.0006925, abs=1e-7) and v["mean_diff"] / v["se_diff"] == pytest.approx(2.678, abs=0.002)
+    assert v["mean_diff"] / v["mean_A1"] == pytest.approx(0.0320, abs=0.0005)  # the 3 percent test is met; the t test is not
+    assert v["mde"] == pytest.approx(0.000425, abs=2e-6)
+    bad = [dict(r) for r in by["A3"]]
+    bad[0]["ok"] = False
+    assert exp.verdict(by["A1"], bad)["verdict"].startswith("NO VERDICT")
