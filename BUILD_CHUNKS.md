@@ -72,7 +72,7 @@ Ben's priority rule (2026-10-03), the repo's first ranking rule. Band 0, ahead o
 <!-- QUEUE:BEGIN -->
 Generated 2026-10-08 by `python tools/next_chunk.py --render-queue` from chunks.yaml and BUILD_STATUS.md. Do not edit by hand; edit chunks.yaml and rerun.
 
-DONE: C0a, C0b, C1, C2a, C2b, C2c, C3, C4, C5, C6, C7, C8, C9, C10, C11, C14, C15, C16, C38, C17, C39, C18, C19.
+DONE: C0a, C0b, C1, C2a, C2b, C2c, C3, C4, C5, C6, C7, C8, C9, C10, C11, C14, C15, C16, C38, C17, C39, C18, C19, C46.
 
 ### Defaults taken (overturn any in one line)
 
@@ -100,7 +100,7 @@ DONE: C0a, C0b, C1, C2a, C2b, C2c, C3, C4, C5, C6, C7, C8, C9, C10, C11, C14, C1
 |---|---|---|---|---|---|---|---|---|---|---|
 | 1 | C40 | 1 win | Daily Faceoff age gate keeps the last known lines | S | medium: config/roles.yaml max_line_age_h, models/roles.py:224 (the age gate), the Daily Faceoff adapter page stamp, tests with the CHI 28.7 h, FLA 36.9 h and COL 58.6 h cases | C7 | 35 | B73 | none | BLOCKED |
 | 2 | C20 | 1 win | Goalie as the top-1% factor, unresolved goalies in research, no skater against the lineup's goalie, goalie choice with leverage | M | high: build/packet.py research request (B37), build/candidates.py 155 and build/milp.py (the constraint), build/portfolio.py and build/objectives.py (goalie term), build/exposure.py shared-failure report | C18 | none | B37, B45 | none | TODO |
-| 3 | C21 | 1 win | Stack size by slate blow-up, discovery sleeves and the shape mix (experiment) | M | high: build/portfolio.py discovery families (risk.yaml discovery.*), build/candidates.py, the saved scenario caches of the 09-29 and 09-30 runs for the study, a docs/experiments/ preregistration | C19, C18 | none | B44, B22 | none | TODO |
+| 3 | C21 | 1 win | Stack size by slate blow-up, discovery sleeves and the shape mix (experiment) | M | high: build/portfolio.py discovery families (risk.yaml discovery.*), build/candidates.py, the saved scenario caches of the 09-29 and 09-30 runs for the study, a docs/experiments/ preregistration | C19, C18, C46 | none | B44, B22 | none | TODO |
 | 4 | C22 | 1 win | Chalk core kept, leverage applied to the depth slots (experiment) | S | medium: build/tiebreak.py, build/provisional.py 230, the own_then_dup region of build/portfolio.py | C19 | none | B46 | none | TODO |
 | 5 | C23 | 1 win | Showdown Captain choice, skater Captains, Captain leverage, team split sleeve (experiment) | M | medium: models/field.py captain rules, the Showdown branch of build/candidates.py and build/milp.py, build/exposure.py captain cap, config/ownership.yaml captain_rules | C20 | none | B49 | none | TODO |
 | 6 | C24 | 1 win | DTD participation inside the simulator | M | high: sim/game.py 614 (dressing step), sim/outcomes.py, models/roles.py p_play, tests/test_frozen_record.py (frozen records move) | C6 | none | B14 | none | TODO |
@@ -187,9 +187,9 @@ DONE: C0a, C0b, C1, C2a, C2b, C2c, C3, C4, C5, C6, C7, C8, C9, C10, C11, C14, C1
 | Keep the history store current between runs (B95): a local scheduled `history --refresh` outside the lock windows | Ben registers a local scheduled task for it (a Windows scheduled task is his to create), or C39's first weeks show runs starting on a store a day or more behind | B95 | none |
 | Cloud history backfill observed on the next cloud run (B71: the notes line names the bootstrap backfill, MODEL_STATUS is not PRIOR once it is done) | the next cloud-built slate: its RUN_NOTES History store line says the session's background backfill is running, done or failed, and after it is done the run prices players with history on HISTORY or MIXED | B71 | none |
 | HttpCache body writes are not atomic (B96) | the next change to data/http.py, or a cached body that fails to parse after an interrupted run | B96 | none |
-| B43 acceptance: the forecast's per-team 3+ stack share against the next 5 settled Classic slates, ownership error not rising | 5 settled Classic slates after the C19 mixtures are switched on (field.classic_mixtures.enabled), read with the C11 and C29 settle grades | B43 | none |
+| B43 acceptance: the forecast's per-team 3+ stack share against the next 5 settled Classic slates, ownership error not rising | 5 settled Classic slates built on one mixture, counted from the first live Classic run after the C46 pull request merges (field.classic_mixtures_team5.enabled; the RUN_NOTES shape line says `Classic mixture ON, team5 table`); runs built on the C19 table alone do not count; read with the C11 and C29 settle grades | B43 | none |
 | Pair composition of double stacks (B99) | the next run of scripts/standings_synthesis.py: add the share of two-3+ lineups whose two teams play each other | B99 | none |
-| A team5 rule for 5+ stacks in the field (B100, flag 47) | Ben answers flag 47, or before C21 starts: C21 depends on C19 and would study stack size against a field with almost no 5-stacks | B100 | none |
+| Composition of the sampled 5-stacks: 6-1-1 absent, 5-1-1-1 too frequent (B101) | C21's study needs 6-1-1 shapes in the field, or Ben asks: C46 landed the 5+ share (21.5 against 21.3) and not the shapes (6-1-1 0.0 against 6.3, 5-1-1-1 10.6) | B101 | none |
 <!-- QUEUE:END -->
 ## Chunk cards
 
@@ -912,6 +912,22 @@ def settle(run, standings: list[Standings], contests_final: dict[int, ContestDet
 
 **Do not.** Fit mixture weights from standings (that is C12's gate). Touch selection.
 
+### C46 · Field 5+ stacks, the team5 rule (band 1)
+
+**Depends on:** C19. **Read first:** this card; BACKLOG B100; flags 40, 45, 46, 47 and 49; `models/field.py` `stack_jobs` and `classic_mixture`; `models/field_fast.py` `StackSpec`, `_force_one` and `sample_fast`; `models/ownership.py` `_validate_classic_mixtures`; `config/ownership.yaml` field.behaviors and classic_mixtures; `scripts/c19_weights.py`; `tests/test_field_mix.py` (the flag 45 agreement test and the gate test).
+
+**Goal.** The sampled Classic field can hold 5+ stacks (5-2-1, 6-1-1) in about the share the pooled table shows (21.3%), and a run that does not switch it on is unchanged. Ben answered flag 47 yes on 2026-10-08; the rules for the solve, the gate and the stop lines are flag 49 and were written before any number below was run.
+
+**Why it ranks ahead of C20.** Ben's priority rule puts "ownership against the field and its stack mix" in band 1, and no band-0 item is open. C20 is also band 1 and M; this one is smaller and corrects the field every live Classic run has been built against since the C19 merge (0.6% 5+ stacks against 21.3%). C21 depends on it.
+
+**Create.** A `team5` stack rule (at least 5 skaters of one team, the team drawn in proportion to exp(implied total) as team3 and team4 are; Classic needs skaters from 3 teams, so the other 3 skaters come from at least 2 other teams and 5-3, 6-2 and 7-1 are never drawn) in `models/field.py` and `models/field_fast.py` through the same one-at-a-time forcing; a `stacker5` behavior; `field.classic_mixtures_team5` (its own `enabled`, shipped false, the same family and game-count bucket shape and validation as `classic_mixtures`; used instead of the C19 table only when both switches are on and the family is listed); `scripts/c46_weights.py` (the one-pass solve on the stand-in pool and the real-pool gate, modeled on `c19_weights.py`, which keeps its signatures); the RUN_NOTES shape line names which table is in force; `tests/test_field_team5.py`.
+
+**Tests.** The rule validates, `team5` is Classic only and a typo still fails; every vectorized team5 lineup is legal and no better than the MILP's, at most 2 of 40 need the MILP, mean value gap under 1% on two pools (flag 45's rule extended, flag 49); no draw has fewer than 3 skater teams; with the team5 switch off `behaviors_for_pool` returns the C19 weights exactly and the old-mixture golden hash (flag 44) is unchanged; with it on a family without a team5 table keeps the C19 table; the shipped weights are the script's solve in whole percent; the real-pool gate (`NHL_DFS_C46_POOL`) runs and is quoted, a skip is not a pass.
+
+**Exit checks.** `pytest -m c46 -q` green with the gate test running; `scripts/c46_weights.py --check --pool <copy>` output quoted; `python tests/bench_field.py` within budget with both switches on; the shape line prints the mixture in force on a rehearsal run. DONE only when the gate was run and recorded; `classic_mixtures_team5.enabled` stays false until then. A miss is BLOCKED with the numbers and no second solve.
+
+**Do not.** Edit the C19 table or its weights, or the `behaviors_for` no-mode path. Fit anything from standings (C12). Touch Showdown, selection or the exact-solver agreement of the older rules (B12, C35). Add a 6+ rule.
+
 ### C20 · Goalie as the top-1% factor (band 1)
 
 **Depends on:** C18. **Read first:** this card; BACKLOG B37, B45; flag 13; the goalie tables in `reviews/2026-10-03_standings_synthesis.md`; `build/packet.py` research request; `build/candidates.py` and `build/milp.py`; `build/exposure.py` shared failure; `build/portfolio.py` discovery per_goalie.
@@ -928,7 +944,7 @@ def settle(run, standings: list[Standings], contests_final: dict[int, ContestDet
 
 ### C21 · Stack size by slate blow-up (band 1, experiment)
 
-**Depends on:** C19, C18. **Read first:** this card; BACKLOG B44, B22; the by-slate table in `reviews/2026-10-03_standings_synthesis.md` §3; `config/risk.yaml` discovery; `build/portfolio.py` discovery families; the scenario caches of runs 20260929-222125-classic and 20260930-214909-classic.
+**Depends on:** C19, C18, C46. **Read first:** this card; BACKLOG B44, B22 and B101 (the field's 5-stacks are 5-2-1 and 5-1-1-1 only, 6-1-1 is absent: read any 5-2-1 against 6-1-1 comparison with that in mind); the by-slate table in `reviews/2026-10-03_standings_synthesis.md` §3; `config/risk.yaml` discovery; `build/portfolio.py` discovery families; the scenario caches of runs 20260929-222125-classic and 20260930-214909-classic.
 
 **Goal.** Measure, on saved scenario caches, the modeled top-1% equity of 4-3-1, 5-2-1, 6-1-1 and 3-3-2 shapes per slate size; add a stack-size sleeve only if the study supports it.
 

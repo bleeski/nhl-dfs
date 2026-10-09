@@ -258,7 +258,7 @@ def test_new_rules_are_classic_only():
         with pytest.raises(ValueError, match="Classic only"):
             fm.stack_jobs(rule, Mode.SHOWDOWN, 5, pool, {}, {})
     with pytest.raises(ValueError, match="unknown stack rule"):
-        fm.stack_jobs("team5", Mode.CLASSIC, 5, pool, {}, {})
+        fm.stack_jobs("team6", Mode.CLASSIC, 5, pool, {}, {})  # C46 made team5 a real rule: the typo is now team6
 
 
 # -- the MILP sampler on the new rules ------------------------------------------------------------------------
@@ -351,6 +351,7 @@ NEW = {"stacker4", "double_stack"}
 def cfg_copy(on: bool):
     cfg = copy.deepcopy(ownership.load_ownership_config())
     cfg["field"]["classic_mixtures"]["enabled"] = on
+    cfg["field"]["classic_mixtures_team5"]["enabled"] = False  # C46: these tests are about the C19 table
     return cfg
 
 
@@ -427,7 +428,7 @@ def test_the_classic_mixture_table_is_validated(edit, why):
 def test_the_new_stack_rules_validate_and_a_typo_does_not():
     cfg = cfg_copy(True)
     ownership.validate_ownership_config(cfg)
-    cfg["field"]["behaviors"]["stacker4"]["stack_rule"] = "team5"
+    cfg["field"]["behaviors"]["stacker4"]["stack_rule"] = "team6"  # C46 made team5 a real rule
     with pytest.raises(ValueError, match="stack_rule must be one of"):
         ownership.validate_ownership_config(cfg)
 

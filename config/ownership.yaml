@@ -67,8 +67,9 @@ field:
   # Behaviors. noise_sd: Gumbel noise sd in points per person. stack_rule: none | team3 (at
   # least three skaters from one team, the team drawn in proportion to exp(implied_total)) |
   # team4 (at least four from one team) | double_stack (at least four from one team and three
-  # from another, always 4-3-1; the pair drawn in proportion to exp(sum of implied totals)).
-  # team4 and double_stack are Classic only (C19).
+  # from another, always 4-3-1; the pair drawn in proportion to exp(sum of implied totals)) |
+  # team5 (at least five from one team, so 5-2-1, 5-1-1-1 or 6-1-1; C46). team4, double_stack and team5 are
+  # Classic only.
   # salary_left_pref: points gained per $1,000 left unspent. popularity_weight: the behavior's
   # objective is mean + popularity_weight * (u - mean); negative for contrarians.
   behaviors:
@@ -76,6 +77,7 @@ field:
     stacker:     {noise_sd: 3.0, stack_rule: team3, captain_rule: projection, salary_left_pref: 0.0, popularity_weight: 1.0}
     stacker4:    {noise_sd: 3.0, stack_rule: team4, captain_rule: projection, salary_left_pref: 0.0, popularity_weight: 1.0}
     double_stack: {noise_sd: 3.0, stack_rule: double_stack, captain_rule: projection, salary_left_pref: 0.0, popularity_weight: 1.0}
+    stacker5:    {noise_sd: 3.0, stack_rule: team5, captain_rule: projection, salary_left_pref: 0.0, popularity_weight: 1.0}
     stars_value: {noise_sd: 4.0, stack_rule: none,  captain_rule: stars,      salary_left_pref: 0.0, popularity_weight: 1.5}
     casual:      {noise_sd: 8.0, stack_rule: none,  captain_rule: stars,      salary_left_pref: 0.5, popularity_weight: 2.0}
     contrarian:  {noise_sd: 6.0, stack_rule: none,  captain_rule: value,      salary_left_pref: 0.0, popularity_weight: -0.5}
@@ -100,6 +102,19 @@ field:
       default: {optimizer: 0.07, stacker: 0.21, stacker4: 0.31, double_stack: 0.31, stars_value: 0.03, casual: 0.05, contrarian: 0.02}
     small_field:
       default: {optimizer: 0.07, stacker: 0.21, stacker4: 0.31, double_stack: 0.31, stars_value: 0.03, casual: 0.05, contrarian: 0.02}
+  # Classic mixtures with the C46 team5 behavior (flags 47 and 49), a table beside `classic_mixtures` with its own
+  # switch. Used instead of the C19 table for a family it lists, and only when `classic_mixtures.enabled` is also
+  # true. Same shape: family, then game-count bucket (only `default` filled), then weights summing to 1. The
+  # weights are a PRIOR from one grid search (scripts/c46_weights.py: each behavior alone on the synthetic 6-team
+  # stand-in pool against the pooled Field row, the 3+, 4+ and 5+ shares each within 3 points), not a fit from
+  # standings (C12). It shipped switched OFF and was switched ON on 2026-10-08, after the real-pool gate (flag 49)
+  # passed; set `enabled` to false to get the C19 table back. `classic_mixtures` and its weights are not edited by C46.
+  classic_mixtures_team5:
+    enabled: true
+    large_gpp:
+      default: {optimizer: 0.07, stacker: 0.22, stacker4: 0.08, double_stack: 0.33, stacker5: 0.21, stars_value: 0.03, casual: 0.04, contrarian: 0.02}
+    small_field:
+      default: {optimizer: 0.07, stacker: 0.22, stacker4: 0.08, double_stack: 0.33, stacker5: 0.21, stars_value: 0.03, casual: 0.04, contrarian: 0.02}
   # The pooled "Field" row of reviews/2026-10-03_standings_synthesis.md section 3: 14 Classic contests, 52,490
   # lineups, one week, three slate sizes (3, 5 and 8 games). It is the comparison the RUN_NOTES shape line
   # prints and the target the C19 weights were read off (flag 40). It is a prior, not a fit, and it includes

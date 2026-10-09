@@ -39,7 +39,8 @@ class Behavior:
     weight: float
     noise_sd: float
     # "none" | "team3" (Classic: >= 3 skaters of one team; Showdown: >= 4 of 6) | Classic only (C19):
-    # "team4" (>= 4 skaters of one team) | "double_stack" (>= 4 of one team and >= 3 of another, so 4-3-1)
+    # "team4" (>= 4 skaters of one team) | "double_stack" (>= 4 of one team and >= 3 of another, so 4-3-1) |
+    # "team5" (C46: >= 5 skaters of one team, so 5-2-1, 5-1-1-1 or 6-1-1)
     stack_rule: str
     captain_rule: str  # key of field.captain_rules
     salary_left_pref: float  # points gained per $1,000 unspent
@@ -92,14 +93,35 @@ class Marginals:
         return {"total": sum(self.own.values()), "cpt": cpt, "flex": sum(self.own.values()) - cpt}
 
 
-def classic_mixture(family: str, games: int | None, cfg: dict) -> dict | None:
-    """The C19 Classic mixture of a family for a slate of `games` games, or None when the switch is off or the
-    family has none (the caller then uses field.mixtures). `default` catches every pool, including one whose
-    game count is unknown (None or 0); a bucket such as "1-3" or "7+" overrides it for its game counts."""
-    cm = (cfg["field"].get("classic_mixtures") or {})
-    if not cm.get("enabled") or family not in cm:
+def _classic_table(family: str, cfg: dict) -> tuple[str, dict] | None:
+    """The Classic mixture table in force for `family`: ("team5", its buckets) when field.classic_mixtures_team5
+    (C46) is on, field.classic_mixtures is on too and the team5 table lists the family; ("classic", the C19 buckets)
+    when the C19 switch is on and lists it; None otherwise (the caller then uses field.mixtures)."""
+    fld = cfg["field"]
+    cm = fld.get("classic_mixtures") or {}
+    if not cm.get("enabled"):
         return None
-    buckets = cm[family]
+    t5 = fld.get("classic_mixtures_team5") or {}
+    if t5.get("enabled") and family in t5:
+        return "team5", t5[family]
+    return ("classic", cm[family]) if family in cm else None
+
+
+def classic_mixture_name(family: str, cfg: dict) -> str:
+    """"team5", "classic" or "old": which table `classic_mixture` reads for a Classic `family`."""
+    tab = _classic_table(family, cfg)
+    return tab[0] if tab else "old"
+
+
+def classic_mixture(family: str, games: int | None, cfg: dict) -> dict | None:
+    """The C19 Classic mixture of a family for a slate of `games` games (the C46 team5 table when its switch is
+    on), or None when the switch is off or the family has none (the caller then uses field.mixtures). `default`
+    catches every pool, including one whose game count is unknown (None or 0); a bucket such as "1-3" or "7+"
+    overrides it for its game counts."""
+    tab = _classic_table(family, cfg)
+    if tab is None:
+        return None
+    buckets = tab[1]
     if games:
         for key, mix in buckets.items():
             if key != "default":
@@ -159,7 +181,8 @@ def stack_jobs(rule: str, mode: Mode, n: int, pool: SalaryPool, skaters_by_team:
     """(requirements, draws) jobs for one behavior's n draws, and a note when the rule had to be dropped.
 
     "none": one unconstrained job. "team3": one job per team with enough skaters, draws split by
-    largest remainder in proportion to exp(implied total). "team4": the same with a minimum of 4.
+    largest remainder in proportion to exp(implied total). "team4" and "team5" (C46): the same with a minimum of
+    4 and 5; a 5-stack leaves 3 skaters that must come from 2 other teams (Classic needs 3 skater teams).
     "double_stack": one job per ordered pair (A with a minimum of 4, B with a minimum of 3), draws split in
     proportion to exp(total A + total B); DraftKings needs 3 skater teams, so every such lineup is 4-3-1.
     A rule no team or pair can satisfy falls back to one unconstrained job (as team3 always has) and says so.
@@ -171,8 +194,8 @@ def stack_jobs(rule: str, mode: Mode, n: int, pool: SalaryPool, skaters_by_team:
     if rule == "none" or n <= 0:
         return [((), n)], None
     size = {t: len({pool.by_role_id[x].person_key for x in rids}) for t, rids in skaters_by_team.items()}
-    if rule in ("team3", "team4"):
-        m = _stack_min(mode) if rule == "team3" else 4
+    if rule in ("team3", "team4", "team5"):
+        m = _stack_min(mode) if rule == "team3" else int(rule[-1])
         teams = sorted(t for t, s in size.items() if s >= m)
         if not teams:
             return [((), n)], (None if rule == "team3" else f"no team has {m} skaters; {n} draws unstacked")
@@ -427,7 +450,7 @@ def shape_report(fld: Field, pool: SalaryPool, cfg: dict) -> dict | None:
     return {
         "draws": mix["n"],
         "games": games,
-        "mixture": "classic" if classic_mixture(fld.family, games, cfg) else "old",
+        "mixture": classic_mixture_name(fld.family, cfg),
         "stack3": round(mix["stack3"], 1), "stack4": round(mix["stack4"], 1), "stack5": round(mix["stack5"], 1),
         "two3": round(mix["two3"], 1),
         "top_shapes": {s: round(v, 1) for s, v in list(mix["shapes"].items())[:6]},
