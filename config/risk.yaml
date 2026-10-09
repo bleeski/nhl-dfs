@@ -48,6 +48,14 @@ discovery:
   failure_quantile: 0.2          # priors wrong: scenarios where the chalk team's skater points are in its bottom 20%
   stress_sleeve_max: 0.10        # at most this share of entries from the priors-wrong family
   per_goalie: 2                  # Classic: central-objective candidates forced to hold each usable goalie (B36), on top
+  # The goalie term (C20, [BEN] flag 54; experiment docs/experiments/goalie_leverage_2026-10-09.md): every goalie row of every
+  # discovery job gains ceiling_weight * (q90 - mean) + leverage_weight * (top_share - own) points (portfolio.goalie_term_points).
+  # Hand-set by arithmetic, labeled PRIOR, never fitted. SHIPS OFF; turning it on needs Ben after a real-cache run (B102).
+  goalie_term:
+    enabled: false
+    ceiling_quantile: 0.9        # q90: the goalie's 90th percentile of points over the design scenarios
+    ceiling_weight: 0.25         # a quarter of the gap between that and his mean
+    leverage_weight: 10.0        # one point for each 10 percentage points of top-goalie share above his field ownership
 
 # Selection (build/portfolio.select): candidates are screened per contest to the best
 # max(screen_min, screen_per_entry x its entries) by field-only family utility plus each discovery

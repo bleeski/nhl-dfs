@@ -144,16 +144,38 @@ def team_points(scen: ob.ScenarioSet, pool) -> dict[str, np.ndarray]:
     return {t: scen.base[:, c].sum(axis=1) for t, c in sorted(cols.items())}
 
 
+def goalie_term_points(scen: ob.ScenarioSet, pool, cfg: Mapping, own: Mapping[str, float] | None) -> dict[str, float]:
+    """(C20, flag 54, the preregistered term) Points added to each goalie row's discovery objective:
+    ceiling_weight * (q90 - mean) + leverage_weight * (top_share - own), where over the design scenarios q90 is the
+    ceiling_quantile of the goalie's points, top_share the fraction of scenarios in which he scores the most of any goalie
+    in the pool (ties split equally) and own his ownership as a fraction in the biggest contest's sampled field (`own` is
+    role_id -> percent; a missing goalie counts 0). Skaters get nothing. Hand-set weights, never fitted (C12)."""
+    rows = [r for r in pool.rows if r.is_goalie and r.role_id in scen.col]
+    if len(rows) < 2:
+        return {}
+    pts = scen.base[:, [scen.col[r.role_id] for r in rows]].astype(np.float64) / 10.0
+    mean = pts.mean(axis=0)
+    hi = np.quantile(pts, float(cfg["ceiling_quantile"]), axis=0)
+    tops = pts == pts.max(axis=1, keepdims=True)
+    share = (tops / tops.sum(axis=1, keepdims=True)).mean(axis=0)
+    wc, wl = float(cfg["ceiling_weight"]), float(cfg["leverage_weight"])
+    return {r.role_id: wc * float(hi[j] - mean[j]) + wl * (float(share[j]) - float((own or {}).get(r.role_id, 0.0)) / 100.0)
+            for j, r in enumerate(rows)}
+
+
 def discover(pool, design: ob.ScenarioSet, n_total: int, runtime: dict, risk_cfg: dict, *, seed: int,
              chalk_team: str | None = None, families: Sequence[float] | None = None,
              time_limit_s: float | None = None, goalies: Sequence[str] = (),
-             avoid_own_goalie: bool = False) -> tuple[list[Candidate], dict]:
+             avoid_own_goalie: bool = False, own: Mapping[str, float] | None = None) -> tuple[list[Candidate], dict]:
     """Candidates tagged central / alternate:<team> / priors_wrong:<team>, plus (Classic, B36) up to
     discovery.per_goalie central-objective candidates forced to hold each usable goalie (person keys in
     `goalies`), tagged by goalie_tag, on top of n_total and its time share. Without them the
     perturbed central search may return almost no lineup without the projected top goalie, and the
     goalie cap can only relax. avoid_own_goalie (C20, flags 51 to 53): every job, the per-goalie menu included, forbids a skater who
     plays against the lineup's goalie (Classic only; the caller asks when the slate has a contest of a rule family).
+    own: role_id -> percent ownership in the biggest contest's field, for the goalie term (C20, flag 54), which
+    `discovery.goalie_term.enabled` switches on (shipped off; Classic only): every job's goalie rows gain
+    `goalie_term_points`, and with it off nothing here changes.
     Returns (candidates, report)."""
     from nhl_dfs.build import candidates as cand_mod
     from nhl_dfs.build.milp import GroupConstraint
@@ -165,16 +187,25 @@ def discover(pool, design: ob.ScenarioSet, n_total: int, runtime: dict, risk_cfg
     per = split_counts(list(fam), int(n_total))
     budget = float(time_limit_s if time_limit_s is not None else c["time_limit_total_s"])
     tp = team_points(design, pool)
-    jobs: list[tuple[str, dict, int]] = [("central", role_objective(design, pool), per[0])]
+    gt = d.get("goalie_term") or {}
+    term = goalie_term_points(design, pool, gt, own) if gt.get("enabled") and pool.mode is Mode.CLASSIC else {}
+
+    def objective(rows=None):
+        obj = role_objective(design, pool, rows)
+        for rid, v in term.items():
+            obj[rid] += v
+        return obj
+
+    jobs: list[tuple[str, dict, int]] = [("central", objective(), per[0])]
     teams = sorted(tp)
     for t, k in zip(teams, split_counts([1.0] * len(teams), per[1])):
         if k:
             rows = tp[t] >= np.quantile(tp[t], float(d["cluster_quantile"]))
-            jobs.append((f"alternate:{t}", role_objective(design, pool, rows), k))
+            jobs.append((f"alternate:{t}", objective(rows), k))
     if per[2] and teams:
         t = chalk_team if chalk_team in tp else max(teams, key=lambda x: float(tp[x].mean()))
         rows = tp[t] <= np.quantile(tp[t], float(d["failure_quantile"]))
-        jobs.append((f"priors_wrong:{t}", role_objective(design, pool, rows), per[2]))
+        jobs.append((f"priors_wrong:{t}", objective(rows), per[2]))
     total_k = sum(k for _, _, k in jobs) or 1
     menu = []
     if pool.mode is Mode.CLASSIC and int(d.get("per_goalie", 0)) > 0:
@@ -185,10 +216,11 @@ def discover(pool, design: ob.ScenarioSet, n_total: int, runtime: dict, risk_cfg
         menu = [(goalie_tag(g), (GroupConstraint(frozenset(rows_of[g]), min_count=1),)) for g in sorted(set(goalies))
                 if g in rows_of]
     if menu:  # one draw per goalie in turn (candidates.generate cycles the menu)
-        jobs.append(("goalie", role_objective(design, pool), int(d["per_goalie"]) * len(menu)))
+        jobs.append(("goalie", objective(), int(d["per_goalie"]) * len(menu)))
     out: list[Candidate] = []
     seen: set[str] = set()
-    report = {"target": dict(zip(("central", "alternate", "priors_wrong"), per)), "made": Counter(), "avoid_own_goalie": bool(avoid_own_goalie)}
+    report = {"target": dict(zip(("central", "alternate", "priors_wrong"), per)), "made": Counter(), "avoid_own_goalie": bool(avoid_own_goalie),
+              "goalie_term": {"enabled": bool(term), "points": {k: round(v, 3) for k, v in sorted(term.items())}}}
     if menu:
         report["target"]["goalie"] = jobs[-1][2]
     for i, (name, obj, k) in enumerate(jobs):

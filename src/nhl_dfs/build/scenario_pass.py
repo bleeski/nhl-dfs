@@ -263,7 +263,8 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
     # C20 (flags 51, 52): the families of this slate's contests that the own-goalie rule covers (empty: off, Showdown, or none)
     rule_fams = og_mod.rule_families(risk_cfg, work.mode) & {ctx.family for ctx in contexts.values()}
     found, disc = pf.discover(work, sets["design"], n_total, runtime, risk_cfg, seed=seed + 7, chalk_team=chalk,
-                              goalies=exposure.usable_goalie_keys(proj, work), avoid_own_goalie=bool(rule_fams))
+                              goalies=exposure.usable_goalie_keys(proj, work), avoid_own_goalie=bool(rule_fams),
+                              own=fb.marginals[big.contest_id].own)
     cands = list(found)
     seen = {x.key for x in cands}
     extra = [(lu, "central:provisional") for lu in (prov["assignment"].by_entry.values() if prov else [])]

@@ -686,3 +686,86 @@ def test_a_rule_on_solver_error_tries_the_rule_off_solve_before_the_fallback(poo
 def test_an_explicit_empty_family_list_means_no_family_not_the_default_three():
     assert og.settings({"own_goalie": {"enabled": True, "families": []}}) == (True, frozenset())
     assert og.settings({"own_goalie": {"enabled": True}}) == (True, frozenset(og.DEFAULT_FAMILIES))
+
+
+# ---- the goalie term (flag 54): exact arithmetic, off means off, only goalie rows move -----------------------------
+
+import copy
+
+
+def _term_setup():
+    pool = classic_pool(teams=("AAA", "BBB", "CCC", "DDD"))
+    goalies = sorted((r for r in pool.rows if r.is_goalie), key=lambda r: r.team)
+    ids = [r.role_id for r in pool.rows]
+    col = {r: i for i, r in enumerate(ids)}
+    pts = {0: [20, 20] + [0] * 8, 1: [10] * 10, 2: [0, 0, 10] + [0] * 7, 3: [0] * 10}  # points per scenario, S = 10
+    base = np.zeros((10, len(ids)), np.int32)
+    for j, g in enumerate(goalies):
+        base[:, col[g.role_id]] = np.asarray(pts[j]) * 10  # tenths
+    skater = next(r for r in pool.rows if not r.is_goalie)
+    base[:, col[skater.role_id]] = 500  # a skater with a big score: it must get no term
+    return pool, goalies, skater, ob.ScenarioSet(ids, base, "design", 1)
+
+
+def test_the_goalie_term_is_the_preregistered_arithmetic_and_touches_only_goalies():
+    pool, g, skater, scen = _term_setup()
+    cfg = {"enabled": True, "ceiling_quantile": 0.9, "ceiling_weight": 0.25, "leverage_weight": 10.0}
+    own = {g[1].role_id: 30.0, skater.role_id: 99.0}  # percent
+    got = pf.goalie_term_points(scen, pool, cfg, own)
+    assert set(got) == {x.role_id for x in g}  # no skater
+    # g0: q90 20, mean 4, top share 0.2, own 0      -> 0.25 * 16 + 10 * 0.2          = 6.0
+    # g1: q90 10, mean 10, top share 0.75 (one tie), own 0.30 -> 0 + 10 * 0.45        = 4.5
+    # g2: q90 1.0, mean 1.0, top share 0.05, own 0   -> 0 + 10 * 0.05                 = 0.5
+    # g3: never the top goalie, flat 0               -> 0
+    assert got[g[0].role_id] == pytest.approx(6.0) and got[g[1].role_id] == pytest.approx(4.5)
+    assert got[g[2].role_id] == pytest.approx(0.5) and got[g[3].role_id] == pytest.approx(0.0)
+    assert pf.goalie_term_points(scen, pool, cfg, None)[g[1].role_id] == pytest.approx(7.5)  # no ownership known counts as 0
+
+
+def _objectives_seen(monkeypatch, pool, scen, cfg, own=None):
+    from nhl_dfs.build import candidates as cand_mod
+
+    seen = []
+
+    def fake(pool_, mode, objective, n, **k):
+        seen.append(dict(objective))
+        return []
+
+    monkeypatch.setattr(cand_mod, "generate", fake)
+    runtime = {"candidates": {"perturb_sd_points": 0.5, "time_limit_total_s": 5.0, "min_pairwise_diff": 2}}
+    _, report = pf.discover(pool, scen, 6, runtime, cfg, seed=1, goalies=[], own=own)
+    return seen, report
+
+
+def test_discovery_changes_only_goalie_rows_when_the_term_is_on_and_nothing_when_it_is_off(monkeypatch):
+    pool, g, skater, scen = _term_setup()
+    base_cfg = copy.deepcopy(RISK)
+    assert base_cfg["discovery"]["goalie_term"]["enabled"] is False  # ships off
+    off, rep_off = _objectives_seen(monkeypatch, pool, scen, base_cfg, {g[1].role_id: 30.0})
+    absent = copy.deepcopy(RISK)
+    del absent["discovery"]["goalie_term"]
+    none, _ = _objectives_seen(monkeypatch, pool, scen, absent)
+    assert off == none and rep_off["goalie_term"]["enabled"] is False  # off is the same as no term at all
+    on_cfg = copy.deepcopy(RISK)
+    on_cfg["discovery"]["goalie_term"].update({"enabled": True})
+    on, rep_on = _objectives_seen(monkeypatch, pool, scen, on_cfg, {g[1].role_id: 30.0})
+    assert len(on) == len(off) and rep_on["goalie_term"]["enabled"] is True
+    term = pf.goalie_term_points(scen, pool, on_cfg["discovery"]["goalie_term"], {g[1].role_id: 30.0})
+    for a, b in zip(off, on):
+        diff = {rid: b[rid] - a[rid] for rid in a if b[rid] != a[rid]}
+        assert set(diff) <= set(term) and skater.role_id not in diff  # only goalie rows moved
+        assert all(diff[rid] == pytest.approx(term[rid]) for rid in diff)
+    assert any(on[0][g[0].role_id] != off[0][g[0].role_id] for _ in [0])
+
+
+def test_the_goalie_term_config_is_validated():
+    from nhl_dfs.build import objectives as obj_mod
+
+    cfg = obj_mod.load_risk_config()
+    for bad in ({"enabled": 1, "ceiling_quantile": 0.9, "ceiling_weight": 0.25, "leverage_weight": 10.0},
+                {"enabled": False, "ceiling_quantile": 1.5, "ceiling_weight": 0.25, "leverage_weight": 10.0},
+                {"enabled": False, "ceiling_quantile": 0.9, "ceiling_weight": -1, "leverage_weight": 10.0}):
+        c = copy.deepcopy(cfg)
+        c["discovery"]["goalie_term"] = bad
+        with pytest.raises(ValueError):
+            obj_mod.validate_risk_config(c)
