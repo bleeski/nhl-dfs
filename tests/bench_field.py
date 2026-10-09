@@ -188,12 +188,12 @@ def bench(label: str, pool, proj, scen) -> bool:
             [pool.by_role_id[r] for r in res.lineup], Mode.CLASSIC)
         gaps.append((vm - vf) / abs(vm))
     stack_lines = []  # C19: the same agreement for the stack rules (flag 45), 40 draws each, team 0 (and team 1)
-    for sb in (x for x in behaviors if x.stack_rule in ("team3", "team4", "double_stack")):
-        k = 3 if sb.stack_rule == "team3" else 4
+    for sb in (x for x in behaviors if x.stack_rule in ("team3", "team4", "double_stack", "team5")):  # C46 added team5
+        k = {"team3": 3, "team4": 4, "double_stack": 4, "team5": 5}[sb.stack_rule]
         dbl = sb.stack_rule == "double_stack"
         sobj = fm.behavior_objective(pool, Mode.CLASSIC, util, proj, feats, sb, own_cfg["field"]["captain_rules"])
         SV = ff.perturbed(A, sobj, 40, sb.noise_sd, 5)
-        sspec = None if sb.stack_rule == "team3" else ff.StackSpec(4, np.full(40, 1) if dbl else None, 3)
+        sspec = None if sb.stack_rule == "team3" else ff.StackSpec(k, np.full(40, 1) if dbl else None, 3)
         sgot, sbad = ff.solve_batch(A, SV, np.full(40, 0), sspec)
         sk = {t: frozenset(r.role_id for r in pool.rows if r.team == A.team_names[t] and not r.is_goalie) for t in (0, 1)}
         groups = (GroupConstraint(role_ids=sk[0], min_count=k),) + ((GroupConstraint(role_ids=sk[1], min_count=3),) if dbl else ())
