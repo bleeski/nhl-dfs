@@ -1,0 +1,681 @@
+{
+ "meta": {
+  "source": "synthetic bed (late_swap fixture, 40 entries): decides nothing",
+  "pythonhashseed": "0",
+  "other_python_at_start": [],
+  "roots": {
+   "NHL_DFS_RUNS_ROOT": "/tmp/claude-0/-home-user-nhl-dfs/b9b657d4-18ae-5215-aeb9-11735e08d0fd/scratchpad/bed_run/roots/runs",
+   "NHL_DFS_OUTPUTS_ROOT": "/tmp/claude-0/-home-user-nhl-dfs/b9b657d4-18ae-5215-aeb9-11735e08d0fd/scratchpad/bed_run/roots/outputs",
+   "NHL_DFS_LEDGER_ROOT": "/tmp/claude-0/-home-user-nhl-dfs/b9b657d4-18ae-5215-aeb9-11735e08d0fd/scratchpad/bed_run/roots/ledger",
+   "NHL_DFS_BACKLOG": "/tmp/claude-0/-home-user-nhl-dfs/b9b657d4-18ae-5215-aeb9-11735e08d0fd/scratchpad/bed_run/roots/BACKLOG.md"
+  },
+  "seeds": [
+   20261010,
+   20261011,
+   20261012,
+   20261013,
+   20261014
+  ]
+ },
+ "slates": [
+  {
+   "name": "synthetic bed",
+   "synthetic": true,
+   "failed": null,
+   "fidelity_ok": true,
+   "challengers": {
+    "5-2-1": {
+     "d": 0.0012758068178594143,
+     "se": 0.0004413072037503085,
+     "se_seed": 0.00030342204029004904,
+     "se_scen": 0.0002766929732081259,
+     "se_field": 0.00016164192564241335,
+     "d_over_base": 0.07235615555088463,
+     "best10_diff": 0.001386393938660621,
+     "seed_diffs": [
+      0.0012685858584940493,
+      0.0005470643932620721,
+      0.0022547979799409715,
+      0.0007529040393730001,
+      0.001555681818226979
+     ],
+     "positive_seeds": 5,
+     "n_seeds": 5
+    },
+    "3-3-2": {
+     "d": -7.316498285780265e-05,
+     "se": 0.000480240672175115,
+     "se_seed": 0.00033894009374889594,
+     "se_scen": 0.00031302068887575376,
+     "se_field": 0.00013329952886805148,
+     "d_over_base": -0.004149481572311471,
+     "best10_diff": -0.0016106565653532738,
+     "seed_diffs": [
+      -0.0004335542918493321,
+      -0.0003565656571338574,
+      0.0006390151519328376,
+      0.0007808606898412097,
+      -0.000995580807079871
+     ],
+     "positive_seeds": 2,
+     "n_seeds": 5
+    }
+   },
+   "label_6_1_1": "against a field that has none (B101)",
+   "participation_source": "the cache's own play_prob (1 person(s))",
+   "contest": {
+    "id": "297000001",
+    "family": "large_gpp",
+    "field_size": 5000,
+    "n_opponents": 4960,
+    "payout_source": "PRIOR"
+   },
+   "own_goalie_rule": true,
+   "streams": {
+    "design": 1000,
+    "choose": 1000,
+    "referee": 2000
+   },
+   "seed": 20261010,
+   "replay_field_family": "large_gpp",
+   "replay_field_off_axis": {
+    "dropped": 0,
+    "of": 1000,
+    "share_pct": 0.0
+   },
+   "replay_field": {
+    "n": 1000,
+    "stack3": 95.7,
+    "stack4": 65.0,
+    "stack5": 21.3,
+    "six_one_one": 0.0,
+    "top_shapes": {
+     "4-3-1": 34.8,
+     "3-2-1-1-1": 13.6,
+     "5-1-1-1": 10.9,
+     "5-2-1": 10.4,
+     "3-2-2-1": 8.4,
+     "4-2-1-1": 5.2,
+     "3-3-1-1": 5.1
+    }
+   },
+   "fidelity_gaps": {
+    "stack3": 2.2,
+    "stack4": -0.7,
+    "stack5": 0.0
+   },
+   "saved_field": {
+    "n": 1000,
+    "stack3": 95.7,
+    "stack4": 65.0,
+    "stack5": 21.3,
+    "six_one_one": 0.0,
+    "top_shapes": {
+     "4-3-1": 34.8,
+     "3-2-1-1-1": 13.6,
+     "5-1-1-1": 10.9,
+     "5-2-1": 10.4,
+     "3-2-2-1": 8.4,
+     "4-2-1-1": 5.2,
+     "3-3-1-1": 5.1
+    }
+   },
+   "pooled_table": {
+    "stack3": 93.5,
+    "stack4": 65.7,
+    "stack5": 21.3
+   },
+   "primaries": [
+    "DDD",
+    "AAA",
+    "CCC",
+    "FFF",
+    "BBB",
+    "EEE"
+   ],
+   "warnings": [],
+   "tuples": {
+    "4-3-1": {
+     "tuples": [
+      {
+       "primary": "DDD",
+       "tuple": [
+        "DDD",
+        "EEE"
+       ],
+       "objective": 74.254
+      },
+      {
+       "primary": "AAA",
+       "tuple": [
+        "AAA",
+        "EEE"
+       ],
+       "objective": 73.927
+      },
+      {
+       "primary": "CCC",
+       "tuple": [
+        "CCC",
+        "EEE"
+       ],
+       "objective": 72.999
+      },
+      {
+       "primary": "FFF",
+       "tuple": [
+        "FFF",
+        "EEE"
+       ],
+       "objective": 74.779
+      },
+      {
+       "primary": "BBB",
+       "tuple": [
+        "BBB",
+        "EEE"
+       ],
+       "objective": 73.371
+      },
+      {
+       "primary": "EEE",
+       "tuple": [
+        "EEE",
+        "FFF"
+       ],
+       "objective": 75.124
+      }
+     ],
+     "solve_status": {
+      "FEASIBLE": 30
+     }
+    },
+    "5-2-1": {
+     "tuples": [
+      {
+       "primary": "DDD",
+       "tuple": [
+        "DDD",
+        "EEE"
+       ],
+       "objective": 73.967
+      },
+      {
+       "primary": "AAA",
+       "tuple": [
+        "AAA",
+        "EEE"
+       ],
+       "objective": 73.722
+      },
+      {
+       "primary": "CCC",
+       "tuple": [
+        "CCC",
+        "EEE"
+       ],
+       "objective": 71.88
+      },
+      {
+       "primary": "FFF",
+       "tuple": [
+        "FFF",
+        "EEE"
+       ],
+       "objective": 73.62
+      },
+      {
+       "primary": "BBB",
+       "tuple": [
+        "BBB",
+        "FFF"
+       ],
+       "objective": 73.055
+      },
+      {
+       "primary": "EEE",
+       "tuple": [
+        "EEE",
+        "FFF"
+       ],
+       "objective": 75.159
+      }
+     ],
+     "solve_status": {
+      "FEASIBLE": 30
+     }
+    },
+    "6-1-1": {
+     "tuples": [
+      {
+       "primary": "DDD",
+       "tuple": [
+        "DDD"
+       ],
+       "objective": 73.178
+      },
+      {
+       "primary": "AAA",
+       "tuple": [
+        "AAA"
+       ],
+       "objective": 73.148
+      },
+      {
+       "primary": "CCC",
+       "tuple": [
+        "CCC"
+       ],
+       "objective": 70.916
+      },
+      {
+       "primary": "FFF",
+       "tuple": [
+        "FFF"
+       ],
+       "objective": 72.937
+      },
+      {
+       "primary": "BBB",
+       "tuple": [
+        "BBB"
+       ],
+       "objective": 72.407
+      },
+      {
+       "primary": "EEE",
+       "tuple": [
+        "EEE"
+       ],
+       "objective": 74.435
+      }
+     ],
+     "solve_status": {
+      "FEASIBLE": 6
+     }
+    },
+    "3-3-2": {
+     "tuples": [
+      {
+       "primary": "DDD",
+       "tuple": [
+        "DDD",
+        "EEE",
+        "FFF"
+       ],
+       "objective": 75.176
+      },
+      {
+       "primary": "AAA",
+       "tuple": [
+        "AAA",
+        "EEE",
+        "FFF"
+       ],
+       "objective": 74.641
+      },
+      {
+       "primary": "CCC",
+       "tuple": [
+        "CCC",
+        "EEE",
+        "FFF"
+       ],
+       "objective": 73.805
+      },
+      {
+       "primary": "FFF",
+       "tuple": [
+        "FFF",
+        "EEE",
+        "DDD"
+       ],
+       "objective": 75.115
+      },
+      {
+       "primary": "BBB",
+       "tuple": [
+        "BBB",
+        "EEE",
+        "FFF"
+       ],
+       "objective": 73.937
+      },
+      {
+       "primary": "EEE",
+       "tuple": [
+        "EEE",
+        "DDD",
+        "FFF"
+       ],
+       "objective": 75.176
+      }
+     ],
+     "solve_status": {
+      "FEASIBLE": 120
+     }
+    }
+   },
+   "tuple_counts": {
+    "4-3-1": 6,
+    "5-2-1": 6,
+    "6-1-1": 6,
+    "3-3-2": 6
+   },
+   "equal_depth": true,
+   "generation": {
+    "free": {
+     "20261010": {
+      "returned": 60,
+      "seconds": 1.26
+     },
+     "20261011": {
+      "returned": 60,
+      "seconds": 1.48
+     },
+     "20261012": {
+      "returned": 60,
+      "seconds": 1.36
+     },
+     "20261013": {
+      "returned": 60,
+      "seconds": 1.66
+     },
+     "20261014": {
+      "returned": 60,
+      "seconds": 1.2
+     }
+    },
+    "5-2-1": {
+     "20261010": {
+      "returned": 60,
+      "seconds": 1.2
+     },
+     "20261011": {
+      "returned": 60,
+      "seconds": 0.95
+     },
+     "20261012": {
+      "returned": 60,
+      "seconds": 0.84
+     },
+     "20261013": {
+      "returned": 60,
+      "seconds": 0.91
+     },
+     "20261014": {
+      "returned": 60,
+      "seconds": 0.96
+     }
+    },
+    "4-3-1": {
+     "20261010": {
+      "returned": 60,
+      "seconds": 1.09
+     },
+     "20261011": {
+      "returned": 60,
+      "seconds": 1.05
+     },
+     "20261012": {
+      "returned": 60,
+      "seconds": 0.89
+     },
+     "20261013": {
+      "returned": 60,
+      "seconds": 1.26
+     },
+     "20261014": {
+      "returned": 60,
+      "seconds": 0.91
+     }
+    },
+    "6-1-1": {
+     "20261010": {
+      "returned": 60,
+      "seconds": 0.9
+     },
+     "20261011": {
+      "returned": 60,
+      "seconds": 0.86
+     },
+     "20261012": {
+      "returned": 60,
+      "seconds": 0.9
+     },
+     "20261013": {
+      "returned": 60,
+      "seconds": 0.81
+     },
+     "20261014": {
+      "returned": 60,
+      "seconds": 0.8
+     }
+    },
+    "3-3-2": {
+     "20261010": {
+      "returned": 60,
+      "seconds": 0.63
+     },
+     "20261011": {
+      "returned": 60,
+      "seconds": 0.82
+     },
+     "20261012": {
+      "returned": 60,
+      "seconds": 0.84
+     },
+     "20261013": {
+      "returned": 60,
+      "seconds": 0.76
+     },
+     "20261014": {
+      "returned": 60,
+      "seconds": 0.9
+     }
+    }
+   },
+   "own_goalie_conflicts": 0,
+   "plumbing": {
+    "indicator_mean_vs_engine_max_abs_diff": 2.302229403644551e-09,
+    "indicator_check_candidates": 150,
+    "reps_base_vs_sorted_field_max_abs_diff": 2.6077031853311006e-10
+   },
+   "noise_baseline": {
+    "free": {
+     "identical": true,
+     "sha_first": "4540626970cb5dc1",
+     "sha_second": "4540626970cb5dc1",
+     "n": [
+      60,
+      60
+     ],
+     "metric_first": 0.016443055554851888,
+     "metric_second": 0.016443055554851888,
+     "metric_difference": 0.0
+    },
+    "5-2-1": {
+     "identical": true,
+     "sha_first": "408b0e1a4d79ed09",
+     "sha_second": "408b0e1a4d79ed09",
+     "n": [
+      60,
+      60
+     ],
+     "metric_first": 0.017730833331247173,
+     "metric_second": 0.017730833331247173,
+     "metric_difference": 0.0
+    }
+   },
+   "arms": {
+    "4-3-1": {
+     "candidates_per_seed": [
+      60,
+      60,
+      60,
+      60,
+      60
+     ],
+     "mean_p_top1pct": 0.017632319021734098,
+     "seed_means": [
+      0.016462247472753124,
+      0.018791319442912936,
+      0.01668888888694346,
+      0.018044518096062046,
+      0.018174621209998923
+     ],
+     "shape_mix_pct": {
+      "4-3-1": 100.0
+     },
+     "label": ""
+    },
+    "5-2-1": {
+     "candidates_per_seed": [
+      60,
+      60,
+      60,
+      60,
+      60
+     ],
+     "mean_p_top1pct": 0.01890812583959351,
+     "seed_means": [
+      0.017730833331247173,
+      0.01933838383617501,
+      0.01894368686688443,
+      0.018797422135435046,
+      0.019730303028225902
+     ],
+     "shape_mix_pct": {
+      "5-2-1": 100.0
+     },
+     "label": ""
+    },
+    "6-1-1": {
+     "candidates_per_seed": [
+      60,
+      60,
+      60,
+      60,
+      60
+     ],
+     "mean_p_top1pct": 0.020549955805738766,
+     "seed_means": [
+      0.019525915401677287,
+      0.020823611109827955,
+      0.020505429291352628,
+      0.020967045450707274,
+      0.020927777775128685
+     ],
+     "shape_mix_pct": {
+      "6-1-1": 100.0
+     },
+     "label": "against a field that has none (B101)"
+    },
+    "3-3-2": {
+     "candidates_per_seed": [
+      60,
+      60,
+      60,
+      60,
+      60
+     ],
+     "mean_p_top1pct": 0.017559154038876295,
+     "seed_means": [
+      0.016028693180903792,
+      0.01843475378577908,
+      0.017327904038876296,
+      0.018825378785903256,
+      0.017179040402919052
+     ],
+     "shape_mix_pct": {
+      "3-3-2": 100.0
+     },
+     "label": ""
+    },
+    "free": {
+     "candidates_per_seed": [
+      60,
+      60,
+      60,
+      60,
+      60
+     ],
+     "mean_p_top1pct": 0.016136874998932082,
+     "seed_means": [
+      0.016443055554851888,
+      0.015727777776867152,
+      0.015903535351778072,
+      0.016155965906878313,
+      0.01645404040428499
+     ],
+     "shape_mix_pct": {
+      "3-2-2-1": 26.0,
+      "3-2-1-1-1": 24.7,
+      "2-2-2-1-1": 17.0,
+      "4-2-1-1": 8.7,
+      "3-3-1-1": 6.7,
+      "4-3-1": 3.7
+     },
+     "label": ""
+    }
+   },
+   "mean_base": 0.017632319021734098,
+   "label_only_6_1_1": {
+    "d": 0.002917636784004668,
+    "se": 0.000607207039171696,
+    "se_seed": 0.00028637968245841315,
+    "se_scen": 0.0004713089155552258,
+    "se_field": 0.0002540767049786993,
+    "d_over_base": 0.16547096161363153,
+    "best10_diff": 0.0033028282817453153,
+    "seed_diffs": [
+     0.0030636679289241624,
+     0.0020322916669150183,
+     0.0038165404044091696,
+     0.0029225273546452275,
+     0.002753156565129762
+    ],
+    "positive_seeds": 5,
+    "n_seeds": 5
+   },
+   "mde": 0.0013350690686468195,
+   "saved_field_condition": {
+    "label": "built before C19 and C46; decides nothing",
+    "arm_means": {
+     "4-3-1": 0.017632319021734098,
+     "5-2-1": 0.01890812583959351,
+     "6-1-1": 0.020549955805738766,
+     "3-3-2": 0.017559154038876295,
+     "free": 0.016136874998932082
+    }
+   },
+   "published_shape_mix_pct": {
+    "3-2-2-1": 22.5,
+    "3-2-1-1-1": 12.5,
+    "4-2-1-1": 10.0,
+    "6-1-1": 10.0,
+    "2-2-2-1-1": 10.0,
+    "5-1-1-1": 7.5
+   },
+   "ordering": [
+    "6-1-1",
+    "5-2-1",
+    "4-3-1",
+    "3-3-2",
+    "free"
+   ],
+   "seconds": 41.9
+  }
+ ],
+ "verdict": {
+  "per_slate": {
+   "synthetic bed": {
+    "5-2-1": "PASS",
+    "3-3-2": "FAIL"
+   }
+  },
+  "label_6_1_1": "against a field that has none (B101)",
+  "study": "NOT MEASURED on real caches (a synthetic slate is in the run; its statuses are shown and decide nothing)",
+  "ships": "nothing: no sleeve is built in C21; only ACCEPT-TO-SHADOW on both real slates leads to a follow-up Ben opens"
+ }
+}
