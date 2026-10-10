@@ -201,6 +201,19 @@ chunks:
     needs: [35]
     checks:
       - pytest -m c40 -q
+  - id: C47
+    title: Top-N flat contests (Boosters), the name read into N flat prizes and P(at least one own entry in the top N)
+    depends: [C16, C18]
+    marker: c47
+    band: 1
+    size: M
+    effort: "medium: models/contests.py family_from_name, family_prior and resolve, build/objectives.py prior_curve, contest_from, joint_payouts and OwnContest, config/contest_families.yaml, the selection's portfolio pass for one contest, tests/test_top_n_contests.py"
+    breakpoint: "first commit reads 'Top N Win $X' into N flat prizes with the field size from the lobby row or derived and labeled, and flips the strict xfail; the second adds the portfolio objective P(at least one own entry in the top N) for the contest's own entries"
+    impact: "Band 1 (contests routed to the right shape): on 2026-10-10, 7 of 31 entries ($1.75 of $6.25 in fees) sat in a 237-entry Booster paying the top 5 $10 each and were chosen against a PRIOR 5,000-entry large_gpp paying 1,000 places; Ben's goal there is at least one entry in the top 5 (flag 64). Deterministic routing gap, no experiment needed for the first commit (B108)"
+    backlog: [B108]
+    findings: []
+    checks:
+      - pytest -m c47 -q
   - id: C18
     title: Joint own-entry accounting in the greedy fill and the QA evaluator
     depends: [C14]
