@@ -173,8 +173,8 @@ a seed, a stream or the verdict mapping.
 ## Result (appended 2026-10-10 after the run; nothing above the marker was edited after it ran, and the amendments section above it was written before any result)
 
 **Verdict, by the rule above: NOT MEASURED on real caches. The run holds only the synthetic bed, so its per-slate statuses decide nothing. No sleeve is
-built and nothing ships; for shipping this counts as not promoted. On the bed, 5-2-1 reached PASS and 3-3-2 FAIL: that is "accepted on a synthetic bed,
-not promoted", and it is not evidence about any real slate. The real run is backlog B107.**
+built and nothing ships; for shipping this counts as not promoted. On the bed, 5-2-1 reached PASS status and 3-3-2 FAIL status; this file
+defines no acceptance for a synthetic slate, and it is not evidence about any real slate. The real run is backlog B107.**
 
 What ran: `PYTHONHASHSEED=0 python scripts/c21_stack_study.py --out <scratch> --bed` (the preregistered sample: 5 seeds, 60 candidates per arm per seed, 200
 bootstrap resamples, 30 field reweightings) on the code of commit `56f4d54` (the script, the tests and the review fixes), in a Linux cloud container with no
@@ -237,3 +237,29 @@ in-sample for the question.
 Next, and not done here (backlog B107): the same script on the real 2026-09-29 and 2026-09-30 runs on Ben's machine, offline, in scratch roots, with the same
 rule: `python scripts/c21_stack_study.py --out <scratch dir> --saved-run runs\<id> --saved-run runs\<id2>` (each folder is copied into the scratch folder first).
 Only a run that gives ACCEPT-TO-SHADOW on both real slates leads to anything, and then only to a follow-up Ben opens: no sleeve code exists.
+
+Corrections and additions after the final review (2026-10-10, same session; nothing here changes a status or the verdict):
+1. Where the supporting claims come from. The study time of 41.9 seconds is in the results JSON. "Under 80 seconds from start to the report" is the shell clock (started
+   15:03:43, the report was there by 15:04:59). The 1,498 distinct candidates is the study's own log line. The data-safety comparison (modification times of the listed
+   paths, one observation line in one file, the scratch roots' runs and outputs folders empty) is a pair of shell checks made at the time and not stored in either JSON;
+   `data/cache` and `data/identity` were not on that list (modification times 13:39:57 and 13:39:52, from the container's start). Two lines were appended to
+   `data/raw/observations/2026-10-10.jsonl` at 15:10:01 and 15:10:22: they are mine, from `scripts/c20_equality_check.py`'s whole offline run made after the study (the known
+   gap: nothing redirects that log; `data/raw/` is gitignored). The first line of that file, from 13:40, is the container's own bootstrap.
+2. The verdict paragraph said "accepted on a synthetic bed, not promoted", which is C20's wording; it is replaced in place above, because this file defines no acceptance state
+   for a synthetic slate.
+3. What the PASS can and cannot mean. The gain is measured against a field that holds 34.8 percent 4-3-1 and 10.4 percent 5-2-1 lineups (and no 6-1-1), so part of 5-2-1's gain
+   can be the leverage of being rarer in that field, not the shape's own quality; that is what a metric against the field measures, and it is also why the study scores shapes
+   against a field with the observed mix. The PASS is marginal (2.9 standard errors against the 2.78 cut) on 2,000 referee scenarios and 1,000 field draws. 6-1-1 coming first
+   in the ordering is by construction: the field has none.
+4. The amendments section above understated two things. Amendment 1 added a rule detail (a 15 percent cap on dropped replay lineups, and a NO VERDICT when it is exceeded), which is
+   a verdict-mapping detail, not only a clarification; amendment 2 enlarged an error part, which can only make PASS harder. The dry run: its full report was written to a log file that
+   I did not open; I printed the first three and last two lines of the log and these fields of its results.json: the study verdict string, the slate's name, flags and fidelity gaps,
+   the tuple counts, the plumbing differences and the guard counts. No arm mean and no challenger gain was read from it.
+5. The rationale sentence "the older sampled field held about 0.6 percent 5+ stacks" (and flag 62's) is flag 47's figure for the C19 mixture, not a measurement of the saved caches, which
+   predate that mixture entirely. The real run measures the saved field's own 3+, 4+, 5+ and 6-1-1 shares and prints them beside the replay field's; nothing in the rule depends on the
+   0.6 figure.
+6. Code changes after the result was recorded (script and tests only; no threshold, arm, seed or stream moved): the field reweighting is now a function with a test (every reweighting sums to
+   the opponent count and its dispersion follows the number of draws), the replay takes the inputs and clock of the run that holds the cache when the named run is a refresh or late-swap
+   child, `results.json` records the scratch roots relative to `--out` and writes numpy numbers as numbers, and the report prints the replay field's family and draw count beside the
+   fidelity gate. The bed study was run again on this final code: every number in the results JSON except the timings is identical to the committed record, and the write guard again refused 0 writes.
+   Keep `--out` short on Windows (a copied run folder can approach the path-length limit).
