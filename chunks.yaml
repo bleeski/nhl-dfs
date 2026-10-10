@@ -671,6 +671,9 @@ deferred:
   - item: "Goalie paired with his own stack against a goalie from another game (B105, B45 part 3)"
     trigger: "C21's study of stack shapes on saved caches, or the next real-cache run of scripts/c20_goalie_experiment.py (B102), whichever comes first"
     backlog: [B105]
+  - item: "CI and merge cost of a cloud run's entered-record pull request (B106)"
+    trigger: "Ben turns on Allow auto-merge in the repo settings, or the next change to .github/workflows/ci.yml, whichever comes first"
+    backlog: [B106]
 flag_recommendations:
   2: "Record Ben's 2026-10-02 answer in the flags table: 40% goalie and game fee share with the LINEUPS fallback (done in this plan); C27 fixes the feasibility test behind it."
   3: "Replace the placeholder mix with the observed one (5 to 10 entries per slate, 1 to 2 per contest, fees $0.10 to $1, 20-max and 150-max GPPs plus Showdown) so family priors and C21's sleeve sizes fit what Ben plays."

@@ -192,6 +192,7 @@ DONE: C0a, C0b, C1, C2a, C2b, C2c, C3, C4, C5, C6, C7, C8, C9, C10, C11, C14, C1
 | The Phase A baseline (v1) cannot honor the own-goalie rule: families are unknown when it is built (B103) | a run published with --baseline in a large_gpp-heavy slate, or Ben asks; OWN_GOALIE on v1 prints the count of lineups facing their own goalie meanwhile | B103 | none |
 | OWN_GOALIE cannot pair a pinned goalie with a pinned skater of an In-Progress game (B104, labelling only) | the next change to intake/salary.mark_started, or a started-slate late swap whose OWN_GOALIE line reads OK beside a pinned conflict | B104 | none |
 | Goalie paired with his own stack against a goalie from another game (B105, B45 part 3) | C21's study of stack shapes on saved caches, or the next real-cache run of scripts/c20_goalie_experiment.py (B102), whichever comes first | B105 | none |
+| CI and merge cost of a cloud run's entered-record pull request (B106) | Ben turns on Allow auto-merge in the repo settings, or the next change to .github/workflows/ci.yml, whichever comes first | B106 | none |
 <!-- QUEUE:END -->
 ## Chunk cards
 
