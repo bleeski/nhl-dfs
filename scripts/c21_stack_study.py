@@ -268,6 +268,14 @@ class Scorer:
 
 # -- the study ----------------------------------------------------------------------------------------------------------
 
+def json_default(o):
+    """numpy scalars become plain numbers; anything else is named, never dropped silently."""
+    try:
+        return o.item()
+    except Exception:  # noqa: BLE001
+        return str(o)
+
+
 def sha(lineups) -> str:
     return hashlib.sha256(json.dumps([list(x) for x in lineups]).encode()).hexdigest()[:16]
 
@@ -287,6 +295,18 @@ def field_shares(lineups, pool) -> dict:
 def fidelity(shares: dict, table: dict) -> tuple[bool, dict]:
     gaps = {k: round(shares[k] - float(table[k]), 2) for k in ("stack3", "stack4", "stack5")}
     return all(abs(v) <= FIDELITY_TOL for v in gaps.values()), gaps
+
+
+def field_reweights(counts, n_opp: int, n_reps: int, rng) -> list:
+    """n_reps reweightings of a sampled field for the field part of the error. The field has counts.sum() independent draws that stand for
+    n_opp opponents: resample THAT many (multinomial), then scale to n_opp the way the saved weights are (objectives.largest_remainder), so the
+    dispersion follows the number of draws and not the opponent count, and every reweighting sums to n_opp."""
+    import numpy as np
+
+    from nhl_dfs.build import objectives as ob
+
+    n_draws, p = int(counts.sum()), counts / counts.sum()
+    return [np.asarray(ob.largest_remainder(rng.multinomial(n_draws, p), n_opp), np.int64) for _ in range(n_reps)]
 
 
 def compare_arms(*, top, reps, p_ref, p_cho, arms, base_arm: str, c: str, seeds, cfg: Config, mean_base: float) -> dict | None:
@@ -454,11 +474,7 @@ def study(*, name: str, synthetic: bool, saved, saved_view, replay, cfg: Config,
     del cho
     rng = np.random.default_rng(cfg.rng_seed)
     cand_scores = sets["referee"].scores(order, Mode.CLASSIC).full()
-    # the sampled field has counts.sum() independent draws that stand for n_opp opponents: resample THAT many, then scale to n_opp the way the
-    # saved weights were (objectives.largest_remainder)
-    n_draws, p_draws = int(spec_r.counts.sum()), spec_r.counts / spec_r.counts.sum()
-    w_reps = [np.asarray(spec_r.weights, np.int64)] + [np.asarray(ob.largest_remainder(rng.multinomial(n_draws, p_draws), n_opp), np.int64)
-                                                      for _ in range(cfg.boot_field)]
+    w_reps = [np.asarray(spec_r.weights, np.int64)] + field_reweights(spec_r.counts, n_opp, cfg.boot_field, rng)
     reps = ref.reps(cand_scores, w_reps)  # (1 + R, K); row 0 is the field as saved
     res["plumbing"]["reps_base_vs_sorted_field_max_abs_diff"] = float(np.abs(reps[0] - p_ref).max())
     del cand_scores
@@ -620,7 +636,7 @@ def copy_saved_run(src: Path, out: Path) -> tuple[Path, str]:
     for _ in range(8):
         d, s_ = dst_root / rid, runs / rid
         d.mkdir(parents=True, exist_ok=True)
-        for name in (("inputs", "versions", "scenario") if first else ("scenario",)):
+        for name in (("inputs", "versions", "scenario") if first else ("inputs", "scenario")):
             if (s_ / name).is_dir():
                 shutil.copytree(s_ / name, d / name, dirs_exist_ok=True)
         for name in (("manifest.json", "current") if first else ("manifest.json",)):
@@ -636,6 +652,15 @@ def copy_saved_run(src: Path, out: Path) -> tuple[Path, str]:
             break
         rid, first = parent, False
     return dst_root, src.name
+
+
+def replay_source(runs_root: Path, rid: str, saved) -> dict:
+    """The run whose inputs and clock the replay uses: the run that HOLDS the cache. A refresh or late-swap child keeps no cache of its own, and its
+    salary file or clock can differ from the ones the cached draws were made from."""
+    base = Path(runs_root) / saved.run_id
+    created = json.loads((base / "manifest.json").read_text(encoding="utf-8"))["created_utc"]
+    return {"run_id": saved.run_id, "from_parent": saved.run_id != rid, "salary": base / "inputs" / "DKSalaries.csv",
+            "entries": base / "inputs" / "DKEntries.csv", "clock": datetime.fromisoformat(created.replace("Z", "+00:00"))}
 
 
 def load_view(runs_root: Path, run_id: str):
@@ -666,7 +691,7 @@ def report_md(slates: list[dict], v: dict, meta: dict) -> str:
               f"{s['replay_field_off_axis']['dropped']} of {s['replay_field_off_axis']['of']} lineups dropped for holding a player the saved cache did not simulate", ""]
         L += [f"Contest {s['contest']['id']} ({s['contest']['field_size']} entries, {s['contest']['n_opponents']} opponents, payouts {s['contest']['payout_source']}); "
               f"own-goalie rule {'on' if s['own_goalie_rule'] else 'off'}; streams {s['streams']}; fidelity gate {'passed' if s['fidelity_ok'] else 'FAILED'} "
-              f"(gaps {s.get('fidelity_gaps')}); tuples per shape {s['tuple_counts']} (equal depth {s['equal_depth']})", "",
+              f"(gaps {s.get('fidelity_gaps')}; replay field of {s['replay_field']['n']} draws in family {s['replay_field_family']}); tuples per shape {s['tuple_counts']} (equal depth {s['equal_depth']})", "",
               "| Arm | Mean P(top 1%) | Candidates per seed | Shape mix of its candidates |", "|---|---:|---|---|"]
         for a in ARMS:
             x = s["arms"][a]
@@ -709,13 +734,13 @@ def saved_slate(src: Path, out: Path, cfg: Config, log) -> dict:
     saved = view.cache
     if saved is None:
         return failed_slate(rid, False, "the run holds no scenario cache (nor does any parent run)")
-    created = json.loads((runs_root / rid / "manifest.json").read_text(encoding="utf-8"))["created_utc"]
-    clock = datetime.fromisoformat(created.replace("Z", "+00:00"))
-    run = replay_run(runs_root / rid / "inputs" / "DKSalaries.csv", runs_root / rid / "inputs" / "DKEntries.csv", clock, SCENARIO_N["replay"], out, rid)
+    src_run = replay_source(runs_root, rid, saved)
+    run = replay_run(src_run["salary"], src_run["entries"], src_run["clock"], SCENARIO_N["replay"], out, rid)
     rview = load_view(run.path.parent, run.run_id)
     if rview.cache is None:
         return failed_slate(rid, False, "the replay wrote no scenario cache")
-    log(f"{rid}: replayed as {run.run_id}; saved cache found on run {saved.run_id}")
+    log(f"{rid}: replayed as {run.run_id} from the inputs and clock of run {src_run['run_id']}"
+        f"{' (the run that holds the saved cache, not the named child)' if src_run['from_parent'] else ''}")
     return run_slate_study(rid, False, view, saved, rview.cache, cfg, log=log)
 
 
@@ -746,8 +771,9 @@ def main(argv=None) -> int:
         """results.json after EVERY slate, so a crash in a later one never loses an earlier one (a real slate is minutes of compute)."""
         v = verdict(slates)
         meta = {"source": "; ".join(source) + (" [SMALL CONFIGURATION: not the preregistered sample]" if args.small else ""),
-                "pythonhashseed": os.environ.get("PYTHONHASHSEED"), "other_python_at_start": others, "roots": roots, "seeds": list(cfg.seeds)}
-        (out / "results.json").write_text(json.dumps({"meta": meta, "slates": slates, "verdict": v}, indent=1, default=str), encoding="utf-8")
+                "pythonhashseed": os.environ.get("PYTHONHASHSEED"), "other_python_at_start": others, "seeds": list(cfg.seeds),
+                "roots": {k: os.path.relpath(v, out) for k, v in roots.items()}}  # relative to --out: no user path in a committed record
+        (out / "results.json").write_text(json.dumps({"meta": meta, "slates": slates, "verdict": v}, indent=1, default=json_default), encoding="utf-8")
         (out / "report.md").write_text(report_md(slates, v, meta), encoding="utf-8")
         return v
 

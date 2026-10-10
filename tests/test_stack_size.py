@@ -223,7 +223,7 @@ def test_the_script_runs_the_bed_under_the_write_guard(tmp_path):
     assert r.returncode == 0, (r.stdout[-1500:] + r.stderr[-1500:])
     guard = json.loads((tmp_path / "guard.json").read_text(encoding="utf-8"))
     assert guard["network_blocked"] == []
-    assert all("observations" in w for w in guard["writes_refused"]), guard["writes_refused"]  # the known gap, nothing else
+    assert guard["writes_refused"] == [], guard["writes_refused"]  # the bed runs with the local history isolated: not even the observation-log append is tried
     res = json.loads((tmp_path / "results.json").read_text(encoding="utf-8"))
     assert res["verdict"]["study"].startswith("NOT MEASURED on real caches") and res["slates"][0]["synthetic"] is True
     assert (tmp_path / "report.md").read_text(encoding="utf-8").count("SYNTHETIC BED") >= 1
@@ -295,6 +295,7 @@ def test_compare_arms_trims_per_comparison_and_combines_three_error_parts(c21):
     p = np.array([0.02, 0.02, 0.02, 0.02, 0.03, 0.03, 0.03, 0.10])
     top = np.tile(p, (40, 1)).astype(np.float32)  # every scenario identical: no scenario noise
     reps = np.tile(p, (5, 1))  # every field reweighting identical: no field noise
+    reps[0] += 0.5  # row 0 is the field as saved: if it leaked into the field part, se_field would not be zero
     arms = {"A": {1: [0, 1, 2], 2: [0, 1, 2, 3]}, "B": {1: [4, 5, 6, 7], 2: [4, 5, 6, 7]}}
     p_cho = np.array([0.0, 0.0, 0.0, 0.0, 0.9, 0.1, 0.1, 0.8])  # the choosing stream prefers columns 4 and 7 of B
     r = c21.compare_arms(top=top, reps=reps, p_ref=p, p_cho=p_cho, arms=arms, base_arm="A", c="B", seeds=cfg.seeds, cfg=cfg, mean_base=0.02)
@@ -336,6 +337,9 @@ def test_a_child_run_without_a_cache_is_copied_with_its_parent(c21, bed, tmp_pat
     root, rid = c21.copy_saved_run(child, tmp_path / "out")
     got, notes = sc.find(root, rid)
     assert got is not None and got.run_id == bed.run.run_id, notes  # the cache is found on the parent, as late swap finds it
+    src = c21.replay_source(root, rid, got)  # the replay uses the inputs and clock of the run that holds the cache
+    assert src["run_id"] == bed.run.run_id and src["from_parent"] and src["salary"].exists() and src["entries"].exists()
+    assert src["clock"] == c21.BED_CLOCK
 
 
 def test_replay_field_lineups_off_the_saved_axis_are_dropped_and_capped(c21, bed):
@@ -351,3 +355,18 @@ def test_replay_field_lineups_off_the_saved_axis_are_dropped_and_capped(c21, bed
     assert over["failed"] and "cap 15%" in over["failed"] and over["replay_field_off_axis"]["dropped"] == int(0.30 * len(lus))
     some = study_with(0.10)
     assert some["failed"] is None and some["replay_field_off_axis"]["dropped"] == int(0.10 * len(lus)) and some["challengers"]
+
+
+def test_field_reweightings_sum_to_the_opponents_and_scale_with_the_draws_not_the_opponent_count(c21):
+    import numpy as np
+
+    counts = np.array([100, 50, 25, 25])  # 200 independent draws; lineup 0 has p = 0.5
+    cv = {}
+    for n_opp in (1000, 100000):
+        w = c21.field_reweights(counts, n_opp, 400, np.random.default_rng(0))
+        assert len(w) == 400 and all(int(x.sum()) == n_opp and len(x) == 4 for x in w)
+        col = np.array([x[0] for x in w], float)
+        cv[n_opp] = col.std() / col.mean()
+    theory = ((1 - 0.5) / (200 * 0.5)) ** 0.5  # the coefficient of variation of a binomial count out of 200 draws
+    assert all(abs(v - theory) < 0.25 * theory for v in cv.values()), (cv, theory)
+    assert abs(cv[1000] - cv[100000]) < 0.1 * theory  # the opponent count does not change it
