@@ -657,7 +657,7 @@ deferred:
     trigger: "the next run of scripts/standings_synthesis.py: add the share of two-3+ lineups whose two teams play each other"
     backlog: [B99]
   - item: "Composition of the sampled 5-stacks: 6-1-1 absent, 5-1-1-1 too frequent (B101)"
-    trigger: "C21's study needs 6-1-1 shapes in the field, or Ben asks: C46 landed the 5+ share (21.5 against 21.3) and not the shapes (6-1-1 0.0 against 6.3, 5-1-1-1 10.6)"
+    trigger: "the real-cache run of the C21 study (B107) shows 6-1-1 ahead of 4-3-1 (it is reported there, labeled, against a field that has none), or Ben asks: C46 landed the 5+ share (21.5 against 21.3) and not the shapes (6-1-1 0.0 against 6.3, 5-1-1-1 10.6)"
     backlog: [B101]
   - item: "Goalie leverage term on real saved caches (B102, B45 part 2)"
     trigger: "Ben runs scripts/c20_goalie_experiment.py on the real 2026-09-29 and 2026-09-30 inputs (the PowerShell block in the C20 report), or the next 5 settled Classic slates give a real-cache arm"
@@ -669,8 +669,11 @@ deferred:
     trigger: "the next change to intake/salary.mark_started, or a started-slate late swap whose OWN_GOALIE line reads OK beside a pinned conflict"
     backlog: [B104]
   - item: "Goalie paired with his own stack against a goalie from another game (B105, B45 part 3)"
-    trigger: "C21's study of stack shapes on saved caches, or the next real-cache run of scripts/c20_goalie_experiment.py (B102), whichever comes first"
+    trigger: "the next real-cache run of scripts/c20_goalie_experiment.py (B102) or scripts/c21_stack_study.py (B107), whichever comes first (the same saved caches are open then)"
     backlog: [B105]
+  - item: "Stack size study on the real 09-29 and 09-30 caches (B107, B44)"
+    trigger: "Ben runs scripts/c21_stack_study.py on runs 20260929-222125-classic and 20260930-214909-classic (the PowerShell block in the C21 report), or two more settled Classic slates with a saved scenario cache give a second pair of real slates"
+    backlog: [B107]
   - item: "CI and merge cost of a cloud run's entered-record pull request (B106)"
     trigger: "Ben turns on Allow auto-merge in the repo settings, or the next change to .github/workflows/ci.yml, whichever comes first"
     backlog: [B106]
