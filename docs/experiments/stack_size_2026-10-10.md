@@ -143,4 +143,29 @@ more slates, with the rule above unchanged.
 - The bed is synthetic and priors only; it can show that the mechanism runs and that the arms are comparable. Nothing else.
 - Both real slates are in-sample for the question. An accepted result would be a reason to shadow-test on slates not yet played, not a validated edge.
 
+## Amendments before any result (2026-10-10, after the independent code review of the script)
+
+No result existed when these were written. The runs so far were the script's tests (they assert plumbing, never outcomes) and one dry run of the real-slate
+path on the bed's own run folder, from which only the plumbing differences, the fidelity gaps and the string "NOT MEASURED (fewer than two real slates)"
+were read, no P(top 1 percent) figure. Each item fills a detail the text above left open or corrects a draft of the code; none moves a threshold, an arm,
+a seed, a stream or the verdict mapping.
+
+1. Replay field lineups that hold a player the saved cache did not simulate (an online run drops OUT and disabled players in Phase B; an offline replay
+   has no Phase B and keeps them) are dropped before scoring, counted, and reported. More than 15 percent dropped gives NO VERDICT for that slate. The
+   fidelity gate and the field spec use the retained lineups.
+2. The field part of the standard error resamples the field's own independent draws (the sum of its lineup counts), then scales them to the opponent
+   count the way the saved weights are scaled (`objectives.largest_remainder`). A first draft resampled the opponent count itself, which would have
+   understated this part.
+3. Participation is priced exactly as late swap prices a cache: the cache's own `play_prob` when it holds one, else C8's rule (DTD persons at
+   `questionable_play_prob`) for a cache made before it was stored. The mask is drawn once over the cached stream, so it is not the original run's draw over
+   its longer one. The source is printed.
+4. The replay field is read from the family the replay gave this contest id (an offline replay has no lobby details and may classify it differently),
+   else large_gpp. The family is printed.
+5. With one challenger missing a result, the minimum detectable effect is computed from the challengers that have one.
+6. The observed ordering of the standings synthesis is printed beside the modeled one (information only). A tuple solve that ends on a time limit is
+   named in a warning.
+7. The synthetic bed's replay runs with the local history store, stored web pages and identity files pointed at empty folders, so its result does not
+   depend on the machine. A real slate's replay reads the real local history, as the original run did.
+8. The check that the per-scenario indicator equals the engine's `p_top1pct` runs on the first 150 candidates (memory); the plumbing test pins it.
+
 <!-- RESULT MARKER: everything below was appended after the arms ran; nothing above this line is edited -->

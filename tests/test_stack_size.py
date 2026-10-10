@@ -42,9 +42,11 @@ def world(c21, bed):
     from nhl_dfs.build import objectives as ob
     from nhl_dfs.build import portfolio as pf
     from nhl_dfs.build.run import pool_without
+    from nhl_dfs.models import contests as contests_mod
 
     full = bed.view.pool
-    sets = c21.build_sets(bed.cache, full)
+    play, _ = c21.play_prob_of(bed.cache, full, bed.view.st, contests_mod.load_contest_families())
+    sets = c21.build_sets(bed.cache, full, play)
     pool = pool_without(full, [r for r in full.by_role_id if r not in sets["referee"].col])
     cfg = c21.Config.small()
     return SimpleNamespace(pool=pool, full=full, sets=sets, objective=pf.role_objective(sets["design"], pool), cfg=cfg,
@@ -118,7 +120,7 @@ def test_an_infeasible_shape_is_reported_not_a_crash_and_is_never_a_challenger(c
 def test_every_shape_has_equal_depth(study_a):
     assert study_a["failed"] is None, study_a["failed"]
     counts = study_a["tuple_counts"]
-    assert set(counts) == {"4-3-1", "5-2-1", "6-1-1", "3-3-2"} and set(counts.values()) == {study_a["primaries"].__len__()} and study_a["equal_depth"]
+    assert set(counts) == {"4-3-1", "5-2-1", "6-1-1", "3-3-2"} and set(counts.values()) == {len(study_a["primaries"])} and study_a["equal_depth"]
 
 
 def test_the_study_reproduces_its_numbers_with_a_fixed_seed(study_a, study_b):
@@ -198,9 +200,18 @@ def test_the_study_verdict_in_its_preregistered_order(c21):
 
 def test_6_1_1_alone_can_never_promote(c21):
     huge = [slate(c21, n, d52=-0.001, d33=-0.001, label=0.5) for n in "AB"]
+    plain = [slate(c21, n, d52=-0.001, d33=-0.001) for n in "AB"]
     v = c21.verdict(huge)
-    assert v["study"] == "REJECT" and "6-1-1" not in v["per_slate"]["A"] and "challenger" not in v
-    assert "against a field that has none" in v["label_6_1_1"]
+    assert v["study"] == "REJECT" == c21.verdict(plain)["study"] and v["per_slate"] == c21.verdict(plain)["per_slate"]  # the label changes nothing
+    assert "6-1-1" not in v["per_slate"]["A"] and "challenger" not in v and "against a field that has none" in v["label_6_1_1"]
+
+
+def test_the_mde_uses_the_larger_challenger_standard_error(c21):
+    s = {"name": "A", "synthetic": False, "failed": None, "fidelity_ok": True, "mean_base": 0.02,
+         "challengers": {"5-2-1": {"d": 0.0008, "se": 0.0001, "best10_diff": 1e-4}, "3-3-2": {"d": 0.0008, "se": 0.001, "best10_diff": 1e-4}}}
+    assert c21.slate_status(s, "5-2-1") == "INCONCLUSIVE"  # 2.78 x 0.001 = 0.00278 is above 10 percent of 0.02, so the slate is INCONCLUSIVE for both
+    s["challengers"]["3-3-2"]["se"] = 0.0001
+    assert c21.slate_status(s, "5-2-1") == "PASS"
 
 
 # -- the whole script, in a subprocess: the write guard and the network block hold ------------------------------------------
@@ -226,4 +237,117 @@ def test_the_real_cache_study_runs_when_a_saved_run_is_given(tmp_path):
                        capture_output=True, text=True, env={**os.environ, "PYTHONHASHSEED": "0"}, cwd=ROOT, timeout=3600)
     assert r.returncode == 0, (r.stdout[-1500:] + r.stderr[-1500:])
     res = json.loads((tmp_path / "results.json").read_text(encoding="utf-8"))
-    assert res["slates"] and res["slates"][0]["synthetic"] is False
+    first = res["slates"][0]
+    assert first["synthetic"] is False and first["failed"] is None and first["challengers"], first.get("failed")  # a failed slate must not pass
+
+
+# -- the pieces the review asked to pin ----------------------------------------------------------------------------------------
+
+def lineup_of(pool, counts: dict, goalie_team: str | None = None) -> list:
+    """Role IDs of a made-up lineup with `counts` skaters per team (not necessarily legal) plus one goalie."""
+    sk = {t: sorted(r) for t, r in __import__("c21_stack_study").skater_roles(pool).items()}
+    ids = [r for t, n in counts.items() for r in sk[t][:n]]
+    g = next(r.role_id for r in pool.rows if r.is_goalie and r.team == (goalie_team or next(iter(counts))))
+    return ids + [g]
+
+
+def test_participation_is_priced_as_late_swap_prices_it(c21, bed, world):
+    from nhl_dfs.contracts.statuses import Participation
+    from nhl_dfs.models import contests as contests_mod
+
+    fam = contests_mod.load_contest_families()
+    play, src = c21.play_prob_of(bed.cache, world.full, bed.view.st, fam)
+    assert "own play_prob" in src
+    stand_in = SimpleNamespace(meta={})  # a cache made before play_prob was stored
+    play, src = c21.play_prob_of(stand_in, world.full, bed.view.st, fam)
+    q = float(fam["selection"]["questionable_play_prob"])
+    want = {world.full.by_role_id[r].person_key: q for r, (p, _) in bed.view.st.items() if p is Participation.QUESTIONABLE}
+    assert play == want and play and "FALLBACK" in src  # the bed carries a DTD skater
+
+
+def test_pick_contest_takes_the_biggest_weighted_large_gpp_contest(c21, world):
+    mk = lambda fam: SimpleNamespace(family=fam)  # noqa: E731
+    cache = lambda contests, opp: SimpleNamespace(contests=contests, n_opponents=opp)  # noqa: E731
+    cid, why = c21.pick_contest(cache({"1": mk("cash")}, {"1": 5000}), world.risk)
+    assert cid is None and "no large_gpp" in why
+    cid, why = c21.pick_contest(cache({"1": mk("large_gpp")}, {"1": 1000}), world.risk)  # 1,000 opponents is a sampled field, not a weighted one
+    assert cid is None and "weighted" in why
+    big = {"1": mk("large_gpp"), "2": mk("large_gpp"), "3": mk("small_field"), "4": mk("large_gpp")}
+    assert c21.pick_contest(cache(big, {"1": 4000, "2": 9000, "3": 50000, "4": 9000}), world.risk)[0] == "2"  # ties go to the lower contest id
+
+
+def test_field_shares_and_the_fidelity_gate_count_role_ids(c21, world):
+    a, b, c, d = world.teams[:4]
+    shapes = ([{a: 5, b: 2, c: 1}] * 21 + [{a: 4, b: 3, c: 1}] * 45 + [{a: 3, b: 3, c: 2}] * 28 + [{a: 2, b: 2, c: 2, d: 2}] * 6)
+    lus = [lineup_of(world.pool, x) for x in shapes]
+    sh = c21.field_shares(lus, world.pool)
+    assert (sh["stack3"], sh["stack4"], sh["stack5"], sh["six_one_one"]) == (94.0, 66.0, 21.0, 0.0) and sh["top_shapes"]["4-3-1"] == 45.0
+    ok, gaps = c21.fidelity(sh, {"stack3": 93.5, "stack4": 65.7, "stack5": 21.3})
+    assert ok and gaps == {"stack3": 0.5, "stack4": 0.3, "stack5": -0.3}
+    six = c21.field_shares([lineup_of(world.pool, {a: 6, b: 1, c: 1})] * 10, world.pool)
+    assert six["six_one_one"] == 100.0 and not c21.fidelity(six, {"stack3": 93.5, "stack4": 65.7, "stack5": 21.3})[0]  # a field of 6-1-1 fails the gate
+
+
+def test_compare_arms_trims_per_comparison_and_combines_three_error_parts(c21):
+    import numpy as np
+
+    cfg = c21.Config(seeds=(1, 2), boot_scen=50, best_k=2)
+    p = np.array([0.02, 0.02, 0.02, 0.02, 0.03, 0.03, 0.03, 0.10])
+    top = np.tile(p, (40, 1)).astype(np.float32)  # every scenario identical: no scenario noise
+    reps = np.tile(p, (5, 1))  # every field reweighting identical: no field noise
+    arms = {"A": {1: [0, 1, 2], 2: [0, 1, 2, 3]}, "B": {1: [4, 5, 6, 7], 2: [4, 5, 6, 7]}}
+    p_cho = np.array([0.0, 0.0, 0.0, 0.0, 0.9, 0.1, 0.1, 0.8])  # the choosing stream prefers columns 4 and 7 of B
+    r = c21.compare_arms(top=top, reps=reps, p_ref=p, p_cho=p_cho, arms=arms, base_arm="A", c="B", seeds=cfg.seeds, cfg=cfg, mean_base=0.02)
+    # seed 1 trims both arms to 3 candidates (column 7 is left out): 0.03 - 0.02; seed 2 keeps 4: (3 x 0.03 + 0.10) / 4 - 0.02
+    assert r["seed_diffs"] == pytest.approx([0.01, 0.0275]) and r["d"] == pytest.approx(0.01875) and r["positive_seeds"] == 2
+    assert r["se_scen"] == pytest.approx(0.0) and r["se_field"] == pytest.approx(0.0)
+    assert r["se_seed"] == pytest.approx(np.std([0.01, 0.0275], ddof=1) / np.sqrt(2)) and r["se"] == pytest.approx(r["se_seed"])
+    # best 2: seed 1 chooses columns 4 and 5 of the 3 kept (0.03), seed 2 columns 4 and 7 (0.065); the baseline's best two are 0.02
+    assert r["best10_diff"] == pytest.approx(((0.03 - 0.02) + (0.065 - 0.02)) / 2)
+    rng = np.random.default_rng(1)
+    noisy_top = (p + rng.normal(0, 0.01, (40, 8))).clip(0, 1).astype(np.float32)
+    noisy_reps = p + rng.normal(0, 0.002, (5, 8))
+    r2 = c21.compare_arms(top=noisy_top, reps=noisy_reps, p_ref=noisy_top.mean(axis=0, dtype=np.float64), p_cho=p_cho, arms=arms, base_arm="A",
+                          c="B", seeds=cfg.seeds, cfg=cfg, mean_base=0.02)
+    assert r2["se_scen"] > 0 and r2["se_field"] > 0 and r2["se"] == pytest.approx((r2["se_seed"] ** 2 + r2["se_scen"] ** 2 + r2["se_field"] ** 2) ** 0.5)
+    assert c21.compare_arms(top=top, reps=reps, p_ref=p, p_cho=p_cho, arms={"A": {1: [], 2: [0]}, "B": arms["B"]}, base_arm="A", c="B",
+                            seeds=cfg.seeds, cfg=cfg, mean_base=0.02) is None  # an arm with no candidates for a seed has no comparison
+
+
+def test_a_saved_run_is_copied_loaded_replayed_and_studied(c21, bed, tmp_path):
+    """The real-slate path (copy a run folder, replay its own inputs and clock, study it) on the bed's own run folder as a stand-in saved run."""
+    res = c21.saved_slate(bed.run.path, tmp_path, c21.Config.small(), lambda m: None)
+    assert res["failed"] is None, res["failed"]
+    assert res["synthetic"] is False and res["challengers"] and "own play_prob" in res["participation_source"]
+    assert res["replay_field_off_axis"]["dropped"] == 0 and res["fidelity_ok"]
+    assert c21.verdict([res])["study"] == "NOT MEASURED (fewer than two real slates)"
+
+
+def test_a_child_run_without_a_cache_is_copied_with_its_parent(c21, bed, tmp_path):
+    import shutil
+
+    from nhl_dfs.build import scenario_cache as sc
+
+    runs = tmp_path / "runs"
+    shutil.copytree(bed.run.path, runs / bed.run.run_id)
+    child = runs / "20261015-130000-classic"
+    child.mkdir()
+    (child / "manifest.json").write_text(json.dumps({"parent_run_id": bed.run.run_id, "created_utc": "2026-10-15T13:00:00Z"}), encoding="utf-8")
+    root, rid = c21.copy_saved_run(child, tmp_path / "out")
+    got, notes = sc.find(root, rid)
+    assert got is not None and got.run_id == bed.run.run_id, notes  # the cache is found on the parent, as late swap finds it
+
+
+def test_replay_field_lineups_off_the_saved_axis_are_dropped_and_capped(c21, bed):
+    lus, ks = bed.cache.families["large_gpp"]
+
+    def study_with(share):
+        n_bad = int(share * len(lus))
+        bad = [tuple(["NOT_ON_THE_AXIS"] + list(lu[1:])) if i < n_bad else tuple(lu) for i, lu in enumerate(lus)]
+        stand_in = SimpleNamespace(families={"large_gpp": (bad, list(ks))}, contest_family={})
+        return c21.run_slate_study("bed", False, bed.view, bed.cache, stand_in, c21.Config.small(), log=lambda m: None)
+
+    over = study_with(0.30)
+    assert over["failed"] and "cap 15%" in over["failed"] and over["replay_field_off_axis"]["dropped"] == int(0.30 * len(lus))
+    some = study_with(0.10)
+    assert some["failed"] is None and some["replay_field_off_axis"]["dropped"] == int(0.10 * len(lus)) and some["challengers"]

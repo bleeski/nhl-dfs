@@ -9,7 +9,7 @@ Two stages, so the study itself is a pure function of frozen caches:
               (reported, decides nothing); shapes forced with solver group rows and counted from role IDs.
 
     python scripts/c21_stack_study.py --out <scratch dir> --bed                       # the synthetic 6-team bed (cannot promote anything)
-    python scripts/c21_stack_study.py --out <scratch dir> --saved-run <copy of runs\\<id>> --saved-run <copy of runs\\<id2>>   # B107, real caches
+    python scripts/c21_stack_study.py --out <scratch dir> --saved-run runs\\<id> --saved-run runs\\<id2>   # B107, real caches (each folder is copied into --out first)
 
 Set PYTHONHASHSEED=0 for the runs (PowerShell: $env:PYTHONHASHSEED="0"). Exit code 1 means a write other than the known observation-log append
 was refused.
@@ -54,6 +54,8 @@ REPLAY_SEED = 20261010
 T_CUT = 2.78  # 95% two-sided t cutoff, 4 degrees of freedom (preregistered, judgment)
 PASS_REL, FAIL_REL, MDE_REL = 0.03, 0.01, 0.10
 FIDELITY_TOL = 10.0  # points, the C46 gate's tolerance
+OFF_AXIS_CAP = 0.15  # share of replay field lineups that may hold a player the saved cache did not simulate
+OBSERVED_ORDER = {"09-30 (3 games)": "6-1-1, 4-3-1, 5-2-1", "10-01 main (8 games)": "4-3-1, 4-2-1-1, 5-2-1"}  # standings synthesis section 3, information only
 SCENARIO_N = {
     "bed": {"design": 1000, "selection": 3000, "referee": 3000, "field_target": 1000},
     "bed_small": {"design": 300, "selection": 800, "referee": 800, "field_target": 400},
@@ -172,7 +174,21 @@ def rank_tuples(pool, objective: dict, shape: str, primaries: list[str], teams: 
 
 # -- the scored world ----------------------------------------------------------------------------------------------------
 
-def build_sets(cache, pool):
+def play_prob_of(cache, pool, st, fam_cfg) -> tuple[dict, str]:
+    """(play probabilities, source) exactly as late swap prices participation on a cache (swap_objective.ScenarioObjective): the run's own
+    pricing stored in the cache when it has one, else C8's rule for a cache made before it was stored (DTD persons at the configured
+    probability). The mask over the cached rows is drawn once over the whole stream, so it is not the original run's draw over its longer one."""
+    from nhl_dfs.contracts.statuses import Participation
+
+    if cache.meta.get("play_prob") is not None:
+        play = {k: float(v) for k, v in cache.meta["play_prob"].items()}
+        return play, f"the cache's own play_prob ({len(play)} person(s))"
+    q = float(fam_cfg["selection"]["questionable_play_prob"])
+    play = {pool.by_role_id[r].person_key: q for r, (p, _) in (st or {}).items() if p is Participation.QUESTIONABLE}
+    return play, f"FALLBACK: the cache holds no play_prob, so DTD persons are masked at {q:g} as late swap does ({len(play)} person(s))"
+
+
+def build_sets(cache, pool, play):
     """Selection and referee ScenarioSets with the play mask applied once over the FULL cached stream (the mask draws depend on the stream
     length), then the selection stream split in two: design (first half) and choosing (second half)."""
     from nhl_dfs.build import objectives as ob
@@ -180,7 +196,7 @@ def build_sets(cache, pool):
     out = {}
     for purpose in ("selection", "referee"):
         out[purpose] = ob.scenario_set(cache.base(purpose, cache.n(purpose)), cache.person_keys, pool, purpose=purpose, seed=cache.seed,
-                                       purpose_code=int(cache.meta["purposes"][purpose]["code"]), play_prob=cache.meta.get("play_prob"))
+                                       purpose_code=int(cache.meta["purposes"][purpose]["code"]), play_prob=play)
     sel = out["selection"]
     h = sel.n // 2
     return {"design": ob.ScenarioSet(sel.role_ids, sel.base[:h], "selection-design", sel.seed),
@@ -273,6 +289,42 @@ def fidelity(shares: dict, table: dict) -> tuple[bool, dict]:
     return all(abs(v) <= FIDELITY_TOL for v in gaps.values()), gaps
 
 
+def compare_arms(*, top, reps, p_ref, p_cho, arms, base_arm: str, c: str, seeds, cfg: Config, mean_base: float) -> dict | None:
+    """Gain of arm c over the baseline arm: the seed-pooled difference of mean P(top 1%) with its three error parts (seeds, scenario
+    bootstrap, field reweighting), the best-k condition and the per-seed signs. top is (S, K) per-scenario P(top 1%) of each candidate, reps
+    (1 + R, K) the mean under the saved field (row 0) and R multinomial reweightings of it, p_ref and p_cho the per-candidate means on the
+    reporting and choosing streams, arms[arm][seed] the candidate columns in generation order. Each seed compares the first m candidates of
+    both arms, m the smaller count. None when an arm has no candidates for some seed."""
+    import numpy as np
+
+    d_seed, vec, rep_d, b10 = [], [], [], []
+    for s in seeds:
+        a, b = arms[c][s], arms[base_arm][s]
+        m = min(len(a), len(b))
+        if m == 0:
+            return None
+        a, b = a[:m], b[:m]
+        d_seed.append(float(p_ref[a].mean() - p_ref[b].mean()))
+        vec.append(top[:, a].mean(axis=1, dtype=np.float64) - top[:, b].mean(axis=1, dtype=np.float64))
+        rep_d.append(reps[1:, a].mean(axis=1) - reps[1:, b].mean(axis=1))
+        k = min(cfg.best_k, m)
+        ba = sorted(a, key=lambda i: (-p_cho[i], i))[:k]
+        bb = sorted(b, key=lambda i: (-p_cho[i], i))[:k]
+        b10.append(float(p_ref[ba].mean() - p_ref[bb].mean()))
+    n = len(seeds)
+    d = statistics.fmean(d_seed)
+    se_seed = statistics.stdev(d_seed) / math.sqrt(n) if n > 1 else float("nan")
+    v = np.mean(vec, axis=0)  # the pooled difference is linear in the scenario rows, so one resample serves both arms
+    brng = np.random.default_rng(cfg.rng_seed)
+    boot = [float(v[brng.integers(0, len(v), len(v))].mean()) for _ in range(cfg.boot_scen)]
+    se_scen = statistics.stdev(boot) if len(boot) > 1 else float("nan")
+    rd = np.mean(rep_d, axis=0)
+    se_field = statistics.stdev(map(float, rd)) if len(rd) > 1 else float("nan")
+    se = math.sqrt(sum(x * x for x in (se_seed, se_scen, se_field)))
+    return {"d": d, "se": se, "se_seed": se_seed, "se_scen": se_scen, "se_field": se_field, "d_over_base": d / mean_base,
+            "best10_diff": statistics.fmean(b10), "seed_diffs": d_seed, "positive_seeds": sum(1 for x in d_seed if x > 0), "n_seeds": n}
+
+
 def study(*, name: str, synthetic: bool, saved, saved_view, replay, cfg: Config, risk_cfg: dict, runtime: dict, log=print) -> dict:
     """Stage 2: a pure function of the frozen saved cache, its pool and the replay's cache. Returns the slate result."""
     import numpy as np
@@ -293,7 +345,10 @@ def study(*, name: str, synthetic: bool, saved, saved_view, replay, cfg: Config,
     contest = saved.contests[cid]
     n_opp = int(saved.n_opponents[cid])
     full_pool = saved_view.pool
-    sets = build_sets(saved, full_pool)
+    from nhl_dfs.models import contests as contests_mod
+
+    play, res["participation_source"] = play_prob_of(saved, full_pool, getattr(saved_view, "st", None), contests_mod.load_contest_families())
+    sets = build_sets(saved, full_pool, play)
     keep = set(sets["referee"].role_ids) & set(sets["design"].role_ids)
     pool = pool_without(full_pool, [r for r in full_pool.by_role_id if r not in keep])
     rule = bool(og.rule_families(risk_cfg, Mode.CLASSIC) & {"large_gpp"})
@@ -302,15 +357,22 @@ def study(*, name: str, synthetic: bool, saved, saved_view, replay, cfg: Config,
                 "streams": {k: sets[k].n for k in ("design", "choose", "referee")}, "seed": saved.seed})
 
     # the replay field, its fidelity, and the saved field beside it
-    fam_r = replay.families.get("large_gpp")
-    if not fam_r or not fam_r[0]:
+    # the replay may classify the contest differently (an offline replay has no lobby details): use its family for this contest id, else large_gpp
+    fam_name = next((f for f in (replay.contest_family.get(cid), "large_gpp") if f and (replay.families.get(f) or ([], []))[0]), None)
+    if fam_name is None:
         res["failed"] = "the replay holds no large_gpp field"
         return res
-    r_lus, r_ks = fam_r
-    unknown = {rid for lu in r_lus for rid in lu if rid not in sets["referee"].col}
-    if unknown:
-        res["failed"] = f"{len(unknown)} replay field role IDs are not on the saved cache's person axis (the replay is not the same slate)"
+    res["replay_field_family"] = fam_name
+    r_lus, r_ks = replay.families[fam_name]
+    # an offline replay has no Phase B, so it keeps players the saved run dropped (OUT or disabled): lineups holding one are dropped, counted, capped
+    axis = sets["referee"].col
+    kept = [i for i, lu in enumerate(r_lus) if all(rid in axis for rid in lu)]
+    res["replay_field_off_axis"] = {"dropped": len(r_lus) - len(kept), "of": len(r_lus), "share_pct": round(100.0 * (len(r_lus) - len(kept)) / len(r_lus), 2)}
+    if (len(r_lus) - len(kept)) > OFF_AXIS_CAP * len(r_lus):
+        res["failed"] = (f"{res['replay_field_off_axis']['share_pct']}% of the replay field holds a player the saved cache did not simulate "
+                         f"(cap {int(100 * OFF_AXIS_CAP)}%): the replay is not the same slate")
         return res
+    r_lus, r_ks = [r_lus[i] for i in kept], [r_ks[i] for i in kept]
     table = risk_cfg_table()
     res["replay_field"] = field_shares(r_lus, full_pool)
     res["fidelity_ok"], res["fidelity_gaps"] = fidelity(res["replay_field"], table)
@@ -332,6 +394,8 @@ def study(*, name: str, synthetic: bool, saved, saved_view, replay, cfg: Config,
         got = rank_tuples(pool, objective, shape, primaries, teams, rule, cfg.tuple_time_s)
         menus[shape], tuple_report[shape] = got["menu"], {"tuples": got["tuples"], "solve_status": got["status"]}
     res["primaries"] = primaries
+    res["warnings"] = [f"{s}: {n} tuple solve(s) ended {k} (an incumbent, not a proven optimum)" for s, v in tuple_report.items()
+                       for k, n in v["solve_status"].items() if "TIME_LIMIT" in k or k == "ERROR"]
     res["tuples"] = tuple_report
     res["tuple_counts"] = {s: len(m) for s, m in menus.items()}
     res["equal_depth"] = len(set(res["tuple_counts"].values())) == 1
@@ -378,7 +442,8 @@ def study(*, name: str, synthetic: bool, saved, saved_view, replay, cfg: Config,
     ref = Scorer(sets["referee"], spec_r, contest, risk_cfg, Mode.CLASSIC)
     top = ref.top(order)  # (S, K) float32
     p_ref = top.mean(axis=0, dtype=np.float64)
-    res["plumbing"] = {"indicator_mean_vs_engine_max_abs_diff": float(np.abs(p_ref - ref.engine_p(order)).max())}
+    sub = order[:150]  # objectives._evaluate on all K at S = 8,000 would hold about 1 GB; 150 candidates check the same formula
+    res["plumbing"] = {"indicator_mean_vs_engine_max_abs_diff": float(np.abs(p_ref[:len(sub)] - ref.engine_p(sub)).max()), "indicator_check_candidates": len(sub)}
     for arm, v in noise.items():
         c1, c2 = v.pop("_cols")
         v["metric_first"], v["metric_second"] = (float(p_ref[c1].mean()) if c1 else None), (float(p_ref[c2].mean()) if c2 else None)
@@ -389,7 +454,11 @@ def study(*, name: str, synthetic: bool, saved, saved_view, replay, cfg: Config,
     del cho
     rng = np.random.default_rng(cfg.rng_seed)
     cand_scores = sets["referee"].scores(order, Mode.CLASSIC).full()
-    w_reps = [np.asarray(spec_r.weights, np.int64)] + [rng.multinomial(n_opp, spec_r.counts / spec_r.counts.sum()) for _ in range(cfg.boot_field)]
+    # the sampled field has counts.sum() independent draws that stand for n_opp opponents: resample THAT many, then scale to n_opp the way the
+    # saved weights were (objectives.largest_remainder)
+    n_draws, p_draws = int(spec_r.counts.sum()), spec_r.counts / spec_r.counts.sum()
+    w_reps = [np.asarray(spec_r.weights, np.int64)] + [np.asarray(ob.largest_remainder(rng.multinomial(n_draws, p_draws), n_opp), np.int64)
+                                                      for _ in range(cfg.boot_field)]
     reps = ref.reps(cand_scores, w_reps)  # (1 + R, K); row 0 is the field as saved
     res["plumbing"]["reps_base_vs_sorted_field_max_abs_diff"] = float(np.abs(reps[0] - p_ref).max())
     del cand_scores
@@ -413,33 +482,8 @@ def study(*, name: str, synthetic: bool, saved, saved_view, replay, cfg: Config,
     res["mean_base"] = statistics.fmean(base)
 
     def compare(c: str) -> dict | None:
-        """Gain of arm c over the baseline: seed-pooled difference with the three error parts, the best-k condition, per-seed signs."""
-        d_seed, vec, rep_d, b10 = [], [], [], []
-        for s in cfg.seeds:
-            a, b = arms[c][s], arms[BASELINE][s]
-            m = min(len(a), len(b))
-            if m == 0:
-                return None
-            a, b = a[:m], b[:m]
-            d_seed.append(float(p_ref[a].mean() - p_ref[b].mean()))
-            vec.append(top[:, a].mean(axis=1, dtype=np.float64) - top[:, b].mean(axis=1, dtype=np.float64))
-            rep_d.append(reps[1:, a].mean(axis=1) - reps[1:, b].mean(axis=1))
-            k = min(cfg.best_k, m)
-            ba = sorted(a, key=lambda i: (-p_cho[i], i))[:k]
-            bb = sorted(b, key=lambda i: (-p_cho[i], i))[:k]
-            b10.append(float(p_ref[ba].mean() - p_ref[bb].mean()))
-        n = len(cfg.seeds)
-        d = statistics.fmean(d_seed)
-        se_seed = statistics.stdev(d_seed) / math.sqrt(n) if n > 1 else float("nan")
-        v = np.mean(vec, axis=0)  # the pooled difference is linear in the scenario rows
-        brng = np.random.default_rng(cfg.rng_seed)
-        boot = [float(v[brng.integers(0, len(v), len(v))].mean()) for _ in range(cfg.boot_scen)]
-        se_scen = statistics.stdev(boot) if len(boot) > 1 else float("nan")
-        rd = np.mean(rep_d, axis=0)
-        se_field = statistics.stdev(map(float, rd)) if len(rd) > 1 else float("nan")
-        se = math.sqrt(sum(x * x for x in (se_seed, se_scen, se_field)))
-        return {"d": d, "se": se, "se_seed": se_seed, "se_scen": se_scen, "se_field": se_field, "d_over_base": d / res["mean_base"],
-                "best10_diff": statistics.fmean(b10), "seed_diffs": d_seed, "positive_seeds": sum(1 for x in d_seed if x > 0), "n_seeds": n}
+        return compare_arms(top=top, reps=reps, p_ref=p_ref, p_cho=p_cho, arms=arms, base_arm=BASELINE, c=c, seeds=cfg.seeds, cfg=cfg,
+                            mean_base=res["mean_base"])
 
     for c in CHALLENGERS:
         got = compare(c)
@@ -528,6 +572,33 @@ def set_roots(out: Path) -> dict[str, str]:
     return {k: str(v) for k, v in roots.items()}
 
 
+class isolated_local_data:
+    """The synthetic bed must not depend on the machine it runs on: while active, the history store, stored web pages, identity files and the
+    bootstrap state file point at empty folders under `out` (the same attributes tests/conftest.py replaces for every test). Real slates are NOT
+    isolated: their replay should read the real local history, as the original run did."""
+
+    def __init__(self, out: Path):
+        self.root, self.saved = Path(out) / "no_history", []
+
+    def __enter__(self):
+        import nhl_dfs.data.history.status as history_status
+        import nhl_dfs.data.history.store as store_mod
+        import nhl_dfs.data.http as http_mod
+        import nhl_dfs.data.identity.crosswalk as cw
+
+        for mod, attr, val in ((store_mod, "DEFAULT_ROOT", self.root / "store"), (http_mod, "DEFAULT_ROOT", self.root / "raw"),
+                               (cw, "ACCEPTED_CSV", self.root / "accepted.csv"), (cw, "PROPOSALS_JSON", self.root / "proposals.json"),
+                               (history_status, "BOOTSTRAP_STATE", self.root / "history_bootstrap.state")):
+            self.saved.append((mod, attr, getattr(mod, attr)))
+            setattr(mod, attr, val)
+        return self
+
+    def __exit__(self, *exc):
+        for mod, attr, old in reversed(self.saved):
+            setattr(mod, attr, old)
+        return False
+
+
 def replay_run(salary: Path, entries: Path, clock: datetime, scenario_n: dict, out: Path, tag: str, seed: int = REPLAY_SEED):
     """Stage 1: the slate's inputs through today's tree, offline, in scratch roots. Returns the replay's RunDir."""
     from nhl_dfs.build.run import run_slate
@@ -540,17 +611,31 @@ def replay_run(salary: Path, entries: Path, clock: datetime, scenario_n: dict, o
 
 
 def copy_saved_run(src: Path, out: Path) -> tuple[Path, str]:
-    """A scratch copy of a real run folder (only what the study reads); returns (runs root of the copy, run id)."""
+    """A scratch copy of a real run folder (only what the study reads); returns (runs root of the copy, run id). A refresh or late-swap child
+    keeps no cache of its own (scenario_cache.find follows parent_run_id), so the nearest parent holding one is copied too (its scenario
+    folder and manifest only)."""
     src = Path(src).resolve()
-    dst = out / "saved" / src.name
-    dst.mkdir(parents=True, exist_ok=True)
-    for name in ("inputs", "versions", "scenario"):
-        if (src / name).is_dir():
-            shutil.copytree(src / name, dst / name, dirs_exist_ok=True)
-    for name in ("manifest.json", "current"):
-        if (src / name).exists():
-            shutil.copy2(src / name, dst / name)
-    return dst.parent, src.name
+    runs, dst_root = src.parent, Path(out) / "saved"
+    rid, first = src.name, True
+    for _ in range(8):
+        d, s_ = dst_root / rid, runs / rid
+        d.mkdir(parents=True, exist_ok=True)
+        for name in (("inputs", "versions", "scenario") if first else ("scenario",)):
+            if (s_ / name).is_dir():
+                shutil.copytree(s_ / name, d / name, dirs_exist_ok=True)
+        for name in (("manifest.json", "current") if first else ("manifest.json",)):
+            if (s_ / name).exists():
+                shutil.copy2(s_ / name, d / name)
+        if (s_ / "scenario" / "meta.json").exists():
+            break
+        try:
+            parent = json.loads((s_ / "manifest.json").read_text(encoding="utf-8")).get("parent_run_id")
+        except (OSError, ValueError):
+            parent = None
+        if not parent or not (runs / parent).is_dir():
+            break
+        rid, first = parent, False
+    return dst_root, src.name
 
 
 def load_view(runs_root: Path, run_id: str):
@@ -575,6 +660,10 @@ def report_md(slates: list[dict], v: dict, meta: dict) -> str:
         if s.get("failed"):
             L += [f"NO RESULT: {s['failed']}", ""]
             continue
+        for w in s.get("warnings", []):
+            L.append(f"WARNING: {w}")
+        L += [f"Participation priced from {s['participation_source']}; replay field family {s['replay_field_family']}, "
+              f"{s['replay_field_off_axis']['dropped']} of {s['replay_field_off_axis']['of']} lineups dropped for holding a player the saved cache did not simulate", ""]
         L += [f"Contest {s['contest']['id']} ({s['contest']['field_size']} entries, {s['contest']['n_opponents']} opponents, payouts {s['contest']['payout_source']}); "
               f"own-goalie rule {'on' if s['own_goalie_rule'] else 'off'}; streams {s['streams']}; fidelity gate {'passed' if s['fidelity_ok'] else 'FAILED'} "
               f"(gaps {s.get('fidelity_gaps')}); tuples per shape {s['tuple_counts']} (equal depth {s['equal_depth']})", "",
@@ -591,15 +680,50 @@ def report_md(slates: list[dict], v: dict, meta: dict) -> str:
             L.append(f"\nMinimum detectable effect {s['mde']:.5f} ({100 * s['mde'] / s['mean_base']:.1f}% of the 4-3-1 mean).")
         L += [f"\nReplay field {s['replay_field']['top_shapes']} (3+ {s['replay_field']['stack3']}, 4+ {s['replay_field']['stack4']}, 5+ {s['replay_field']['stack5']}, "
               f"6-1-1 {s['replay_field']['six_one_one']}); saved field {s['saved_field']['top_shapes']} (3+ {s['saved_field']['stack3']}, 4+ {s['saved_field']['stack4']}, "
-              f"5+ {s['saved_field']['stack5']}); published portfolio {s['published_shape_mix_pct']}; ordering {s['ordering']}", ""]
+              f"5+ {s['saved_field']['stack5']}); published portfolio {s['published_shape_mix_pct']}; modeled ordering {s['ordering']} "
+              f"beside the observed {OBSERVED_ORDER} (standings synthesis section 3, in-sample, information only)", ""]
     return "\n".join(L)
+
+
+def failed_slate(name: str, synthetic: bool, reason: str, **extra) -> dict:
+    return {"name": name, "synthetic": synthetic, "failed": reason, "fidelity_ok": False, "challengers": {}, **extra}
+
+
+def bed_slate(out: Path, cfg: Config, log, small: bool) -> dict:
+    from pool_builder import clone_entries
+
+    entries = out / "bed_DKEntries.csv"
+    clone_entries(BED / "DKEntries.template.csv", entries, 40)
+    with isolated_local_data(out):  # the bed must not depend on this machine's history
+        run = replay_run(BED / "DKSalaries.csv", entries, BED_CLOCK, SCENARIO_N["bed_small" if small else "bed"], out, "bed")
+    view = load_view(run.path.parent, run.run_id)
+    if view.cache is None:
+        raise RuntimeError("the bed replay wrote no scenario cache")
+    log(f"bed replayed: run {run.run_id}")
+    return run_slate_study("synthetic bed", True, view, view.cache, view.cache, cfg, log=log)
+
+
+def saved_slate(src: Path, out: Path, cfg: Config, log) -> dict:
+    runs_root, rid = copy_saved_run(src, out)
+    view = load_view(runs_root, rid)
+    saved = view.cache
+    if saved is None:
+        return failed_slate(rid, False, "the run holds no scenario cache (nor does any parent run)")
+    created = json.loads((runs_root / rid / "manifest.json").read_text(encoding="utf-8"))["created_utc"]
+    clock = datetime.fromisoformat(created.replace("Z", "+00:00"))
+    run = replay_run(runs_root / rid / "inputs" / "DKSalaries.csv", runs_root / rid / "inputs" / "DKEntries.csv", clock, SCENARIO_N["replay"], out, rid)
+    rview = load_view(run.path.parent, run.run_id)
+    if rview.cache is None:
+        return failed_slate(rid, False, "the replay wrote no scenario cache")
+    log(f"{rid}: replayed as {run.run_id}; saved cache found on run {saved.run_id}")
+    return run_slate_study(rid, False, view, saved, rview.cache, cfg, log=log)
 
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--out", required=True, type=Path, help="scratch folder (all writes go here)")
     ap.add_argument("--bed", action="store_true", help="the synthetic 6-team bed (cannot promote anything)")
-    ap.add_argument("--saved-run", action="append", type=Path, default=[], help="a real run folder (copied into --out first); repeat for each slate")
+    ap.add_argument("--saved-run", action="append", type=Path, default=[], help="a real run folder (it is COPIED into --out first); repeat for each slate")
     ap.add_argument("--small", action="store_true", help="the reduced configuration the tests use (NOT the preregistered sample)")
     args = ap.parse_args(argv)
     if not args.bed and not args.saved_run:
@@ -614,45 +738,38 @@ def main(argv=None) -> int:
     others = [x.strip() for x in listing if ("python" in x.lower() or "pytest" in x.lower()) and "c21_stack_study" not in x]
     print(f"other python processes at start: {len(others)} {others[:3]}; PYTHONHASHSEED={os.environ.get('PYTHONHASHSEED')}", flush=True)
     cfg = Config.small() if args.small else Config()
-    slates, source = [], []
-    if args.bed:
-        from pool_builder import clone_entries
+    log = lambda m: print(m, flush=True)  # noqa: E731
+    slates: list[dict] = []
+    source: list[str] = []
 
-        entries = out / "bed_DKEntries.csv"
-        clone_entries(BED / "DKEntries.template.csv", entries, 40)
-        n = SCENARIO_N["bed_small" if args.small else "bed"]
-        run = replay_run(BED / "DKSalaries.csv", entries, BED_CLOCK, n, out, "bed")
-        view = load_view(run.path.parent, run.run_id)
-        cache = view.cache
-        if cache is None:
-            raise RuntimeError("the bed replay wrote no scenario cache")
-        print(f"bed replayed: run {run.run_id}", flush=True)
-        slates.append(run_slate_study("synthetic bed", True, view, cache, cache, cfg, log=lambda m: print(m, flush=True)))
+    def save() -> dict:
+        """results.json after EVERY slate, so a crash in a later one never loses an earlier one (a real slate is minutes of compute)."""
+        v = verdict(slates)
+        meta = {"source": "; ".join(source) + (" [SMALL CONFIGURATION: not the preregistered sample]" if args.small else ""),
+                "pythonhashseed": os.environ.get("PYTHONHASHSEED"), "other_python_at_start": others, "roots": roots, "seeds": list(cfg.seeds)}
+        (out / "results.json").write_text(json.dumps({"meta": meta, "slates": slates, "verdict": v}, indent=1, default=str), encoding="utf-8")
+        (out / "report.md").write_text(report_md(slates, v, meta), encoding="utf-8")
+        return v
+
+    def attempt(name: str, synthetic: bool, fn) -> None:
+        try:
+            slates.append(fn())
+        except Exception as exc:  # recorded as that slate's failure, never a lost run
+            import traceback
+
+            slates.append(failed_slate(name, synthetic, f"{type(exc).__name__}: {str(exc)[:300]}", traceback=traceback.format_exc()[-1500:]))
+            print(f"{name}: FAILED {type(exc).__name__}: {str(exc)[:300]}", flush=True)
+        save()
+
+    if args.bed:
         source.append("synthetic bed (late_swap fixture, 40 entries): decides nothing")
+        attempt("synthetic bed", True, lambda: bed_slate(out, cfg, log, args.small))
     for src in args.saved_run:
-        runs_root, rid = copy_saved_run(src, out)
-        view = load_view(runs_root, rid)
-        saved = view.cache
-        if saved is None:
-            slates.append({"name": rid, "synthetic": False, "failed": "the run holds no scenario cache", "fidelity_ok": False, "challengers": {}})
-            continue
-        created = json.loads((runs_root / rid / "manifest.json").read_text(encoding="utf-8"))["created_utc"]
-        clock = datetime.fromisoformat(created.replace("Z", "+00:00"))
-        run = replay_run(runs_root / rid / "inputs" / "DKSalaries.csv", runs_root / rid / "inputs" / "DKEntries.csv", clock, SCENARIO_N["replay"], out, rid)
-        rview = load_view(run.path.parent, run.run_id)
-        if rview.cache is None:
-            slates.append({"name": rid, "synthetic": False, "failed": "the replay wrote no scenario cache", "fidelity_ok": False, "challengers": {}})
-            continue
-        print(f"{rid}: replayed as {run.run_id}", flush=True)
-        slates.append(run_slate_study(rid, False, view, saved, rview.cache, cfg, log=lambda m: print(m, flush=True)))
-        source.append(f"real run {rid} (in-sample if it is a 09-29 or 09-30 slate)")
-    v = verdict(slates)
-    meta = {"source": "; ".join(source) + (" [SMALL CONFIGURATION: not the preregistered sample]" if args.small else ""),
-            "pythonhashseed": os.environ.get("PYTHONHASHSEED"), "other_python_at_start": others, "roots": roots, "seeds": list(cfg.seeds)}
-    (out / "results.json").write_text(json.dumps({"meta": meta, "slates": slates, "verdict": v}, indent=1, default=str), encoding="utf-8")
-    md = report_md(slates, v, meta)
-    (out / "report.md").write_text(md, encoding="utf-8")
-    print(md)
+        source.append(f"real run {Path(src).name} (in-sample if it is a 09-29 or 09-30 slate)")
+        attempt(Path(src).name, False, lambda src=src: saved_slate(src, out, cfg, log))
+    v = save()
+    print((out / "report.md").read_text(encoding="utf-8"))
+    print(f"STUDY VERDICT: {v['study']}")
     print(f"writes refused: {len(guard.WRITES)}; network attempts blocked: {len(guard.NET)}; roots: {roots}", flush=True)
     (out / "guard.json").write_text(json.dumps({"writes_refused": guard.WRITES, "network_blocked": guard.NET, "other_python_at_start": others}), encoding="utf-8")
     # the only write the offline run tries outside --out is the observation log (the known gap, refused and counted)
