@@ -169,3 +169,71 @@ a seed, a stream or the verdict mapping.
 8. The check that the per-scenario indicator equals the engine's `p_top1pct` runs on the first 150 candidates (memory); the plumbing test pins it.
 
 <!-- RESULT MARKER: everything below was appended after the arms ran; nothing above this line is edited -->
+
+## Result (appended 2026-10-10 after the run; nothing above the marker was edited after it ran, and the amendments section above it was written before any result)
+
+**Verdict, by the rule above: NOT MEASURED on real caches. The run holds only the synthetic bed, so its per-slate statuses decide nothing. No sleeve is
+built and nothing ships; for shipping this counts as not promoted. On the bed, 5-2-1 reached PASS and 3-3-2 FAIL: that is "accepted on a synthetic bed,
+not promoted", and it is not evidence about any real slate. The real run is backlog B107.**
+
+What ran: `PYTHONHASHSEED=0 python scripts/c21_stack_study.py --out <scratch> --bed` (the preregistered sample: 5 seeds, 60 candidates per arm per seed, 200
+bootstrap resamples, 30 field reweightings) on the code of commit `56f4d54` (the script, the tests and the review fixes), in a Linux cloud container with no
+other python process (checked at start). The bed replay ran at design 1,000, selection 3,000, referee 3,000 and field target 1,000; the cache keeps whole
+2,000-draw chunks, so the streams were design 1,000 and choosing 1,000 (the two halves of 2,000 selection draws) and reporting 2,000 referee draws. The study
+took 41.9 seconds after the replay (under 80 seconds from start to the report). The write guard refused 0 writes (the bed runs with the local history isolated; C20's run, which
+did not isolate it, tried the observation-log append 132 times) and blocked 0 network attempts; the four NHL_DFS roots were scratch folders and their runs and
+outputs folders are empty. Before and after, the modification times of `data/raw/dailyfaceoff`, `data/features`, `data/standings`, `data/ledger`,
+`data/entered`, `runs/` and `outputs/` (all of them absent in this container except `data/entered`) and the observation line count (1 line in 1 file)
+are identical. The run records are `docs/experiments/stack_size_2026-10-10_results.json` and `_guard.json`.
+
+Noise baseline (first, as written): the free arm and the 5-2-1 arm, each generated twice at seed 20261010 on identical inputs, gave identical candidate lists
+(sha256 `4540626970cb5dc1` and `408b0e1a4d79ed09` both times) and a metric difference of 0.0 for both, so the B98 nondeterminism did not appear on this idle
+container. Every tuple solve ended FEASIBLE (30 for 4-3-1, 30 for 5-2-1, 6 for 6-1-1, 120 for 3-3-2; none on a time limit), every shape had exactly 6 tuples
+(the 6 teams of the bed, so equal depth), and none of the 1,498 distinct candidates faced its own goalie. The scorer's per-scenario indicator equals the engine's
+`p_top1pct` to 2.3e-9 on the first 150 candidates, and the re-weighted ranks reproduce the sorted-field ranks to 2.6e-10.
+
+| Arm (60 candidates per seed, all five seeds) | Mean P(top 1%) | Shapes of its candidates |
+|---|---:|---|
+| 4-3-1 (baseline) | 0.01763 | 4-3-1 100 percent |
+| 5-2-1 | 0.01891 | 5-2-1 100 percent |
+| 6-1-1, against a field that has none (B101) | 0.02055 | 6-1-1 100 percent |
+| 3-3-2 | 0.01756 | 3-3-2 100 percent |
+| free (the unconstrained central search) | 0.01614 | 3-2-2-1 26.0, 3-2-1-1-1 24.7, 2-2-2-1-1 17.0, 4-2-1-1 8.7, 3-3-1-1 6.7, 4-3-1 3.7 |
+
+| Challenger | Gain over 4-3-1 | Standard error (seed, scenario, field) | Best-10 gain | Seeds above zero | Status |
+|---|---:|---|---:|---|---|
+| 5-2-1 | +0.00128 (+7.2 percent) | 0.00044 (0.00030, 0.00028, 0.00016) | +0.00139 | 5 of 5 | PASS on the bed |
+| 3-3-2 | -0.00007 (-0.4 percent) | 0.00048 (0.00034, 0.00031, 0.00013) | -0.00161 | 2 of 5 | FAIL on the bed |
+
+The minimum detectable effect on the bed is 2.78 x 0.00048 = 0.00134, 7.6 percent of the 4-3-1 mean, under the 10 percent line, so step 2 of the rule did not
+fire. 5-2-1's gain is 2.9 standard errors, above the 2.78 cut, and 7.2 percent, above the 3 percent line; the per-seed gains are +0.00127, +0.00055, +0.00225,
++0.00075 and +0.00156; the best-10 gain is above zero. 3-3-2's per-seed gains are -0.00043, -0.00036, +0.00064, +0.00078 and -0.00100. Information only: 6-1-1's
+gain over 4-3-1 is +0.00292 (+16.5 percent, 5 of 5 seeds), labeled "against a field that has none"; it is never a challenger.
+
+Information only, deciding nothing. The fidelity gate passed (replay field 3+ 95.7, 4+ 65.0, 5+ 21.3 against 93.5, 65.7, 21.3; 6-1-1 0.0 against 6.3). On the bed
+the saved cache and the replay are the same run, so the saved-field condition equals the deciding one and says nothing here. The published portfolio of the
+bed's 40 entries held 3-2-2-1 22.5, 3-2-1-1-1 12.5, 4-2-1-1 10.0, 6-1-1 10.0, 2-2-2-1-1 10.0 and 5-1-1-1 7.5 percent. The modeled ordering was 6-1-1, 5-2-1,
+4-3-1, 3-3-2, free; the standings synthesis' observed orderings (09-30: 6-1-1, 4-3-1, 5-2-1; 10-01 main: 4-3-1, 4-2-1-1, 5-2-1) are in-sample and this
+ordering is not a check against them, because the bed is not those slates.
+
+Things the preregistration did not say, and deviations, all decided before the run unless marked:
+1. The amendments section above (written after the independent review of the script and before any result) fixed eight details; the biggest were the field error
+   part resampling the field's own draws and the off-axis rule for replay lineups. None moved a threshold, an arm, a seed or a stream.
+2. One dry run of the real-slate path (the bed's own run folder as a stand-in saved run, `--small`) was made before the amendments were committed. It printed the
+   fidelity gaps, the plumbing differences and "NOT MEASURED (fewer than two real slates)"; no P(top 1 percent) figure was read from it. The tests ran the study in
+   a small configuration (2 seeds, 12 candidates) and assert plumbing only: 27 passed and 1 skipped (the real-cache test, which needs `NHL_DFS_C21_SAVED_RUN`; a skip
+   is not a pass).
+3. The streams are smaller than the settings asked for: the cache keeps whole 2,000-draw chunks, so the 3,000 requested became 2,000 per stream. A candidate's
+   P(top 1 percent) is about 1.8 percent, so about 36 scenarios per candidate decide it; the three error parts are the guard against reading noise as a gain,
+   and a PASS on one 6-team bed with 1,000 field draws is a plumbing result.
+4. Every arm ran with the own-goalie rule on (flag 60) and no solve needed a time limit; the 600 second generation budget was never reached (the longest of the
+   25 generate calls recorded, one per arm and seed, took 1.66 seconds, and every call returned its 60 candidates).
+
+What this does and does not say: the mechanism runs end to end, the arms are comparable (the same objective, noise and count), a forced shape is exact from role IDs,
+the noise baseline is clean on an idle machine, and on the bed 5-2-1 clears the rule against 4-3-1 and 3-3-2 does not. It says nothing about the 09-29 and 09-30
+slates, where the saved draws were made online (with whatever market coverage those runs had), the replay field carries the observed 5+ share and the slates are
+in-sample for the question.
+
+Next, and not done here (backlog B107): the same script on the real 2026-09-29 and 2026-09-30 runs on Ben's machine, offline, in scratch roots, with the same
+rule: `python scripts/c21_stack_study.py --out <scratch dir> --saved-run runs\<id> --saved-run runs\<id2>` (each folder is copied into the scratch folder first).
+Only a run that gives ACCEPT-TO-SHADOW on both real slates leads to anything, and then only to a follow-up Ben opens: no sleeve code exists.
