@@ -172,7 +172,7 @@ def parse_by(text: str | None) -> list[tuple[str, ...]]:
         bad = [d for d in dims if d not in LABELERS]
         if not dims or bad:
             raise ValueError(f"--by: unknown dimension {', '.join(bad) or repr(item)}; choose from {', '.join(LABELERS)}")
-        out.append(dims)
+        out.append(tuple(sorted(set(dims), key=DIMENSIONS.index)))  # kind+format is format+kind: one label, one seed
     return out
 
 
@@ -219,9 +219,10 @@ def _interval_lines(slices: list[Slice]) -> list[str]:
             continue
         iv = s.intervals
         f, m, t, o = iv["finish excess"], iv["in-the-money excess"], iv["top-10% excess"], iv["observed finish"]
-        out.append(f"- {s.label}: finish {o[0]:.1f} (90% {o[1]:.1f} to {o[2]:.1f}); excess over random {f[0]:+.1f} points "
-                   f"(90% {f[1]:+.1f} to {f[2]:+.1f}); in the money {m[0]:+.1f} per 100 entries (90% {m[1]:+.1f} to "
-                   f"{m[2]:+.1f}); top 10% {t[0]:+.1f} per 100 entries (90% {t[1]:+.1f} to {t[2]:+.1f})")
+        out.append(f"- {s.label}: finish {o[0]:.1f} (90% {o[1]:.1f} to {o[2]:.1f}); finish over random {f[0]:+.1f} points "
+                   f"(90% {f[1]:+.1f} to {f[2]:+.1f}; below 0 is better); in the money over random {m[0]:+.1f} per 100 "
+                   f"entries (90% {m[1]:+.1f} to {m[2]:+.1f}; above 0 is better); top 10% over random {t[0]:+.1f} per 100 "
+                   f"entries (90% {t[1]:+.1f} to {t[2]:+.1f}; above 0 is better)")
     return out
 
 
@@ -271,11 +272,15 @@ def definition_checks(s: Slice) -> str:
     card_itm = sum((r.exp_in_money_card for r in rows), Fraction(0))
     above = sum(r.places_paid > r.entrants for r in rows)
     disagree = sum(r.in_money != (r.cash_cents + r.ticket_cents > 0) for r in rows)
+    kinds = Counter(eh.kind(r.contest_name) for r in rows)
+    kind_check = ("; KIND_CHECK=ALL_GPP: every contest name reads as gpp, so the Entry column may not hold contest names"
+                  if len(rows) >= 10 and set(kinds) == {"gpp"} else "")
     return (f"- {s.label}: rake ROI fee-weighted {_pc(s.rake_roi)} (used), entry mean {_pc(float(entry_mean))}; net with "
             f"tickets {_usd(s.net_cents)} (used), cash only {_usd(cash_net)}; expected in the money min(P, N) / N "
             f"{float(s.exp_in_money):.2f} (used), P / N {float(card_itm):.2f}, {above} entries with places paid above "
             f"entrants; {disagree} entries where place <= places paid disagrees with winnings above $0; finish "
-            f"{float(s.pct) * 100:.2f} against {float(s.random_pct) * 100:.2f}; top 10% expected {float(s.exp_top10):.2f}.")
+            f"{float(s.pct) * 100:.2f} against {float(s.random_pct) * 100:.2f}; top 10% expected {float(s.exp_top10):.2f}; "
+            f"kinds {', '.join(f'{k} {v}' for k, v in sorted(kinds.items()))}{kind_check}.")
 
 
 def gate_line(ledger_root: Path) -> str:
@@ -324,8 +329,9 @@ def render(hf: eh.HistoryFile, rows: list[eh.HistoryRow], since: date | None, bu
         "# NHL results against a random entry (C49)",
         "",
         f"- Export: {hf.path.name} (sha256 {hf.sha256[:12]}): {len(hf.rows)} NHL rows with a result, {len(paid)} paid, "
-        f"{len(hf.rows) - len(paid)} free left out; {hf.unsettled_rows} NHL rows unsettled (blank place or points: the "
-        f"contest was open) left out; {hf.other_sport_rows} rows of other sports counted, not read.",
+        f"{len(hf.rows) - len(paid)} free left out; {hf.unsettled_rows} unsettled NHL rows (blank place: the contest was "
+        f"open) left out" + (f", dated {hf.unsettled_dates[0]} to {hf.unsettled_dates[-1]}" if hf.unsettled_dates else "") +
+        f"; {hf.other_sport_rows} rows of other sports counted, not read.",
         f"- Window: Eastern contest dates {first} to {last}" + (f" (since {since})" if since else "") +
         f": {len(rows)} paid entries.",
         "- Finish = place / entrants x 100, lower is better. Random = each entry's own expectation in its contest: finish "
@@ -336,8 +342,9 @@ def render(hf: eh.HistoryFile, rows: list[eh.HistoryRow], since: date | None, bu
         "- A slate is the Eastern date of Contest_Date_EST as written plus the format. A slate is better when its "
         "entries' summed finish is below their summed random finish. Under 20 slates a slice is THIN: slate counts only, "
         "no interval, no finding.",
-        f"- Intervals: 90%, {N_BOOT:,} resamples of whole slates, seed {SEED}; {n_iv} printed. About 1 in 10 misses zero "
-        "by chance, so none is a finding alone.",
+        f"- Intervals: 90%, {N_BOOT:,} resamples of whole slates, seed {SEED}: {n_iv} over-random intervals over "
+        f"{len(shown)} distinct slices (the observed-finish intervals and the all row's repeats not counted). About 1 in 10 "
+        "misses zero by chance, so none is a finding alone.",
         f"- Kind by contest name ({eh.KIND_SOURCE}). Era: engine from {eh.ENGINE_ERA_START}. Net counts ticket winnings; "
         "rake ROI = pool / entrants summed over the entries, over fees, minus 1.",
         rec_line,

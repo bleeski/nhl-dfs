@@ -24,7 +24,7 @@ SPORT = "NHL"
 EASTERN = ZoneInfo("America/New_York")
 ENGINE_ERA_START = date(2026, 9, 29)  # the first real slate the engine built; the era never comes from the record join
 
-_MONEY = re.compile(r"^(-)?\$?(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?$")
+_MONEY = re.compile(r"^\$?(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?$")  # DraftKings never writes a negative amount
 _INT = re.compile(r"^(\d{1,3}(?:,\d{3})+|\d+)$")
 _POINTS = re.compile(r"^(-)?(\d+)(?:\.(\d{1,2}))?$")
 _DATE_FORMATS = ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M:%S",
@@ -126,7 +126,8 @@ class HistoryFile:
     sha256: str
     rows: tuple[HistoryRow, ...]  # NHL rows with a result, file order
     other_sport_rows: int  # counted, never parsed or stored
-    unsettled_rows: int  # NHL rows with a blank Place or Points (the contest was still open)
+    unsettled_rows: int  # NHL rows with a blank Place (the contest was still open)
+    unsettled_dates: tuple[date, ...] = ()  # their Eastern dates, so an old one stands out
 
 
 def check_header(header: list[str], where: str) -> None:
@@ -143,12 +144,12 @@ def check_header(header: list[str], where: str) -> None:
 
 
 def parse_money(text: str) -> int:
-    """'$1,000.00' -> 100000 cents. A blank or any other form is refused, never read as $0."""
+    """'$1,000.00' -> 100000 cents. A blank, a negative or any other form is refused, never read as $0 (a negative fee
+    would otherwise turn a paid entry into a free one)."""
     m = _MONEY.match(text.strip())
     if not m:
         raise ValueError(f"not a dollar amount: {text!r}")
-    cents = int(m.group(2).replace(",", "")) * 100 + int((m.group(3) or "0").ljust(2, "0"))
-    return -cents if m.group(1) else cents
+    return int(m.group(1).replace(",", "")) * 100 + int((m.group(2) or "0").ljust(2, "0"))
 
 
 def parse_int(text: str) -> int:
@@ -186,22 +187,25 @@ def format_of(game_type: str) -> str:
         return "classic"
     if "showdown" in g or "captain" in g:
         return "showdown"
-    return g or "unknown"
+    return game_type.strip() or "unknown"  # the raw text, its own slice
 
 
 def read_history(path) -> HistoryFile:
     p = Path(path)
     raw = p.read_bytes()
     reader = csv.reader(io.StringIO(raw.decode("utf-8-sig"), newline=""))
-    header = next(reader, None)
-    if header is None:
+    try:
+        records = [(reader.line_num, rec) for rec in reader]
+    except csv.Error as exc:
+        raise ValueError(f"{p.name} line {reader.line_num}: unreadable CSV ({exc})") from None
+    if not records:
         raise ValueError(f"{p.name}: empty file")
-    check_header(header, p.name)
+    check_header(records[0][1], p.name)
     rows: list[HistoryRow] = []
     seen: set[str] = set()
-    other = unsettled = 0
-    for rec in reader:
-        line = reader.line_num
+    other = 0
+    open_dates: list[date] = []
+    for line, rec in records[1:]:
         if not any(c.strip() for c in rec):
             continue
         if len(rec) != len(HEADER):
@@ -210,8 +214,11 @@ def read_history(path) -> HistoryFile:
         if cell["Sport"].strip().upper() != SPORT:
             other += 1
             continue
-        if not cell["Place"].strip() or not cell["Points"].strip():
-            unsettled += 1
+        if not cell["Place"].strip():  # a contest still open; a filled Place with blank Points is refused below
+            try:
+                open_dates.append(parse_eastern(cell["Contest_Date_EST"])[0])
+            except ValueError as exc:
+                raise ValueError(f"{p.name} line {line}, column Contest_Date_EST: {exc}") from None
             continue
         col = "Entry_Key"
         try:
@@ -249,7 +256,7 @@ def read_history(path) -> HistoryFile:
             ticket_cents=vals["Winnings_Ticket"], entrants=vals["Contest_Entries"], fee_cents=vals["Entry_Fee"],
             pool_cents=vals["Prize_Pool"], places_paid=vals["Places_Paid"]))
     return HistoryFile(path=p, sha256=hashlib.sha256(raw).hexdigest(), rows=tuple(rows), other_sport_rows=other,
-                       unsettled_rows=unsettled)
+                       unsettled_rows=len(open_dates), unsettled_dates=tuple(sorted(open_dates)))
 
 
 # -- labels ---------------------------------------------------------------------------------------------------------------

@@ -456,10 +456,11 @@ reads it to tune, select or book money (booking stays with settle, C29).
 
 - Reader: the exact header `Sport, Game_Type, Entry_Key, Entry, Contest_Key, Contest_Date_EST, Place, Points, Winnings_Non_Ticket,
   Winnings_Ticket, Contest_Entries, Entry_Fee, Prize_Pool, Places_Paid`; any other header is refused with the first differing, missing
-  or extra column named. Rows of other sports are counted and never parsed or stored. Money to integer cents (`$1,000.00` is 100000; a
-  blank or unknown form on a settled row is refused, never $0); integers may carry thousands commas; points to integer hundredths
-  (Showdown points have two decimals). A blank Place or Points is a contest still open: counted as unsettled and left out. A duplicate
-  Entry_Key is refused. The export lives under `data/standings/history/` (gitignored) and is never committed, nor is any row of it;
+  or extra column named, and so is a row with another field count (an unquoted comma) or an unreadable CSV. Rows of other sports are
+  counted and never parsed or stored. Money to integer cents (`$1,000.00` is 100000; a blank, negative or unknown form on a settled row
+  is refused, never $0: a negative fee would turn a paid entry into a free one); integers may carry thousands commas; points to
+  integer hundredths (Showdown points have two decimals). A blank Place is a contest still open: counted as unsettled, its dates shown,
+  and left out; a filled Place with blank Points is refused (a finished entry is never dropped). A duplicate Entry_Key is refused. The export lives under `data/standings/history/` (gitignored) and is never committed, nor is any row of it;
   committed text carries aggregates only.
 - Dates: `Contest_Date_EST` is Eastern wall time. The Eastern date as written gives the slate, the month and the era; the UTC instant
   (through America/New_York) is stored beside it and feeds nothing else, so a 10 PM ET contest stays on its own Eastern date.
@@ -479,7 +480,9 @@ reads it to tune, select or book money (booking stays with settle, C29).
 - Money: net = cash + ticket winnings - fee; ROI = net / fees; rake-implied ROI = sum of pool / N over the entries, divided by fees, minus
   1 (a random entry's expected return, fee-weighted). The all-entries row adds a definition-checks block with the alternatives: the
   entry mean of pool / (N x fee) - 1, net on cash only, expected in the money as P / N with the count of entries where P is above N, and
-  the count of entries where `place <= P` disagrees with winnings above $0.
+  the count of entries where `place <= P` disagrees with winnings above $0, and the count per kind (`KIND_CHECK=ALL_GPP` when every
+  name of 10 or more reads gpp: the Entry column may not hold contest names). A cross (`--by a+b`) is put in dimension order, so
+  `kind+format` and `format+kind` are one slice label and one seed. Each interval line says which side of 0 is better.
 - Slate sign: a slate is better when the sum over its entries of (place / N - (N + 1) / 2N) is below 0, worse above 0, even at 0 (exact
   fractions). Under 20 slates a slice prints THIN and the counts of slates better, worse and even, no interval, and claims nothing. At 20
   or more it adds the excess (observed minus random) of the mean percentile, the in-the-money rate and the top-10% rate, and the

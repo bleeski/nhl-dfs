@@ -71,8 +71,8 @@ def test_any_other_header_is_refused_with_the_column_named(tmp_path, change, mes
 def test_money_parses_commas_and_cents_and_a_blank_is_refused_not_zero(tmp_path):
     assert eh.parse_money("$1,000.00") == 100000
     assert eh.parse_money("$0.25") == 25 and eh.parse_money("$6,000.00") == 600000 and eh.parse_money("1000") == 100000
-    assert eh.parse_money("$1,000") == 100000 and eh.parse_money("-$1.50") == -150
-    for bad in ("", " ", "$1.234", "1,00.00", "$ 5", "abc", "1.000,00"):
+    assert eh.parse_money("$1,000") == 100000
+    for bad in ("", " ", "$1.234", "1,00.00", "$ 5", "abc", "1.000,00", "-$1.50", "$-1.00"):
         with pytest.raises(ValueError):
             eh.parse_money(bad)
     hf = eh.read_history(HISTORY)
@@ -119,12 +119,12 @@ def test_other_sports_are_counted_and_never_read_or_reported():
     text, built = results.build(HISTORY)
     assert "Blitz" not in text and "Dinger" not in text and "2 rows of other sports counted, not read" in text
     every = built[0][1][0]
-    assert every.net_cents == sum(r.net_cents for r in hf.rows if r.paid)
+    assert every.net_cents == 120930 and every.fees_cents == 2150  # the NFL row's $500 win would show here
 
 
 def test_unsettled_and_free_rows_are_counted_and_left_out():
     hf = eh.read_history(HISTORY)
-    assert hf.unsettled_rows == 1 and len(hf.rows) == 29
+    assert hf.unsettled_rows == 1 and hf.unsettled_dates == (date(2026, 10, 5),) and len(hf.rows) == 29
     assert sum(not r.paid for r in hf.rows) == 1
     assert len(results.select(hf, None)) == 28
 
@@ -237,6 +237,7 @@ def test_the_since_filter_and_a_cross_of_two_dimensions():
     assert "format + kind=classic / gpp" in labels and "format + kind=showdown / gpp" in labels
     with pytest.raises(ValueError, match="unknown dimension colour"):
         results.parse_by("format,colour")
+    assert results.parse_by("kind+format,era") == [("format", "kind"), ("era",)]  # one cross, one label, one seed
 
 
 # -- the command ------------------------------------------------------------------------------------------------------------
@@ -375,3 +376,48 @@ def test_the_gate_line_reads_the_settled_evidence_and_is_the_last_line(tmp_path)
     assert "unreadable (KeyError" in results.gate_line(led)
     (led / "graded.json").write_text("{not json", encoding="utf-8")
     assert "unreadable (JSONDecodeError" in results.gate_line(led)
+
+
+# -- refusals the review asked for ------------------------------------------------------------------------------------------
+
+def test_a_row_shifted_by_an_unquoted_comma_is_refused(tmp_path):
+    text = HISTORY.read_text(encoding="utf-8").replace('"$10,000.00"', "$10,000.00")
+    p = tmp_path / "shifted.csv"
+    p.write_text(text, encoding="utf-8", newline="")
+    with pytest.raises(ValueError, match="line 9: 15 fields, expected 14"):
+        eh.read_history(p)
+
+
+def test_a_place_with_blank_points_is_refused_not_dropped_and_a_negative_fee_is_refused(tmp_path):
+    table = _table()
+    table[9][7] = ""  # the 0-point lineup of 09-22, place 100 of 100
+    with pytest.raises(ValueError, match="line 10, column Points"):
+        eh.read_history(_write(tmp_path, table))
+    table = _table()
+    table[2][11] = "-$1.00"
+    with pytest.raises(ValueError, match="line 3, column Entry_Fee"):
+        eh.read_history(_write(tmp_path, table, "neg.csv"))
+
+
+def test_a_damaged_csv_is_refused_with_the_line(tmp_path):
+    p = tmp_path / "huge.csv"  # a field over the csv module's size limit: csv.Error, refused as a ValueError
+    p.write_bytes(HISTORY.read_bytes().replace(b"Synthetic Slapshot", b'"' + b"x" * 200_000 + b'"', 1))
+    with pytest.raises(ValueError, match="unreadable CSV"):
+        eh.read_history(p)
+
+
+def test_other_date_forms_and_game_types():
+    assert eh.parse_eastern("10/01/2026 22:00") == (date(2026, 10, 1), datetime(2026, 10, 2, 2, 0, tzinfo=timezone.utc))
+    assert eh.parse_eastern("2026-10-01 19:00:00.000")[0] == date(2026, 10, 1)
+    assert [eh.format_of(g) for g in ("Classic", "Showdown Captain Mode", "Captain Showdown", "Tiers")] == [
+        "classic", "showdown", "showdown", "Tiers"]
+
+
+def test_the_definition_checks_count_the_kinds_and_flag_a_file_where_every_name_reads_gpp(tmp_path):
+    text, _ = results.build(HISTORY, by="format", ledger_root=tmp_path / "ledger")
+    assert "kinds cash 1, gpp 23, satellite 1, single_entry_gpp 2, top_n 1." in text
+    table = _table()
+    for row in table[1:]:
+        row[3] = "Synthetic Entry Label"
+    flagged, _ = results.build(_write(tmp_path, table), by="format", ledger_root=tmp_path / "ledger")
+    assert "KIND_CHECK=ALL_GPP" in flagged
