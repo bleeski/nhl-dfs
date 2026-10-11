@@ -58,7 +58,7 @@ Tracker for `BUILD_CHUNKS.md` (final, 26 September 2026). Every development sess
 | C45 | TODO | C27 | | | | | band 2; B79 |
 | C47 | TODO | C16, C18 | | | | | band 1; B108; flag 64 answered by Ben 2026-10-10 (the goal in a Top-N contest is at least one own entry in the top N); ranked after C40 |
 | C48 | BLOCKED | C18 | | | | | band 1; B109; needs flag 67 (the record and bank must not be public before lock); flag 66 answered (commit the bank); ranked second by default, above C40 and C47, because the loss of forecasts is permanent |
-| C49 | TODO | C11 | | | | | band 1; B110; ranked first (one short session, no dependency, read by every later item) |
+| C49 | IN_PROGRESS | C11 | 2026-10-11 |  |  |  | band 1; B110; ranked first (one short session, no dependency, read by every later item) |
 | C50 | TODO | C49, C47, C38 | | | | | band 1; B111; flag 65 answered (commit the table); after C47 (both edit models/contests.resolve and objectives.prior_curve); needs Ben's entry history export in its session |
 | C51 | GATED | C48 | | | | | band 1, measurement; B112; gate: 5 settled Classic slates with standings and a bank (recorded or REBUILT); Ben flips it to TODO |
 | C52 | GATED | C51 | | | | | band 1, measurement; B112 (attribution half); gate: C51 DONE and 10 settled Classic slates |

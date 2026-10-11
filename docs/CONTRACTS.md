@@ -447,3 +447,52 @@ coerced to a known value (CLAUDE.md); other vocabularies here that have no
   day, and the UTC date made the flag read 0 for those games.
 - Not done here: the refresh is not part of `scheduled-refresh` (B95); MoneyPuck stays a manual `history --backfill`; eviction of the raw
   report bodies stays with the `history` command (B2 section above).
+
+## Results report (C49, `learn/entry_history.py`, `learn/results.py`; B110)
+
+Written before the first run on a real export. `results --history <csv> [--since <date>] [--by <list>]` reads DraftKings' contest
+entry history download and compares Ben's NHL finishes with a random entry in the same contests. In-sample description only: nothing
+reads it to tune, select or book money (booking stays with settle, C29).
+
+- Reader: the exact header `Sport, Game_Type, Entry_Key, Entry, Contest_Key, Contest_Date_EST, Place, Points, Winnings_Non_Ticket,
+  Winnings_Ticket, Contest_Entries, Entry_Fee, Prize_Pool, Places_Paid`; any other header is refused with the first differing, missing
+  or extra column named. Rows of other sports are counted and never parsed or stored. Money to integer cents (`$1,000.00` is 100000; a
+  blank or unknown form on a settled row is refused, never $0); integers may carry thousands commas; points to integer hundredths
+  (Showdown points have two decimals). A blank Place or Points is a contest still open: counted as unsettled and left out. A duplicate
+  Entry_Key is refused. The export lives under `data/standings/history/` (gitignored) and is never committed, nor is any row of it;
+  committed text carries aggregates only.
+- Dates: `Contest_Date_EST` is Eastern wall time. The Eastern date as written gives the slate, the month and the era; the UTC instant
+  (through America/New_York) is stored beside it and feeds nothing else, so a 10 PM ET contest stays on its own Eastern date.
+- Labels. Format: `classic` for Game_Type Classic, `showdown` when it contains Showdown or Captain, otherwise the raw text (its own
+  slice). Kind, NAME_RULE, first match: satellite (Satellite, Qualifier), cash (Double Up, Triple Up), top_n (Top N Win), single_entry_gpp
+  (Single Entry), else gpp. Era: engine from 2026-09-29 (`ENGINE_ERA_START`, the first real slate) by the Eastern date, never by the
+  record join. Recorded: the Entry_Key equals an Entry ID in `data/entered/*.csv`, a local run's `runs/<run id>/inputs/DKEntries.csv`
+  (scratch `runs/_*` skipped) or `outputs/*/DKEntries.csv`, read with `intake.entries.read_entries`; record sources with no engine-era
+  match print `RECORDED_JOIN=FAILED`. Field size by entrants: up to 25, 26 to 100, 101 to 1,000, 1,001 to 10,000, over 10,000. Own
+  entries per contest: 1, 2 to 5, 6 to 20, over 20.
+- Slate: the Eastern date plus the format (the review's definition; one Showdown slate per date even with several games). Paid entries
+  only (fee above $0; free entries counted in the header), then `--since` on the Eastern date.
+- Per entry, N entrants, P places paid, integer floors: observed percentile `place / N x 100` (lower is better), random `(N + 1) / 2N`;
+  in the money `place <= P`, expected `min(P, N) / N`; top 1% `place <= N // 100`, expected `(N // 100) / N`; top 10% `place <= N // 10`,
+  expected `(N // 10) / N`; bottom 10% `place > 9N // 10`, expected `(N - 9N // 10) / N`; blank `points == 0`. Place is used as
+  DraftKings gives it: tied entries share the best place, which flatters observed finishes slightly, most in Showdown.
+- Money: net = cash + ticket winnings - fee; ROI = net / fees; rake-implied ROI = sum of pool / N over the entries, divided by fees, minus
+  1 (a random entry's expected return, fee-weighted). The all-entries row adds a definition-checks block with the alternatives: the
+  entry mean of pool / (N x fee) - 1, net on cash only, expected in the money as P / N with the count of entries where P is above N, and
+  the count of entries where `place <= P` disagrees with winnings above $0.
+- Slate sign: a slate is better when the sum over its entries of (place / N - (N + 1) / 2N) is below 0, worse above 0, even at 0 (exact
+  fractions). Under 20 slates a slice prints THIN and the counts of slates better, worse and even, no interval, and claims nothing. At 20
+  or more it adds the excess (observed minus random) of the mean percentile, the in-the-money rate and the top-10% rate, and the
+  observed mean percentile, each with a 90% interval: 4,000 resamples of whole slates, the 5th and 95th percentiles of the entry-weighted
+  statistic, a fresh generator per slice and statistic (`SeedSequence([SEED, crc32(slice label), statistic])`) over slates sorted by key.
+  The header counts the intervals printed: about 1 in 10 misses zero by chance, so none is a finding alone.
+- Own-entry spread, each contest with 3 or more own entries: the population sd of own `place / N` against 2,000 draws of k distinct
+  places from 1..N (`SeedSequence([SEED, contest key])`): the median random sd and the share of draws at or below the observed sd (near
+  0 clustered, near 1 spread out).
+- Last line: the ownership gate's progress (`settle.gate_report` on `<ledger root>/graded.json`, the `ownership_fit` tier that C12's
+  `field_fit` needs) as have of need per count, holdout_groups labeled not counted yet (B82); no file, one line saying so.
+- Output: stdout and `<outputs root>/results/<America/Chicago date>.md` (gitignored). `--history` defaults to the newest CSV under
+  `data/standings/history/`.
+- Acceptance on Ben's 2026-10-10 export (B110's hand figures): counts exact (entries, slates, in the money, top 10%, slate signs);
+  percentiles and expected counts, unrounded, within 0.05 of the one-decimal hand figure. A difference is traced to the definition that
+  causes it before any change, and both figures are reported.
