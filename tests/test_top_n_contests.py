@@ -214,3 +214,203 @@ def test_a_booster_field_is_the_large_gpp_sample_and_never_the_retired_mixture()
     assert contests.field_family("top_n") == "large_gpp" and contests.field_family("small_field") == "small_field"
     assert field_mod.classic_mixture_name("top_n", own_cfg) == "old"  # why the alias exists
     assert field_mod.classic_mixture_name(contests.field_family("top_n"), own_cfg) != "old"
+
+
+# -- the portfolio objective: P(at least one own entry in the top N) (flag 70) ----------------------------------------
+
+import csv  # noqa: E402  (the second half of the file: selection, figures and the full run)
+from datetime import datetime, timezone  # noqa: E402
+
+import numpy as np  # noqa: E402
+
+from conftest import TESTS  # noqa: E402
+from nhl_dfs.build import exposure, packet, tiebreak  # noqa: E402
+from nhl_dfs.build import portfolio as pf  # noqa: E402
+from nhl_dfs.build.run import run_slate  # noqa: E402
+from nhl_dfs.cli import _print_result  # noqa: E402
+from nhl_dfs.data.http import HttpCache, load_sources_config  # noqa: E402
+from pool_builder import classic_pool  # noqa: E402
+from test_portfolio import E, disjoint_lineups, scenarios_for  # noqa: E402
+
+RISK = ob.load_risk_config()
+EXPO = exposure.load_exposure_config()
+
+
+def flat(cid, family, field_size, paid, prize_cents, fee=100):
+    p = np.full(paid, prize_cents, np.int64)
+    return ob.Contest(cid, cid, family, field_size, fee, p, np.zeros(paid, bool), None, PayoutSource.PRIOR)
+
+
+def _near_copy_case(b_share: float = 0.25):
+    """Top 2 win $10 against two opponents who always score alike. A is in the money 30% of the time; B `b_share`, always
+    together with A (a near-copy); C 25%, never with A. At b_share 0.25 the pairs {A, B} and {A, C} have the same expected
+    payout; above it {A, B} has the higher one."""
+    pool = classic_pool(("AAA", "BBB", "CCC", "DDD", "EEE", "FFF"))
+    a, b, c, f = disjoint_lineups(pool, 4)
+    S = 4000
+    i = np.arange(S)
+    fld = np.full(S, 500)
+    ta = np.where(i < 1200, 900, 100)  # 30%
+    tb = np.where(i < int(b_share * S), 850, 100)  # inside A's 30%
+    tc = np.where((i >= 2000) & (i < 3000), 900, 100)  # 25%, never with A
+    scen = scenarios_for(pool, [a, b, c, f], [ta, tb, tc, fld])
+    field = ob.FieldSpec([f.role_ids], [f.key], np.asarray([2]), 2, "weighted", np.asarray([2], np.int64))
+    return pool, (a, b, c), scen, field
+
+
+def _select_two(family, b_share: float = 0.25, risk: dict = RISK):
+    pool, (a, b, c), scen, field = _near_copy_case(b_share)
+    ct = {"T": flat("T", family, 4, 2, 1000)}
+    caps = exposure.caps(EXPO, 2, pool, Mode.CLASSIC, 1, budget=risk["budget"]["classic"])
+    sel = pf.select([a, b, c], scen, {"T": field}, ct, [E("e1", "T"), E("e2", "T")], caps,
+                    pf.RiskBudget(1.0, None, None, None), seed=1, pool=pool, fam_cfg=CFG, risk_cfg=risk)
+    return sel, (a, b, c)
+
+
+def test_less_overlap_beats_a_near_copy_on_p_at_least_one():
+    sel, (a, b, c) = _select_two("top_n")
+    assert {sel.by_entry["e1"], sel.by_entry["e2"]} == {a.role_ids, c.role_ids}
+    f = sel.portfolio.per_contest["T"]
+    assert f["p_at_least_one"] == pytest.approx(0.55) and f["exp_top_n_finishes"] == pytest.approx(0.55)
+    assert f["p_at_least_one_if_independent"] == pytest.approx(1 - 0.7 * 0.75)
+    assert set(sel.portfolio.per_contest) == {"T"}
+
+
+def test_summing_each_entry_chance_cannot_tell_the_near_copy_from_the_spread_pair():
+    """The control: {A, B} and {A, C} have the same expected payout (what small_field sums), but P(at least one) is
+    0.30 against 0.55."""
+    pool, (a, b, c), scen, field = _near_copy_case()
+    ct = flat("T", "top_n", 4, 2, 1000)
+    fs, w = field.scores(scen, Mode.CLASSIC)
+    own = scen.scores([a.role_ids, b.role_ids, c.role_ids], Mode.CLASSIC).full()
+    ab, ac = (ob.joint_payouts(own[:, cols], fs, w, ct, cfg=RISK) for cols in ([0, 1], [0, 2]))
+    assert ab.payout_cents.sum(1).mean() == pytest.approx(ac.payout_cents.sum(1).mean())
+    assert ob.top_n_figures(ab, ct)["p_at_least_one"] == pytest.approx(0.30)
+    assert ob.top_n_figures(ac, ct)["p_at_least_one"] == pytest.approx(0.55)
+
+
+def test_a_near_copy_with_a_higher_own_chance_wins_the_summed_objective_and_loses_the_booster_one():
+    """B (27%, always with A) has a higher own chance than C (25%, never with A). With the risk term at zero (every knob 0)
+    the summed expected payout (small_field) takes B; the Booster objective takes C, for P(at least one) 0.55 not 0.30."""
+    flat_risk = {**RISK, "frontier": {**RISK["frontier"], "kappas": [0.0] * 5}}
+    old, (a, b, c) = _select_two("small_field", 0.27, flat_risk)
+    new, _ = _select_two("top_n", 0.27, flat_risk)
+    assert {old.by_entry["e1"], old.by_entry["e2"]} == {a.role_ids, b.role_ids}
+    assert {new.by_entry["e1"], new.by_entry["e2"]} == {a.role_ids, c.role_ids}
+    assert new.portfolio.per_contest["T"]["p_at_least_one"] == pytest.approx(0.55)
+    assert old.portfolio.exp_payout > new.portfolio.exp_payout  # the Booster objective gives up expected finishes for it
+
+
+def test_other_families_report_no_top_n_figures():
+    sel, _ = _select_two("small_field")
+    assert sel.portfolio.per_contest == {} and "per_contest" not in sel.portfolio.record()
+
+
+def test_own_entries_are_ranked_against_each_other():
+    """Three own entries all above the opponents with N = 2: two finishes, not three; P(at least one) is 1."""
+    S = 50
+    own = np.tile(np.asarray([[900, 800, 700]]), (S, 1))
+    fs, w = np.full((S, 1), 100), np.asarray([3], np.int64)
+    ct = flat("T", "top_n", 6, 2, 1000)
+    f = ob.top_n_figures(ob.joint_payouts(own, fs, w, ct, cfg=RISK), ct)
+    assert (f["exp_top_n_finishes"], f["p_at_least_one"], f["entries"]) == (2.0, 1.0, 3)
+
+
+def test_a_tie_at_the_line_counts_as_its_share():
+    """One own entry tied with one opponent for place 2 of a top 2: they split place 2 and 3's prizes, $10 + $0 over 2."""
+    S = 10
+    own = np.full((S, 1), 500)
+    fs, w = np.asarray([[900, 500]] * S), np.asarray([1, 1], np.int64)
+    ct = flat("T", "top_n", 3, 2, 1000)
+    m = ob.joint_payouts(own, fs, w, ct, cfg=RISK)
+    assert m.payout_cents[0, 0] == 500 and m.objective[0] == pytest.approx(0.5)  # p_top_n, tie-adjusted
+    assert ob.top_n_figures(m, ct)["p_at_least_one"] == pytest.approx(0.5)
+
+
+def test_the_running_own_payout_of_a_booster_equals_its_recount():
+    rng = np.random.default_rng(47)
+    S, F, K = 80, 6, 9
+    fs, w, cand = rng.integers(0, 6, (S, F)), rng.integers(1, 4, F).astype(np.int64), rng.integers(0, 6, (S, K))
+    ct = flat("T", "top_n", int(w.sum()) + 5, 3, 1000)
+    G, E_ = ob.ranks(cand, fs, w)
+    oc = ob.OwnContest(ob.PayCurve(ct, 0.01).pay_util, G, E_, cand, capacity=2, live_below=ct.paid)
+    for k in (3, 0, 7, 3, 5):
+        oc.add(k)
+        assert all((a == b).all() for a, b in zip(oc.total, oc.totals()))
+
+
+def test_the_finishes_policy_breaks_a_band_on_expected_finishes_and_never_crosses_one():
+    near = [tiebreak.Item("a", 1.000, 0.05, 0, 0, alt=0.20), tiebreak.Item("b", 0.990, 0.05, 0, 0, alt=0.30)]
+    assert [r.item.key for r in tiebreak.rank(near, RISK, "finishes")] == ["b", "a"]  # inside one band: more finishes
+    far = [tiebreak.Item("a", 1.0, 0.001, 0, 0, alt=0.2), tiebreak.Item("b", 0.5, 0.001, 0, 0, alt=0.9)]
+    assert [r.item.key for r in tiebreak.rank(far, RISK, "finishes")] == ["a", "b"]  # outside it: the value
+    assert [r.item.key for r in tiebreak.rank([tiebreak.Item("a", 1.0, 0.05, 0, 0), tiebreak.Item("b", 0.99, 0.05, 0, 0)],
+                                              RISK, "finishes")] == ["a", "b"]  # no alt (late swap): as "mean"
+    assert "finishes" in contests.SELECTIONS and CFG["families"]["top_n"]["selection"] == "finishes"
+
+
+# -- the full offline run on a Booster-named copy of the late-swap fixture ---------------------------------------------
+
+LS = TESTS / "fixtures" / "late_swap" / "classic"
+EARLY = datetime(2026, 10, 15, 12, 0, tzinfo=timezone.utc)  # every fixture game is still ahead
+SMALL = {"design": 300, "selection": 800, "referee": 800, "field_target": 400}
+
+
+@pytest.fixture(scope="module")
+def booster_run(tmp_path_factory):
+    tmp = tmp_path_factory.mktemp("c47run")
+    src = LS / "DKEntries.template.csv"
+    with open(src, encoding="utf-8-sig", newline="") as fh:
+        table = list(csv.reader(fh))
+    for r in table[1:]:
+        if len(r) > 3 and r[0].strip().isdigit():
+            r[1], r[3] = NAME, "$0.25"
+    entries = tmp / "DKEntries.csv"
+    with open(entries, "w", encoding="utf-8", newline="") as fh:
+        csv.writer(fh).writerows(table)
+    cache = HttpCache(tmp / "raw", config=load_sources_config(), offline=True)
+    r = run_slate(LS / "DKSalaries.csv", entries, offline=True, baseline_only=False, scenario=True, scenario_n=SMALL,
+                  out_root=tmp / "runs", outputs_root=tmp / "outputs", cache=cache, clock=lambda: EARLY)
+    return SimpleNamespace(tmp=tmp, r=r)
+
+
+def test_the_run_prices_the_booster_from_its_name_and_says_so_everywhere(booster_run, capsys):
+    r = booster_run.r
+    assert r.ok, r.manifest["failed"]
+    scen = {c["contest_id"]: c for c in r.manifest["scenario"]["contests"]}["297000001"]
+    assert (scen["family"], scen["PAYOUT_SOURCE"], scen["FIELD_SIZE_SOURCE"], scen["field_size"]) == ("top_n", "PRIOR", "PRIOR", 235)
+    assert scen["paid_positions"] == 5 and scen["first_prize"] == 10.0 and "table from the contest name" in scen["payout_note"]
+    f = scen["top_n_figures"]
+    assert f["measured_on"] == "referee scenarios" and f["entries"] == 5 and 0 <= f["p_at_least_one"] <= 1
+    assert f["p_at_least_one"] <= f["exp_top_n_finishes"] + 1e-9
+    assert any(m.startswith("OBJECTIVE contest 297000001: P(at least one own entry in the top 5)") for m in r.messages)
+    notes = r.notes_path.read_text(encoding="utf-8")
+    assert "- Booster 297000001: objective P(at least one own entry in the top 5)" in notes
+    assert "FIELD_SIZE_SOURCE=PRIOR (derived from the contest name" in notes
+    _print_result(r)
+    out = capsys.readouterr().out
+    assert "note: OBJECTIVE contest 297000001" in out and "note: FIELD_SIZE_SOURCE=PRIOR contest 297000001 (derived" in out
+
+
+def test_the_booster_run_draws_from_the_large_gpp_field_and_keeps_the_own_goalie_rule(booster_run):
+    r = booster_run.r
+    fields = json.loads((r.run.path / "scenario" / "cache" / "fields.json").read_text(encoding="utf-8")) \
+        if (r.run.path / "scenario" / "cache" / "fields.json").exists() else None
+    if fields is None:  # the cache folder name is the scenario cache's own
+        found = list(r.run.path.rglob("fields.json"))
+        assert found, "no scenario cache was saved"
+        fields = json.loads(found[0].read_text(encoding="utf-8"))
+    assert fields["contest_family"]["297000001"] == "top_n" and set(fields["families"]) == {"large_gpp"}
+    v = packet.RunView(r.run, booster_run.tmp / "runs")
+    opp = og.opponent_map(v.pool)
+    relaxed = {x.get("entry_id") for x in r.manifest["scenario"].get("relaxations", []) if x.get("kind") == "OWN_GOALIE"}
+    for eid, lu in v.lineups.items():
+        assert not og.faces_own_goalie(lu, v.pool, opp) or eid in relaxed, eid
+
+
+def test_the_qa_packet_names_the_booster_table_size_and_objective(booster_run):
+    p = packet.build(booster_run.r.run, 1, now=EARLY, runs_root=booster_run.tmp / "runs")
+    row = next(c for c in p["portfolio"]["contests"] if c["contest_id"] == "297000001")
+    assert row["family"] == "top_n" and row["PAYOUT_SOURCE"] == "PRIOR" and "contest name" in row["table"]
+    assert row["FIELD_SIZE_SOURCE"] == "PRIOR" and "derived" in row["field_size_note"]
+    assert "at least one own entry" in row["portfolio_objective"] and row["figures"]["entries"] == 5

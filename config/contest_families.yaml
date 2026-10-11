@@ -48,7 +48,7 @@ families:
     field_size_prior: 5000
     paid_fraction_prior: 0.20
   top_n:  # C47: "Top N Win $X" (Boosters); N flat prizes of $X read from the name, objective P(at least one own entry in the top N)
-    selection: mean
+    selection: finishes  # inside the band, more expected top-N finishes (flag 70); the provisional pass ranks it as mean
     field_size_prior: 200  # schema placeholder: a top_n contest is sized from its lobby row or its name, never from this
     paid_fraction_prior: 0.02  # schema placeholder, as above
 

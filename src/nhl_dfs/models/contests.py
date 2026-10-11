@@ -42,7 +42,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 CONTEST_FAMILIES_YAML = REPO_ROOT / "config" / "contest_families.yaml"
 
 FAMILIES = ("cash", "satellite", "wta", "small_field", "large_gpp", "top_n")
-SELECTIONS = ("mean", "dup_first", "own_then_dup")
+SELECTIONS = ("mean", "dup_first", "own_then_dup", "finishes")
 # ContestContext.field_size_source (stored, kept for old manifests) -> the printed FIELD_SIZE_SOURCE (C38); a size derived
 # from a "Top N Win $X" name rests on the placeholder rake, so it prints PRIOR (C47, flag 72)
 FIELD_SIZE_LABELS = {"contest_detail": "EXACT", "lobby": "LOBBY", "family_prior": "PRIOR", "name_derived": "PRIOR"}
@@ -149,6 +149,15 @@ class ContestContext:
         why = self.size_note or {"EXACT": "max entries from the contest page", "LOBBY": "lobby row",
                                  "PRIOR": f"family prior for {self.family}"}[self.field_size_label]
         return f"FIELD_SIZE_SOURCE={self.field_size_label} contest {self.contest_id} ({why})"
+
+    def objective_line(self) -> str:
+        """The printed objective of a top_n contest (C47, flags 64 and 70); empty for every other family."""
+        if self.family != "top_n" or self.top_n is None:
+            return ""
+        n = self.top_n.paid
+        return (f"OBJECTIVE contest {self.contest_id}: P(at least one own entry in the top {n}) (family top_n, flags 64 and 70; "
+                f"own entries chosen together on the selection scenarios, ties on expected top-{n} finishes; the first "
+                "(provisional) publish ranks them on projected mean)")
 
     def payout_line(self) -> str:
         """The one printed line per contest: PAYOUT_SOURCE=TEMPLATE contest 196228907 (table of contest ...)."""
@@ -402,6 +411,11 @@ def resolve(entries, details: Mapping[str, ContestDetail] | None = None, cfg: di
 def field_size_lines(contexts: Iterable[ContestContext]) -> list[str]:
     """One report line per contest (the CLI prints each as `note:`; the manifest keeps the label)."""
     return [c.size_line() for c in contexts]
+
+
+def objective_lines(contexts: Iterable[ContestContext]) -> list[str]:
+    """One report line per top_n contest naming its portfolio objective (C47); none for the other families."""
+    return [x for x in (c.objective_line() for c in contexts) if x]
 
 
 def combine_payout_sources(sources: Iterable[PayoutSource]) -> PayoutSource:

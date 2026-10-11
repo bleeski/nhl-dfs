@@ -320,7 +320,10 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
                         "field_size_source": ctx.field_size_source, "FIELD_SIZE_SOURCE": ctx.field_size_label,
                         **({"payout_template": ctx.template.record()} if ctx.template is not None else {}),
                         **({"payout_note": ctx.payout_note} if ctx.payout_note else {}),
-                        **({"field_size_note": ctx.size_note} if ctx.size_note else {})}
+                        **({"field_size_note": ctx.size_note} if ctx.size_note else {}),
+                        **({"top_n": ctx.top_n.record()} if ctx.top_n is not None else {}),
+                        **({"top_n_figures": {**ref.per_contest[cid], "measured_on": "referee scenarios"}}
+                           if cid in ref.per_contest else {})}  # C47: the Booster's portfolio objective and its two figures
                        for cid, ctx in contexts.items()]
     sec["frontier_all"] = [p.record() for p in sel.frontier]
     sec["frontier"] = [p.record() for p in pf.frontier_report(sel.frontier)]

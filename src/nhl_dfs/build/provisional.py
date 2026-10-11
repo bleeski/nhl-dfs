@@ -74,7 +74,7 @@ def band_width(pool: SalaryPool, proj: Projection, role_ids: Sequence[str], anch
 
 
 def _policy_key(policy: str, s_mean: float, own: float, dup: float) -> tuple:
-    if policy == "mean":
+    if policy in ("mean", "finishes"):  # finishes (C47): no top-N figure exists before the scenario pass
         return (-s_mean,)
     if policy == "dup_first":
         return (dup, own, -s_mean)

@@ -514,3 +514,12 @@ reads it to tune, select or book money (booking stays with settle, C29).
   amount, else the exact rules as before.
 - Family `top_n`: filled last in `family_order`; the own-goalie rule covers it (Classic); its field is the large_gpp sample
   (`contests.field_family`), grown by the same rule to its own opponents.
+- Selection (`portfolio._greedy`, this contest's own fill only): a step's family utility is the change in
+  E[min($X, the contest's own payout)] from adding the candidate, own entries ranked together (`OwnContest` totals), so the
+  entries are chosen for P(at least one own entry in the top N) (a tie at the line counts its share); inside the band the tiebreak
+  policy `finishes` takes more expected top-N finishes (`Item.alt`). The risk term, caps, screen and frontier are unchanged; the
+  provisional pass ranks `finishes` as `mean`; QA swaps, late swap and refresh still score a Booster on expected payout (B114).
+- Reported per Booster (`objectives.top_n_figures` on the referee draws, `PortfolioMetrics.per_contest`): `p_at_least_one`
+  (E[min($X, own payout)] / $X), `exp_top_n_finishes` (E[own payout] / $X), each with its SE, and
+  `p_at_least_one_if_independent`; in `scenario.contests[*].top_n_figures`, a RUN_NOTES "Booster" line under the contest table,
+  the QA packet's contest row and the CLI note `OBJECTIVE contest <id>: P(at least one own entry in the top N) ...`.

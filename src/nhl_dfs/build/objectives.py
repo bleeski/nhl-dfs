@@ -842,6 +842,7 @@ class PortfolioMetrics:
     concentration: dict
     per_entry: dict[str, dict]
     tickets_value: float
+    per_contest: dict[str, dict] = field(default_factory=dict)  # top_n contests only: top_n_figures (C47)
 
     def record(self) -> dict:
         return {k: getattr(self, k) for k in ("n_scenarios", "fees", "exp_payout", "exp_payout_se", "p_zero_payout",
@@ -870,6 +871,25 @@ def return_stats(payout_cents: np.ndarray, fees_cents: int, util_cents: np.ndarr
         out["tail_utility"] = float(u.mean())
         out["tail_utility_se"] = float(u.std() / math.sqrt(S))
     return out
+
+
+def top_n_figures(m: Metrics, contest: Contest) -> dict:
+    """A "Top N Win $X" contest's portfolio figures (C47, flags 64 and 70) from the joint metrics of its own entries, ranked
+    against each other: P(at least one own entry in the top N) as E[min($X, own payout)] / $X (exactly the probability
+    when no tie straddles the line; a tie there counts as its share), the expected top-N finishes E[own payout] / $X, and
+    the P(at least one) the same entries would have if they were independent, 1 - prod(1 - each entry's P(top N))."""
+    S, J = m.payout_cents.shape
+    prize = int(contest.prizes_cents[0]) if contest.paid else 0
+    out = {"objective": "p_at_least_one_top_n", "top_n": contest.paid, "prize": prize / 100.0, "entries": J, "n_scenarios": S}
+    if not prize or not J:
+        return out
+    total = m.payout_cents.astype(np.int64).sum(axis=1)
+    any_ = np.minimum(total, prize) / prize
+    fin = total / prize
+    indep = 1.0 - float(np.prod(1.0 - np.asarray(m.p_clear_line, float)))
+    return {**out, "p_at_least_one": round(float(any_.mean()), 4), "p_at_least_one_se": round(float(_se(any_, S)), 4),
+            "exp_top_n_finishes": round(float(fin.mean()), 4), "exp_top_n_finishes_se": round(float(_se(fin, S)), 4),
+            "p_at_least_one_if_independent": round(indep, 4)}
 
 
 def joint_by_contest(assignment: Mapping[str, Sequence[str]], contests: Mapping[str, ContestEval], scenarios: ScenarioSet,
@@ -942,11 +962,14 @@ def portfolio_metrics(assignment: Mapping[str, Sequence[str]], contests: Mapping
     per_entry: dict[str, dict] = {}
     pay_by_entry: dict[str, np.ndarray] = {}
     tickets = 0.0
+    per_contest: dict[str, dict] = {}
     joint = joint if joint is not None else joint_by_contest(assignment, contests, scenarios, pool=pool, cfg=cfg)
     for cid, ce in contests.items():
         if cid not in joint:
             continue
         eids, m = joint[cid]
+        if ce.contest.family == "top_n":
+            per_contest[cid] = top_n_figures(m, ce.contest)
         for j, e in enumerate(eids):
             per_entry[e] = {"contest_id": cid, "family": ce.contest.family, **m.row(j)}
             pay_by_entry[e] = m.payout_cents[:, j]
@@ -958,5 +981,5 @@ def portfolio_metrics(assignment: Mapping[str, Sequence[str]], contests: Mapping
     conc = exposure.concentration(assignment, pool, fees_cents, scenarios, pay_by_entry)
     return PortfolioMetrics(S, fees / 100.0, st["exp_payout"], st["exp_payout_se"], st["p_zero_payout"], st["p_net_loss"],
                             st["p_lose80"], st["p_lose80_se"], st["es5"], st["tail_utility"], st["tail_utility_se"],
-                            st["recovery_quantiles"], conc, per_entry, tickets)
+                            st["recovery_quantiles"], conc, per_entry, tickets, per_contest)
 
