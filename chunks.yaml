@@ -252,6 +252,8 @@ chunks:
     impact: "Band 1 (contests routed to the right shape): a contest whose DraftKings page answers 403 and that no template or lobby row matches, which is every contest of a cloud run (B91), is priced on its family prior, 5,000 entries and 1,000 paid for large_gpp (B62, B108). The 82 engine-era contests had 9 to 14,268 entrants; they fall under 42 keys, 22 of which recur and cover 62 contests with an unchanged prize pool (NHL $200 Dime Time: 6 contests, 1,972 to 2,378 entrants, $200, 23 to 28% paid). Deterministic; the gain is unmeasured, and Showdown was priced on the same prior and still finished well, so the mispricing is not shown to be the Classic problem: the facts matter most once an objective reads the whole payout curve (C51's exp_payout arm). After C47, which edits the same resolve and prior_curve and is ready with its failing test written."
     backlog: [B111]
     findings: []
+    requires_files:
+      - data/standings/history/*.csv
     checks:
       - pytest -m c50 -q
   - id: C51
@@ -770,6 +772,9 @@ deferred:
   - item: "The tie band and the frontier utility of a Booster (B116)"
     trigger: "the first rehearsal or real run with a Booster beside other contests in which more than one knob is inside the risk budget"
     backlog: [B116]
+  - item: "A Booster sized from its contest facts row (B117)"
+    trigger: "C50 DONE with the real table, and a cloud run with a Booster that no lobby row sizes whose derived size differs from its history row by more than 10%"
+    backlog: [B117]
 flag_recommendations:
   2: "Record Ben's 2026-10-02 answer in the flags table: 40% goalie and game fee share with the LINEUPS fallback (done in this plan); C27 fixes the feasibility test behind it."
   3: "Replace the placeholder mix with the observed one (5 to 10 entries per slate, 1 to 2 per contest, fees $0.10 to $1, 20-max and 150-max GPPs plus Showdown) so family priors and C21's sleeve sizes fit what Ben plays."
