@@ -135,7 +135,8 @@ coerced to a known value (CLAUDE.md); other vocabularies here that have no
   opponents. GPP fields are grown to min(5,000, opponents) draws (Classic: `models/field_fast.py`; Showdown: threaded
   MILP); ownership is read off the grown field.
 - Family objectives: large_gpp exp_payout_top1pct, small_field exp_payout, wta first_place_equity, cash p_clear_line,
-  satellite p_seat (ticket face value kept apart from cash). Own entries in a contest are copies and opponents.
+  satellite p_seat (ticket face value kept apart from cash), top_n p_top_n (C47; its own entries are chosen together, see
+  "Top-N flat contests"). Own entries in a contest are copies and opponents.
 - Tie-break: anchored bands, band = max(3% x anchor, anchor Monte Carlo SE); ownership never past one band; cash and
   satellite ignore ownership; dup = sampled count when FIELD_CALIBRATION=FITTED else the pre-fit proxy.
 - Caps: tournament entries only; plan defaults at >= 20 tournament entries with feasibility floors; below that no person
@@ -499,3 +500,17 @@ reads it to tune, select or book money (booking stays with settle, C29).
 - Acceptance on Ben's 2026-10-10 export (B110's hand figures): counts exact (entries, slates, in the money, top 10%, slate signs);
   percentiles and expected counts, unrounded, within 0.05 of the one-decimal hand figure. A difference is traced to the definition that
   causes it before any change, and both figures are reported.
+
+## Top-N flat contests (C47, `models/contests.py`, `build/objectives.py`, `build/portfolio.py`, `build/tiebreak.py`; B108; flags 64, 68 to 72)
+
+- A name is a Booster when the config's name patterns, in order, land on the `top_n` pattern (after satellite and cash, as in
+  C49's KIND_RULES) and `top_n_from_name` reads both N (a positive integer) and $X (dollars, thousands commas, one or two cent
+  digits). Any other name routes exactly as before.
+- With no contest page: N flat prizes of $X from the name, `PAYOUT_SOURCE=PRIOR` with the note "table from the contest name"
+  (never EXACT, never a template table; the template lookup is skipped). Field size: a usable lobby row (`LOBBY`), else
+  floor(N x X / (fee x (1 - rake))) in Decimal with `payout_priors.rake` (`FIELD_SIZE_SOURCE=PRIOR`, stored `name_derived`, the
+  formula and "placeholder" in the note). Neither possible: routed as before with the reason in the payout note.
+- With the contest page: its table is EXACT; the family is `top_n` when the name passed the gate and the table pays one flat cash
+  amount, else the exact rules as before.
+- Family `top_n`: filled last in `family_order`; the own-goalie rule covers it (Classic); its field is the large_gpp sample
+  (`contests.field_family`), grown by the same rule to its own opponents.

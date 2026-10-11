@@ -7,9 +7,13 @@
 # Name patterns: case-insensitive regular expressions, checked in this order; first match wins.
 # A name that matches nothing falls to `default_family` and is reported as family source
 # "default". It never becomes cash by accident.
+# top_n (C47, flags 68 and 71): a "Top N Win $X" name (DraftKings' Boosters) counts only when it writes both N and $X
+# (models/contests.py reads them); otherwise the next pattern is tried. It sits after satellite and cash, the order C49's
+# results report uses, so a Triple Up named "[Top 9 Win $3]" stays cash.
 name_patterns:
   - {family: satellite, pattern: "satellite|qualifier|\\bsat\\b"}
   - {family: cash, pattern: "double up|triple up|quintuple up|50/50|fifty-fifty|head-to-head|\\bh2h\\b"}
+  - {family: top_n, pattern: "\\btop\\s+\\d+\\s+win\\b"}
   - {family: wta, pattern: "winner take all|\\bwta\\b"}
   - {family: small_field, pattern: "small field"}
 default_family: large_gpp
@@ -17,7 +21,7 @@ default_family: large_gpp
 # Classification from an exact payout table (contest detail fetched): WTA when only 1st place is
 # paid; cash when at least cash_min_paid_fraction of the field is paid one flat amount; small
 # field when maximum entries <= small_field_max_entries; otherwise large GPP. A satellite name
-# pattern still wins (tickets are prizes, not cash).
+# pattern still wins (tickets are prizes, not cash), and a top_n name whose table pays one flat cash amount is top_n.
 exact_rules:
   cash_min_paid_fraction: 0.30
   small_field_max_entries: 500
@@ -43,6 +47,10 @@ families:
     selection: own_then_dup  # lower lineup ownership, then lower duplicate proxy, within the band
     field_size_prior: 5000
     paid_fraction_prior: 0.20
+  top_n:  # C47: "Top N Win $X" (Boosters); N flat prizes of $X read from the name, objective P(at least one own entry in the top N)
+    selection: mean
+    field_size_prior: 200  # schema placeholder: a top_n contest is sized from its lobby row or its name, never from this
+    paid_fraction_prior: 0.02  # schema placeholder, as above
 
 # Payout templates (C16, [BEN] flag 14): a contest whose DraftKings page is unavailable is priced on the cached table of
 # the same template (same name without the game suffix, same max entries, same fee and prize pool), labeled
@@ -71,6 +79,7 @@ payout_priors:
     wta:         {shape: wta}                                    # first place takes the pool
     small_field: {shape: power, min_cash_mult: 2.0, exponent: 1.1}
     large_gpp:   {shape: power, min_cash_mult: 2.0, exponent: 1.1}  # last paid position = 2 x fee; top-heavy power law above
+    top_n:       {shape: flat}  # a guard only: a top_n contest is priced on the table its name states (C47)
 
 # Provisional selection (build/provisional.py, plan section 7 "Deterministic tie-break").
 selection:
@@ -88,4 +97,4 @@ selection:
   # haircut. The leverage side is the field's fade in config/ownership.yaml (weights.questionable).
   questionable_play_prob: 0.85
   # Order in which contest groups are filled so exposure caps bind last on cash entries.
-  family_order: [cash, satellite, wta, small_field, large_gpp]
+  family_order: [cash, satellite, wta, small_field, large_gpp, top_n]  # top_n last (C47, flag 68)

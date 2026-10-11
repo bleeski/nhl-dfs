@@ -35,7 +35,7 @@ from nhl_dfs.build.candidates import Candidate
 from nhl_dfs.contracts.geometry import Mode, lineup_key
 from nhl_dfs.contracts.statuses import Participation
 from nhl_dfs.intake.salary import SalaryPool
-from nhl_dfs.models.contests import ContestContext
+from nhl_dfs.models.contests import ContestContext, field_family
 from nhl_dfs.models.field import Marginals, dup_proxy, lineup_own
 from nhl_dfs.models.priors import CAPTAIN_MULTIPLIER
 from nhl_dfs.models.projection import Projection, lineup_sd_tenths
@@ -220,11 +220,11 @@ def build_fields(pool: SalaryPool, proj: Projection, contexts: Mapping[str, Cont
     feats = ownership.feature_table(pool, proj, cfg=own_cfg, statuses=statuses, **kw)
     n = int(own_cfg["field"]["n"][pool.mode.value])
     fields = {}
-    for fam in sorted({c.family for c in contexts.values()}):
+    for fam in sorted({field_family(c.family) for c in contexts.values()}):  # a top_n contest shares large_gpp's (C47)
         util = ownership.perceived(pool, proj, feats, ownership.family_weights(own_cfg, fam))
         fields[fam] = field_mod.sample(pool, pool.mode, util, field_mod.behaviors_for_pool(fam, pool, own_cfg), n, seed, fam,
                                        proj=proj, feats=feats, cfg=own_cfg)
-    margs = {cid: field_mod.marginals(fields[c.family], pool, c.field_size) for cid, c in contexts.items()}
+    margs = {cid: field_mod.marginals(fields[field_family(c.family)], pool, c.field_size) for cid, c in contexts.items()}
     return FieldBuild(fields, margs, time.perf_counter() - t0, feats, inputs)
 
 
@@ -233,12 +233,12 @@ def field_summary(pool: SalaryPool, fb: FieldBuild, contexts: Mapping[str, Conte
     """JSON-ready provisional field summary per family (saved as <run>/field.json)."""
     out: dict = {"label": f"PROVISIONAL (MODEL_STATUS={model_status}; FIELD_CALIBRATION=PRIOR)", "families": {}}
     for fam, fld in fb.fields.items():
-        cid = next(c for c, ctx in contexts.items() if ctx.family == fam)
+        cid = next(c for c, ctx in contexts.items() if field_family(ctx.family) == fam)
         m = fb.marginals[cid]
         own = sorted(m.own.items(), key=lambda kv: (-kv[1], kv[0]))[:top]
         r = pool.by_role_id
         out["families"][fam] = {
-            "contests": [c for c, ctx in contexts.items() if ctx.family == fam],
+            "contests": [c for c, ctx in contexts.items() if field_family(ctx.family) == fam],
             "n_requested": fld.requested,
             "n_draws": fld.n,
             "degraded": fld.degraded,

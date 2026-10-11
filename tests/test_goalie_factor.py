@@ -614,11 +614,12 @@ def test_the_report_line_is_printed_beside_the_other_risk_lines():
     assert "OWN_GOALIE" in cli.REPORTED_EXTRA and "RISK_BUDGET" in cli.REPORTED_EXTRA and "MARKET_COVERAGE" in cli.REPORTED_EXTRA
 
 
-def test_the_config_validates_and_the_rule_ships_on_for_the_three_families():
+def test_the_config_validates_and_the_rule_ships_on_for_the_gpp_families():
     from nhl_dfs.build import objectives as obj_mod
 
     cfg = obj_mod.load_risk_config()
-    assert og.settings(cfg) == (True, frozenset({"large_gpp", "small_field", "wta"}))
+    # C47 (flag 68) added top_n: a Booster keeps the rule it had as large_gpp
+    assert og.settings(cfg) == (True, frozenset({"large_gpp", "small_field", "wta", "top_n"}))
     assert "cash" not in og.rule_families(cfg, Mode.CLASSIC) and "satellite" not in og.rule_families(cfg, Mode.CLASSIC)
     bad = {**cfg, "own_goalie": {"enabled": "yes", "families": ["large_gpp"]}}
     with pytest.raises(ValueError):

@@ -24,6 +24,8 @@ Family objectives (the metric selection maximizes, higher is better):
     wta          first_place_equity  tie-adjusted share of first place
     cash         p_clear_line        tie-adjusted probability of finishing inside the cash line
     satellite    p_seat              tie-adjusted seats won; the ticket's face value is kept apart
+    top_n        p_top_n             tie-adjusted probability of a top-N finish in a "Top N Win $X" contest (C47; its
+                                     own entries are chosen together for P(at least one in the top N), flag 70)
 Every figure is a scenario estimate: it carries its Monte Carlo standard error, PAYOUT_SOURCE,
 OUTCOME_CALIBRATION and FIELD_CALIBRATION, and a PRIOR payout makes it an uncalibrated scenario
 proxy, never a measured fact.
@@ -53,6 +55,7 @@ FAMILY_OBJECTIVE = {
     "wta": "first_place_equity",
     "cash": "p_clear_line",
     "satellite": "p_seat",
+    "top_n": "p_top_n",
 }
 
 
@@ -230,8 +233,16 @@ def template_curve(match) -> tuple[np.ndarray, np.ndarray, int | None, str]:
     return prizes, seats, face, f"TEMPLATE from the {match.label()}"
 
 
+def name_curve(top_n) -> tuple[np.ndarray, np.ndarray, int | None, str]:
+    """From a models.contests.TopN: N flat prizes of $X as the contest name states them (C47). PAYOUT_SOURCE stays PRIOR:
+    the table is the name's word, never the contest page's (flag 72)."""
+    prizes = np.full(int(top_n.paid), int(top_n.prize_cents), np.int64)
+    return prizes, np.zeros(len(prizes), bool), None, f"NAME: {top_n.label()} read from the contest name ('{top_n.text}')"
+
+
 def contest_from(ctx, fam_cfg: dict) -> Contest:
-    """A models.contests.ContestContext -> Contest with its payout curve (EXACT, TEMPLATE or declared PRIOR)."""
+    """A models.contests.ContestContext -> Contest with its payout curve (EXACT, TEMPLATE, the table a "Top N Win $X"
+    name states, or the declared PRIOR)."""
     from nhl_dfs.models.contests import fee_value
 
     fee = fee_value(ctx.fee)
@@ -240,6 +251,8 @@ def contest_from(ctx, fam_cfg: dict) -> Contest:
         prizes, seats, face, note = exact_curve(ctx.detail)
     elif ctx.payout_source is PayoutSource.TEMPLATE:
         prizes, seats, face, note = template_curve(ctx.template)
+    elif getattr(ctx, "top_n", None) is not None:
+        prizes, seats, face, note = name_curve(ctx.top_n)
     else:
         prizes, seats, face, note = prior_curve(ctx.family, int(ctx.field_size), fee_cents, fam_cfg)
     if ctx.family == "satellite" and not seats.any():
@@ -600,6 +613,7 @@ def _evaluate(S: int, K: int, per_row_bytes: int, block, contest: Contest, cfg: 
         "p_clear_line": (clear.mean(axis=0), _se(clear, S)),
         "p_seat": (seat.mean(axis=0), _se(seat, S)),
     }
+    vals["p_top_n"] = vals["p_clear_line"]  # a top_n table pays every place to N, so its cash line is N (C47)
     name = FAMILY_OBJECTIVE[fam]
     return Metrics(
         contest.contest_id, fam, S, name, vals[name][0], vals[name][1],
