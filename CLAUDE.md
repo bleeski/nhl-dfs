@@ -40,7 +40,7 @@ DraftKings NHL lineup generator (Classic and Showdown). Deterministic Python eng
 
 ## Commands
 
-`.\nhl.ps1 status | run --salary <csv> --entries <csv> [--baseline] [--offline] | verify --run <id> | refresh --run <id> | late-swap --run <id> --entries <current csv> --fast | settle --run <id> --standings <path> | history --backfill <n> | identity --seed --salary <csv> | probe | field --run <id> | params --salary <csv> | simulate --run <id> --n <N> | calibrate --seasons <n> | roles --salary <csv> | slate [<DKSalaries.csv> <DKEntries.csv>] | overrides-apply --run <id> --file <json> | qa-apply --run <id> --round <k> --proposals <json> | scheduled-refresh [--dry-run]`. `nhl.sh` is equivalent (`bash nhl.sh <command>` where there is no PowerShell, as in a cloud session). Each becomes available at the chunk that builds it.
+`.\nhl.ps1 status | run --salary <csv> --entries <csv> [--baseline] [--offline] | verify --run <id> | refresh --run <id> | late-swap --run <id> --entries <current csv> --fast | settle --run <id> --standings <path> | history --backfill <n> | identity --seed --salary <csv> | probe | field --run <id> | params --salary <csv> | simulate --run <id> --n <N> | calibrate --seasons <n> | roles --salary <csv> | slate [<DKSalaries.csv> <DKEntries.csv>] | overrides-apply --run <id> --file <json> | qa-apply --run <id> --round <k> --proposals <json> | scheduled-refresh [--dry-run] | results --history <csv> [--since <date>] [--by <list>]`. `nhl.sh` is equivalent (`bash nhl.sh <command>` where there is no PowerShell, as in a cloud session). Each becomes available at the chunk that builds it.
 
 ## Layout
 
