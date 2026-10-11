@@ -24,6 +24,7 @@ DraftKings NHL lineup generator (Classic and Showdown). Deterministic Python eng
 
 - Always produce the checked baseline first, from local inputs only; network enhancement comes after the first publish and never blocks it.
 - Never invent IDs, salaries, news, injury states, payouts, or field sizes. Missing is missing and is reported as a status. A DK status the engine does not recognize is UNKNOWN, not OUT.
+- Ben's report in session is a source (B120). Apply it at once as an override that names him, the UTC time and how he learned it, without waiting for the researcher or a public report; until C53 adds a BEN source type, use the URL of the service he cites (for example DraftKings for a push notification) and say so in the claim.
 - The model never edits `DKEntries.csv`. Lineup changes go through `nhl.ps1` commands, the optimizer, and the referee.
 - Agents (`nhl-researcher`, `nhl-adversary`) receive their input inline, launch without this file, and return JSON; the model saves it verbatim and runs the apply command. At most one QA round by default, three ever. Stop at zero accepted changes or at the deadline.
 - Preserve pinned cells (locked or inside the edit-stop buffer). Never add a player whose game has started. Near lock, the terminal command (`.\nhl.ps1 late-swap … --fast`) is the default path.

@@ -202,15 +202,15 @@ chunks:
     checks:
       - pytest -m c49 -q
   - id: C53
-    title: Real post-lock exports readable (LOCKED cells) and versioned delivery file names
+    title: Real post-lock exports readable (LOCKED cells), versioned delivery file names, Ben as a news source
     depends: [C2c, C15]
     marker: c53
     band: 0
     size: M
-    effort: "medium: referee/check_file.py cell parser (line 30) and locked-cell check (line 153), the entries reader in intake, build/late_swap.py (the unreadable-entry path and splice_cells), build/state.py publish and PUBLIC_NAME (line 29), cli verify, CLAUDE.md Slate rules delivery line, tests/test_late_swap.py real post-lock tests"
+    effort: "medium: referee/check_file.py cell parser (line 30) and locked-cell check (line 153), the entries reader in intake, build/late_swap.py (the unreadable-entry path and splice_cells), build/state.py publish and PUBLIC_NAME (line 29), cli verify, CLAUDE.md Slate rules delivery line, tests/test_late_swap.py real post-lock tests, models/overrides.py validate and build/controller.py apply_round (a BEN source)"
     breakpoint: "first commit reads ' (LOCKED)' cells (roster and embedded list) as the role id plus a pin, on a synthetic post-lock file with the exact 2026-10-11 cell format, and the real post-lock tests run when Ben's copy is present; the second makes publish write outputs/<slate>/DKEntries_v<N>_<sha8>.csv, verify print it, and CLAUDE.md's delivery rule name it"
     impact: "Band 0 (a stranded delivered file): on 2026-10-11 the late swap could not read Ben's live post-lock export at all (B118: FILE_VALID=FALSE on 114 LOCKED cells), so no repair was possible after the first lock on any slate; and every version shipped as DKEntries.csv (B119), v5's repairs reached DraftKings after the first game started, and DraftKings refused the 8 repaired rows, leaving 8 of 28 entries with a dead slot. Both reach an ordinary slate."
-    backlog: [B118, B119]
+    backlog: [B118, B119, B120]
     findings: []
     checks:
       - pytest -m c53 -q
