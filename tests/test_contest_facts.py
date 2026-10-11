@@ -207,3 +207,241 @@ def test_a_window_with_no_facts_is_refused(tmp_path, capsys):
     rc = cli.main(["results", "--history", str(HISTORY), "--facts", "--facts-out", str(tmp_path / "f.csv"),
                    "--since", "2027-01-01"])
     assert rc == 1 and "RESULTS=REFUSED" in capsys.readouterr().out and not (tmp_path / "f.csv").exists()
+
+
+# == pricing a contest from a matching row (the second commit) =============================================================
+
+import json  # noqa: E402
+from datetime import datetime, timezone  # noqa: E402
+from decimal import Decimal  # noqa: E402
+from types import SimpleNamespace  # noqa: E402
+
+import numpy as np  # noqa: E402
+
+from conftest import TESTS  # noqa: E402
+from nhl_dfs.build import objectives as ob  # noqa: E402
+from nhl_dfs.build import packet  # noqa: E402
+from nhl_dfs.build.run import run_slate  # noqa: E402
+from nhl_dfs.cli import _print_result  # noqa: E402
+from nhl_dfs.contracts.statuses import PayoutSource  # noqa: E402
+from nhl_dfs.data.http import HttpCache, load_sources_config  # noqa: E402
+from nhl_dfs.models import payout_templates as pt  # noqa: E402
+from nhl_dfs.models.payout_templates import LobbyRow  # noqa: E402
+
+CFG = contests.load_contest_families()
+CID = "7001"
+D1, D9 = date(2026, 10, 1), date(2026, 10, 9)
+DIME = cf.FactsRow("classic", "NHL $20 Synthetic Dime", 10, 204, 180, 2000, 45, 6, D1, D9)
+BIG = cf.FactsRow("classic", "NHL $200 Synthetic Dime", 10, 2378, 2100, 20000, 545, 6, D1, D9)
+TRIPLE = cf.FactsRow("showdown", "NHL Showdown $1 Synthetic Triple Up", 100, 31, 31, 2700, 9, 3, D1, D9)
+WTA = cf.FactsRow("classic", "NHL $10 Synthetic Winner Take All", 100, 12, 12, 1000, 3, 2, D1, D9)
+SAT = cf.FactsRow("classic", "NHL $2 Synthetic Satellite", 25, 30, 30, 600, 3, 2, D1, D9)
+BOOST = cf.FactsRow("classic", "NHL 40x Micro Booster [Top 5 Win $10]", 25, 237, 237, 5000, 5, 2, D1, D9)
+BOOST_K = cf.FactsRow("classic", "NHL $1K Synthetic Booster [Top 5 Win $1K]", 500, 300, 300, 125000, 5, 2, D1, D9)
+ODD = cf.FactsRow("classic", "NHL $40 Synthetic Odd", 100, 40, 40, 3400, 50, 2, D1, D9)  # pays more places than entrants seen
+TABLE = cf.FactsTable(Path("facts.csv"), "0" * 64, {r.key: r for r in (DIME, BIG, TRIPLE, WTA, SAT, BOOST, BOOST_K, ODD)})
+
+
+def _rows(name, fee, n=5, cid=CID):
+    return [SimpleNamespace(entry_id=str(7100000001 + i), contest_id=cid, contest_name=name, fee=fee) for i in range(n)]
+
+
+def _ctx(name, fee="$0.10", n=5, *, mode="classic", facts=TABLE, cfg=CFG, cid=CID, **kw):
+    return contests.resolve(_rows(name, fee, n, cid), cfg=cfg, facts=facts, mode=mode, **kw)[cid]
+
+
+def _same_route(a, b) -> bool:
+    """Everything a contest is priced on, and the notes, equal."""
+    ca, cb = ob.contest_from(a, CFG), ob.contest_from(b, CFG)
+    return a.record() == b.record() and np.array_equal(ca.prizes_cents, cb.prizes_cents) and ca.detail == cb.detail
+
+
+def test_a_contest_nothing_else_describes_prices_at_the_rows_size_pool_and_paid_places():
+    c = _ctx("NHL $20 Synthetic Dime (Late)")
+    assert (c.field_size, c.field_size_source, c.field_size_label, c.family, c.family_source) == \
+        (204, "history", "HISTORY", "small_field", "history")  # flag 75: 204 is under the 500 cut
+    assert c.payout_source is PayoutSource.PRIOR and c.facts == DIME and c.template is None and c.top_n is None
+    line = c.size_line()
+    assert line.startswith("FIELD_SIZE_SOURCE=HISTORY contest 7001 (contest facts row 'NHL $20 Synthetic Dime' (classic, $0.10): "
+                           "204 max entrants seen (last 180), pool $20.00, 45 places paid, 6 contests 2026-10-01 to 2026-10-09")
+    assert c.payout_line() == ("PAYOUT_SOURCE=PRIOR contest 7001 (prior small_field curve on the contest facts row's pool "
+                               "$20.00 and 45 places paid; row 'NHL $20 Synthetic Dime' (classic, $0.10), 6 contests, last "
+                               "2026-10-09)")
+    rec = c.record()
+    assert rec["FIELD_SIZE_SOURCE"] == "HISTORY" and rec["contest_facts"]["contests_seen"] == 6
+    assert rec["contest_facts"]["last_date"] == "2026-10-09" and rec["contest_facts"]["prize_pool"] == 20.0
+    ct = ob.contest_from(c, CFG)
+    assert (ct.field_size, ct.paid, int(ct.prizes_cents.sum())) == (204, 45, 2000)  # power: the remainder goes to first
+    assert int(ct.prizes_cents[-1]) == 20 and ct.payout_source is PayoutSource.PRIOR  # last paid place = 2 x fee
+    assert "pool $20.00 (given), 45 of 204 paid (given), shape power" in ct.detail and "6 contests" in ct.detail
+
+
+def test_a_large_row_is_large_gpp_and_a_cash_row_pays_its_places_flat():
+    big = _ctx("NHL $200 Synthetic Dime")
+    ct = ob.contest_from(big, CFG)
+    assert (big.family, big.field_size, ct.paid, int(ct.prizes_cents.sum())) == ("large_gpp", 2378, 545, 20000)
+    tri = _ctx("NHL Showdown $1 Synthetic Triple Up (AAA @ BBB)", "$1", 1, mode="showdown")
+    ct = ob.contest_from(tri, CFG)
+    assert (tri.family, tri.family_source, tri.field_size) == ("cash", "name_pattern", 31)  # the name's family is kept
+    assert ct.paid == 9 and set(ct.prizes_cents.tolist()) == {300}  # B94's case: 9 places of $3 on a $27 pool
+    wta = _ctx("NHL $10 Synthetic Winner Take All", "$1", 1)
+    ct = ob.contest_from(wta, CFG)
+    assert (wta.family, ct.paid, int(ct.prizes_cents[0])) == ("wta", 1, 1000)  # flag 77: a winner-take-all keeps 1 paid
+
+
+@pytest.mark.parametrize("name, fee, n, mode, why", [
+    ("NHL $20 Synthetic Dime", "$0.25", 5, "classic", "has fee $0.10, not the entries file's $0.25"),
+    ("NHL $20 Synthetic Dime", "$0.10", 5, "showdown", "no contest facts row for 'NHL $20 Synthetic Dime' (showdown, $0.10)"),
+    ("NHL $2 Synthetic Satellite", "$0.25", 1, "classic", "never used for a satellite"),
+    ("NHL $1K Synthetic Booster [Top 5 Win $1K]", "$5", 1, "classic", "never used for a Top N Win name (flag 76)"),
+    ("NHL $40 Synthetic Odd", "$1", 1, "classic", "pays 50 places, more than its 40 entrants seen"),
+    ("NHL $20 Synthetic Dime", "$0.10", 204, "classic", "leave no opponent"),
+    ("NHL $20 Synthetic Dime", "10 cents", 5, "classic", "cannot match a contest facts row"),
+])
+def test_a_row_that_disagrees_leaves_the_contest_on_its_prior_and_says_why(name, fee, n, mode, why):
+    c = _ctx(name, fee, n, mode=mode)
+    old = _ctx(name, fee, n, mode=mode, facts=None)
+    assert c.field_size_label == "PRIOR" and c.facts is None and why in c.size_note, c.size_note
+    assert (c.family, c.field_size, c.payout_source) == (old.family, old.field_size, old.payout_source)
+    assert c.size_note.startswith(old.size_note + "; ")  # the facts reason is only appended
+    assert np.array_equal(ob.contest_from(c, CFG).prizes_cents, ob.contest_from(old, CFG).prizes_cents)
+
+
+def test_a_booster_keeps_c47s_route_with_or_without_a_row():
+    name = "NHL 40x Micro Booster [Top 5 Win $10] (Early)"
+    assert _same_route(_ctx(name, "$0.25", 7), _ctx(name, "$0.25", 7, facts=None))
+    c = _ctx(name, "$0.25", 7)
+    assert (c.family, c.field_size_source, c.facts) == ("top_n", "name_derived", None)
+    fb = _ctx(name, "$0.25", 300)  # C47 cannot size it: routed as before C47, and still no row (flag 76)
+    assert fb.facts is None and fb.top_n is None and "never used for a Top N Win name (flag 76)" in fb.size_note
+
+
+def test_a_lobby_row_with_another_pool_or_too_few_max_entries_refuses_the_row():
+    name = "NHL $20 Synthetic Dime"
+    other_name = LobbyRow(int(CID), "NHL $20 Something Else", Decimal("0.10"), 300, 1, Decimal("27"), None, None, None, "x")
+    c = _ctx(name, lobby={int(CID): other_name})  # unusable for size (another name), and its pool is $27
+    assert c.field_size_label == "PRIOR" and "the lobby prize pool $27.00 differs" in c.size_note
+    small = LobbyRow(int(CID), name, Decimal("0.10"), 4, 1, Decimal("20"), None, None, None, "x")
+    c = _ctx(name, lobby={int(CID): small})  # five own entries in a 4-entry lobby row: no LOBBY size, and 4 < 204
+    assert c.field_size_label == "PRIOR" and "the lobby's 4 max entries are below the 204 entrants" in c.size_note
+
+
+def test_the_switch_off_and_no_table_give_the_earlier_result_exactly():
+    off = {**CFG, "contest_facts": {"enabled": False}}
+    for name in ("NHL $20 Synthetic Dime (Late)", "NHL Unknown Contest"):
+        assert _same_route(_ctx(name, cfg=off), _ctx(name, facts=None))
+        assert _same_route(_ctx(name, cfg=off), contests.resolve(_rows(name, "$0.10"), cfg=CFG)[CID])
+    with pytest.raises(ValueError, match="contest_facts.enabled"):
+        contests.validate_contest_families({**CFG, "contest_facts": {"enabled": "yes"}})
+
+
+def test_a_name_without_a_row_routes_exactly_as_before_but_for_the_note():
+    c, old = _ctx("NHL Unknown Contest"), _ctx("NHL Unknown Contest", facts=None)
+    assert c.size_note == old.size_note + "; no contest facts row for 'NHL Unknown Contest' (classic, $0.10)"
+    assert {k: v for k, v in c.record().items() if k != "field_size_note"} == \
+        {k: v for k, v in old.record().items() if k != "field_size_note"}
+
+
+def test_the_page_and_the_lobby_row_still_win_over_a_row():
+    name = "NHL $20 Synthetic Dime"
+    det = contests.ContestDetail(int(CID), name, [], 150, 1, Decimal("0.10"), 0, 1, None, {})
+    assert _same_route(_ctx(name, details={CID: det}), _ctx(name, details={CID: det}, facts=None))
+    assert _ctx(name, details={CID: det}).field_size_label == "EXACT"
+    usable = LobbyRow(int(CID), name, Decimal("0.10"), 300, 1, Decimal("20"), None, None, None, "x")
+    got = _ctx(name, lobby={int(CID): usable})
+    assert got.field_size_label == "LOBBY" and got.field_size == 300 and got.facts is None
+    assert _same_route(got, _ctx(name, lobby={int(CID): usable}, facts=None))
+
+
+def _template_store(tmp_path: Path, name: str):
+    """A lobby row and a cached table of the same template, fee and pool (C16 matches it)."""
+    root = tmp_path / "raw"
+    (root / "dk_lobby" / "2026-10-10").mkdir(parents=True)
+    row = {"id": int(CID), "n": name, "a": 0.10, "m": 204, "mec": 20, "po": 20.0, "dg": 1, "gameType": "Classic",
+           "sd": "/Date(1790722800000)/", "attr": {"IsGuaranteed": "true"}}
+    (root / "dk_lobby" / "2026-10-10" / "a.json").write_text(json.dumps({"Contests": [row]}), encoding="utf-8")
+    (root / "dk_contest" / "2026-10-03").mkdir(parents=True)
+    body = {"contestDetail": {"contestKey": "196000001", "name": name, "maximumEntries": 204, "maximumEntriesPerUser": 20,
+                              "entryFee": 0.10, "entries": 204, "draftGroupId": 1, "contestStartTime": "2026-10-03T23:00:00Z",
+                              "isGuaranteed": True, "isResizable": False, "wasResized": False, "totalPayouts": 20.0,
+                              "payoutSummary": [{"minPosition": 1, "maxPosition": 1, "tierPayoutDescriptions": {"Cash": "$5.00"}},
+                                                {"minPosition": 2, "maxPosition": 51, "tierPayoutDescriptions": {"Cash": "$0.30"}}]}}
+    (root / "dk_contest" / "2026-10-03" / "b.json").write_text(json.dumps(body), encoding="utf-8")
+    return pt.load_store(root, None, [int(CID)])
+
+
+def test_a_template_table_still_wins_over_a_row(tmp_path):
+    name = "NHL $20 Synthetic Dime"
+    store = _template_store(tmp_path, name)
+    got = _ctx(name, templates=store)
+    assert got.payout_source is PayoutSource.TEMPLATE and got.facts is None and got.field_size_label == "LOBBY"
+    assert _same_route(got, _ctx(name, templates=store, facts=None))
+
+
+def test_prior_curve_without_the_new_arguments_is_unchanged_and_with_them_pays_the_given_places():
+    prizes, _, _, detail = ob.prior_curve("large_gpp", 5000, 100, CFG)
+    assert detail == "PRIOR large_gpp: rake 0.15, 1000 of 5000 paid, shape power" and int(prizes.sum()) == 425000
+    flat, _, _, d = ob.prior_curve("cash", 31, 100, CFG, pool_cents=2701, n_paid=9)
+    assert len(flat) == 9 and 2701 - 9 < int(flat.sum()) <= 2701 and "(given)" in d
+    fb, _, _, d = ob.prior_curve("small_field", 100, 100, CFG, pool_cents=5000, n_paid=40)  # 40 x $2 > $50: flat fallback
+    assert len(fb) == 40 and set(fb.tolist()) == {125} and "flat (the power shape's fallback" in d
+    w, _, _, _ = ob.prior_curve("wta", 12, 100, CFG, pool_cents=1000, n_paid=3)
+    assert w.tolist() == [1000]
+
+
+# -- the full offline run: HISTORY on the contest line, in the manifest, RUN_NOTES and the QA packet -------------------------
+
+LS = TESTS / "fixtures" / "late_swap" / "classic"  # five entries in contest 297000001
+EARLY = datetime(2026, 10, 15, 12, 0, tzinfo=timezone.utc)  # every fixture game is still ahead
+SMALL = {"design": 300, "selection": 800, "referee": 800, "field_target": 400}
+
+
+def _renamed(src: Path, dst: Path, name: str, fee: str) -> Path:
+    with open(src, encoding="utf-8-sig", newline="") as fh:
+        table = list(csv.reader(fh))
+    for r in table[1:]:
+        if len(r) > 3 and r[0].strip().isdigit():
+            r[1], r[3] = name, fee
+    with open(dst, "w", encoding="utf-8", newline="") as fh:
+        csv.writer(fh).writerows(table)
+    return dst
+
+
+@pytest.fixture(scope="module")
+def facts_run(tmp_path_factory):
+    tmp = tmp_path_factory.mktemp("c50run")
+    table = tmp / "contest_facts" / "nhl.csv"
+    cf.write(table, [DIME])
+    entries = _renamed(LS / "DKEntries.template.csv", tmp / "DKEntries.csv", "NHL $20 Synthetic Dime (Late)", "$0.10")
+    cache = HttpCache(tmp / "raw", config=load_sources_config(), offline=True)
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(cf, "DEFAULT_PATH", table)
+        r = run_slate(LS / "DKSalaries.csv", entries, offline=True, baseline_only=False, scenario=True, scenario_n=SMALL,
+                      out_root=tmp / "runs", outputs_root=tmp / "outputs", cache=cache, clock=lambda: EARLY)
+    return SimpleNamespace(tmp=tmp, r=r)
+
+
+def test_the_run_sizes_and_prices_the_contest_from_its_row_and_says_so_everywhere(facts_run, capsys):
+    r = facts_run.r
+    assert r.ok, r.manifest["failed"]
+    prov = {c["contest_id"]: c for c in r.manifest["provisional"]["contests"]}["297000001"]
+    scen = {c["contest_id"]: c for c in r.manifest["scenario"]["contests"]}["297000001"]
+    for c in (prov, scen):
+        assert (c["FIELD_SIZE_SOURCE"], c["field_size"], c["family"], c["PAYOUT_SOURCE"]) == ("HISTORY", 204, "small_field", "PRIOR")
+        assert c["contest_facts"]["name_key"] == "NHL $20 Synthetic Dime" and c["contest_facts"]["contests_seen"] == 6
+    assert (scen["paid_positions"], scen["prize_pool"]) == (45, 20.0)
+    line = ("FIELD_SIZE_SOURCE=HISTORY contest 297000001 (contest facts row 'NHL $20 Synthetic Dime' (classic, $0.10): 204 max "
+            "entrants seen (last 180), pool $20.00, 45 places paid, 6 contests 2026-10-01 to 2026-10-09")
+    assert any(m.startswith(line) for m in r.messages)
+    notes = r.notes_path.read_text(encoding="utf-8")
+    assert "204 (HISTORY)" in notes and line in notes and "row 'NHL $20 Synthetic Dime' (classic, $0.10), 6 contests, last 2026-10-09" in notes
+    _print_result(r)
+    assert f"note: {line}" in capsys.readouterr().out
+
+
+def test_the_qa_packet_names_the_row(facts_run):
+    p = packet.build(facts_run.r.run, 1, now=EARLY, runs_root=facts_run.tmp / "runs")
+    row = next(c for c in p["portfolio"]["contests"] if c["contest_id"] == "297000001")
+    assert row["FIELD_SIZE_SOURCE"] == "HISTORY" and row["PAYOUT_SOURCE"] == "PRIOR" and "45 places paid" in row["field_size_note"]
+    assert (row["contest_facts"]["name_key"], row["contest_facts"]["contests_seen"], row["contest_facts"]["last_date"]) == \
+        ("NHL $20 Synthetic Dime", 6, "2026-10-09")

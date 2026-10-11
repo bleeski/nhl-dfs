@@ -182,15 +182,30 @@ def _power(n_paid: int, pool_cents: int, fee_cents: int, min_mult: float, expone
     return out
 
 
-def prior_curve(family: str, field_size: int, fee_cents: int, fam_cfg: dict) -> tuple[np.ndarray, np.ndarray, int | None, str]:
-    """Declared family prior (config/contest_families.yaml payout_priors): (prizes, seats, face, detail)."""
+def prior_curve(family: str, field_size: int, fee_cents: int, fam_cfg: dict, *, pool_cents: int | None = None,
+                n_paid: int | None = None) -> tuple[np.ndarray, np.ndarray, int | None, str]:
+    """Declared family prior (config/contest_families.yaml payout_priors): (prizes, seats, face, detail). A known prize pool
+    (`pool_cents`) replaces fee x size x (1 - rake) and a known paid count (`n_paid`) the family's paid fraction (C50, flag
+    77: a contest facts row's; B94 can pass a lobby pool); the family's shape is kept and a winner-take-all pays 1."""
     pp = fam_cfg["payout_priors"]
     rake = float(pp["rake"])
     spec = pp["families"][family]
-    pool = int(math.floor(fee_cents * field_size * (1.0 - rake)))
-    frac = float(fam_cfg["families"][family]["paid_fraction_prior"])
-    n_paid = 1 if spec["shape"] == "wta" else max(1, min(field_size, int(math.floor(frac * field_size))))
-    detail = f"PRIOR {family}: rake {rake:g}, {n_paid} of {field_size} paid, shape {spec['shape']}"
+    if pool_cents is None and n_paid is None:
+        pool = int(math.floor(fee_cents * field_size * (1.0 - rake)))
+        frac = float(fam_cfg["families"][family]["paid_fraction_prior"])
+        n_paid = 1 if spec["shape"] == "wta" else max(1, min(field_size, int(math.floor(frac * field_size))))
+        detail = f"PRIOR {family}: rake {rake:g}, {n_paid} of {field_size} paid, shape {spec['shape']}"
+    else:
+        given_paid = n_paid is not None
+        pool = int(pool_cents) if pool_cents is not None else int(math.floor(fee_cents * field_size * (1.0 - rake)))
+        if n_paid is None:
+            n_paid = int(math.floor(float(fam_cfg["families"][family]["paid_fraction_prior"]) * field_size))
+        n_paid = 1 if spec["shape"] == "wta" else max(1, min(field_size, int(n_paid)))
+        shape = spec["shape"]
+        if shape == "power" and (n_paid <= 1 or pool <= int(round(fee_cents * float(spec["min_cash_mult"]))) * n_paid):
+            shape = "flat (the power shape's fallback: the pool cannot pay min cash to every paid place)"
+        detail = (f"PRIOR {family}: pool ${pool / 100:,.2f}" + (" (given)" if pool_cents is not None else f" (rake {rake:g})")
+                  + f", {n_paid} of {field_size} paid" + (" (given)" if given_paid else "") + f", shape {shape}")
     if spec["shape"] == "tickets":
         face = pool // n_paid
         return np.zeros(n_paid, np.int64), np.ones(n_paid, bool), face, detail + f", ticket face {face / 100:.2f} (pool / seats)"
@@ -242,7 +257,7 @@ def name_curve(top_n) -> tuple[np.ndarray, np.ndarray, int | None, str]:
 
 def contest_from(ctx, fam_cfg: dict) -> Contest:
     """A models.contests.ContestContext -> Contest with its payout curve (EXACT, TEMPLATE, the table a "Top N Win $X"
-    name states, or the declared PRIOR)."""
+    name states, the declared PRIOR shape on a contest facts row's pool and paid places (C50), or the declared PRIOR)."""
     from nhl_dfs.models.contests import fee_value
 
     fee = fee_value(ctx.fee)
@@ -253,6 +268,10 @@ def contest_from(ctx, fam_cfg: dict) -> Contest:
         prizes, seats, face, note = template_curve(ctx.template)
     elif getattr(ctx, "top_n", None) is not None:
         prizes, seats, face, note = name_curve(ctx.top_n)
+    elif getattr(ctx, "facts", None) is not None:  # C50: the family's prior shape on a contest facts row's pool and paid places
+        prizes, seats, face, note = prior_curve(ctx.family, int(ctx.field_size), fee_cents, fam_cfg,
+                                                pool_cents=ctx.facts.pool_cents, n_paid=ctx.facts.places_paid)
+        note = f"{note}; {ctx.facts.label()}, {ctx.facts.seen()}"
     else:
         prizes, seats, face, note = prior_curve(ctx.family, int(ctx.field_size), fee_cents, fam_cfg)
     if ctx.family == "satellite" and not seats.any():
