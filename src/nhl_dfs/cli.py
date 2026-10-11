@@ -816,6 +816,18 @@ def cmd_results(args: argparse.Namespace) -> int:
         return 2
     if not args.history:
         print(f"history: {path} (the newest CSV under {results.HISTORY_DIR})")
+    if args.facts:  # C50: distill the contest facts table instead of the report
+        if args.by:
+            print("RESULTS=REFUSED: --facts takes --history, --since and --facts-out, not --by")
+            return 2
+        try:
+            text, _ = results.facts(path, since=date.fromisoformat(args.since) if args.since else None,
+                                    out=Path(args.facts_out) if args.facts_out else None)
+        except (ValueError, OSError) as exc:
+            print(f"RESULTS=REFUSED: {exc}")
+            return 1
+        print(text, end="")
+        return 0
     from nhl_dfs.learn import entry_history
 
     runs_root = Path(args.runs_root)
@@ -998,6 +1010,10 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--runs-root", type=str, default=str(RUNS_ROOT), help="local runs to join (NHL_DFS_RUNS_ROOT)")
     sp.add_argument("--outputs-root", type=str, default=None, help="default outputs/ (NHL_DFS_OUTPUTS_ROOT)")
     sp.add_argument("--ledger-root", type=str, default=None, help="graded.json for the gate line (NHL_DFS_LEDGER_ROOT)")
+    sp.add_argument("--facts", action="store_true",
+                    help="C50: write the contest facts table (data/contest_facts/nhl.csv) instead of the report; "
+                         "--since defaults to the engine era (2026-09-29)")
+    sp.add_argument("--facts-out", type=str, default=None, help="with --facts: the table's path (default data/contest_facts/nhl.csv)")
     sp.set_defaults(func=cmd_results)
 
     return parser
