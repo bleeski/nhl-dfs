@@ -313,6 +313,14 @@ def test_a_join_that_matches_nothing_is_reported_as_failed_not_as_unrecorded(tmp
     _, none = results.build(HISTORY, by="recorded", records=eh.recorded_ids(tmp_path / "nothing", None, None),
                             ledger_root=tmp_path / "ledger")
     assert [s.label for s in none[0][1]] == ["all", "recorded=no records"]
+    broken = tmp_path / "broken"
+    broken.mkdir()
+    (broken / "classic-20261003-2222222222.csv").write_text("not,an,entries,file\r\n", encoding="utf-8")
+    rec = eh.recorded_ids(broken, None, None)
+    assert not rec.files and len(rec.unreadable) == 1
+    text, built = results.build(HISTORY, by="recorded", records=rec, ledger_root=tmp_path / "ledger")
+    assert "RECORDED_JOIN=FAILED" in text and "  - unreadable: " in text  # a parser fault never reads as no records
+    assert [s.label for s in built[0][1]] == ["all", "recorded=join failed"]
 
 
 # -- in the money -----------------------------------------------------------------------------------------------------------

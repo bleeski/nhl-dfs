@@ -323,8 +323,10 @@ def render(hf: eh.HistoryFile, rows: list[eh.HistoryRow], since: date | None, bu
         joined = sum(r.entry_key in rec.ids for r in engine)
         rec_line = (f"- Recorded: {len(rec.ids):,} entry ids from {len(rec.files)} record files, {len(rec.unreadable)} "
                     f"unreadable; {joined} of {len(engine)} engine-era entries in the window join"
-                    + ("; RECORDED_JOIN=FAILED: record files exist but no engine-era entry joins, so the recorded slice "
-                       "reads 'join failed'" if ctx.join == "FAILED" else "") + ".")
+                    + ("; RECORDED_JOIN=FAILED: record files exist but none reads or no engine-era entry joins, so the "
+                       "recorded slice reads 'join failed' (entries of 2026-09-29 to 10-02 have no committed record: a "
+                       "window of only those dates fails without their local runs)" if ctx.join == "FAILED" else "") + "."
+                    + "".join(f"\n  - unreadable: {u}" for u in rec.unreadable[:3]))
     lines = [
         "# NHL results against a random entry (C49)",
         "",
@@ -384,8 +386,10 @@ def select(hf: eh.HistoryFile, since: date | None) -> list[eh.HistoryRow]:
 
 def context(rows: list[eh.HistoryRow], records: eh.RecordSources | None) -> Context:
     ctx = Context(own_per_contest=Counter(r.contest_key for r in rows), records=records)
-    if records is None or not records.files:
+    if records is None or not (records.files or records.unreadable):
         ctx.join = "NONE"
+    elif not records.files:  # every record file failed to read: a parser fault must not look like an empty machine
+        ctx.join = "FAILED"
     elif any(eh.era(r) == "engine" for r in rows) and not any(
             r.entry_key in records.ids for r in rows if eh.era(r) == "engine"):
         ctx.join = "FAILED"

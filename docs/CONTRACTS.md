@@ -468,8 +468,8 @@ reads it to tune, select or book money (booking stays with settle, C29).
   slice). Kind, NAME_RULE, first match: satellite (Satellite, Qualifier), cash (Double Up, Triple Up), top_n (Top N Win), single_entry_gpp
   (Single Entry), else gpp. Era: engine from 2026-09-29 (`ENGINE_ERA_START`, the first real slate) by the Eastern date, never by the
   record join. Recorded: the Entry_Key equals an Entry ID in `data/entered/*.csv`, a local run's `runs/<run id>/inputs/DKEntries.csv`
-  (scratch `runs/_*` skipped) or `outputs/*/DKEntries.csv`, read with `intake.entries.read_entries`; record sources with no engine-era
-  match print `RECORDED_JOIN=FAILED`. Field size by entrants: up to 25, 26 to 100, 101 to 1,000, 1,001 to 10,000, over 10,000. Own
+  (scratch `runs/_*` skipped) or `outputs/*/DKEntries.csv`, read with `intake.entries.read_entries`; record files that all fail
+  to read, or that no engine-era entry matches, print `RECORDED_JOIN=FAILED` (the first unreadable files named), never 'no records'. Field size by entrants: up to 25, 26 to 100, 101 to 1,000, 1,001 to 10,000, over 10,000. Own
   entries per contest: 1, 2 to 5, 6 to 20, over 20.
 - Slate: the Eastern date plus the format (the review's definition; one Showdown slate per date even with several games). Paid entries
   only (fee above $0; free entries counted in the header), then `--since` on the Eastern date.
