@@ -188,6 +188,33 @@ chunks:
     backlog: [B70, B71]
     checks:
       - pytest -m c39 -q
+  - id: C49
+    title: DraftKings entry history and the results report against a random baseline
+    depends: [C11]
+    marker: c49
+    band: 1
+    size: M
+    effort: "low to medium: the export's 14-column header (a synthetic fixture), data/entered/*.csv, the cli command table and nhl.ps1 and nhl.sh; no ledger change"
+    breakpoint: "first commit reads the export and prints results --history by format, contest kind, field size, month and era against the per-entry random baseline, with THIN and the slate sign count under 20 slates; the second adds the recorded label (the join to data/entered), the in-the-money counts and the own-entry spread per contest"
+    impact: "Band 1, ranked first: nothing reads DraftKings' contest entry history export, so the engine has never been scored against its results (the review's R1), and this is one short session with no dependency that every later item reads. Recomputed from the 2026-10-10 export: engine-era Classic, 136 entries, finishes 53.2 against a random 50.1, in the money 23 times against 32.2 expected and in the top 10% 8 times against 13.5, but 5 of its 9 slates are worse than random and 4 better; Showdown, 78 entries, finishes 42.8 against 50.4, in the money 34 times against 22.4, 5 of 7 slates better; both thin. The review's 50 and 10% references ignore field size (a random entry averages (N+1)/2N). Deterministic; low effort."
+    backlog: [B110]
+    findings: []
+    checks:
+      - pytest -m c49 -q
+  - id: C48
+    title: Forecast record per entered lineup and the scored bank, kept beside the entered record
+    depends: [C18]
+    marker: c48
+    band: 1
+    size: L
+    effort: "medium: scripts/standings_checklist.py save_entered (607 to 634), CLAUDE.md line 32, build/scenario_pass.py 270 to 346 (the bank and the per-entry rows), build/objectives.py _evaluate and Metrics.row (444 to 454), build/run.py phases (A, B, P, S) and the late-swap and refresh child runs, a run manifest's out_sha256, C49's results command"
+    breakpoint: "first commit writes data/entered/<slate>.forecast.json from the figures that already exist, matched to the run by the delivered file's sha256, and CLAUDE.md line 32 commits data/entered/<slate>.*; the second makes scenario_pass save the scored bank (projected mean and sd per candidate; the top by objective, by projected mean and by exp_payout plus a weighted sample) and the record copy it (flag 66); the third adds p_top10pct, p_bottom10pct and the median finishing percentile, and C49's report reads family and objective from the record"
+    impact: "Band 1, prerequisite of C51, ranked above C40 and C47 by default because the loss is permanent (Ben may overturn the rank): what the engine predicted for an entered lineup lives only in runs/<id>/manifest.json, which a cloud container loses (B68), no run keeps its candidate bank, and no logged figure can be graded against a finish band. The 181 engine-era entries recorded 10-03 to 10-09 (of 214 in the 2026-10-10 entry history export) came from cloud run sessions, so their forecasts are gone. BLOCKED on flag 67: Ben answered that lineups public before lock are not acceptable, and this would add the record and the bank to the pre-lock push. Deterministic. Depends on C18, which left the per-entry referee figures this reads."
+    backlog: [B109]
+    findings: []
+    needs: [67]
+    checks:
+      - pytest -m c48 -q
   - id: C40
     title: Daily Faceoff age gate keeps the last known lines
     depends: [C7]
@@ -214,6 +241,47 @@ chunks:
     findings: []
     checks:
       - pytest -m c47 -q
+  - id: C50
+    title: Recurring contest facts from the entry history size and price contests that no page, template or lobby row describes
+    depends: [C49, C47, C38]
+    marker: c50
+    band: 1
+    size: M
+    effort: "medium: models/contests.py resolve and family_prior (the order EXACT, TEMPLATE, LOBBY), build/objectives.py prior_curve (182; a pool and paid-count argument), config/contest_families.yaml (42 to 45, 66 to 73), C49's reader, the RUN_NOTES contest line and the QA packet; Ben's entry history export in the session"
+    breakpoint: "first commit distills data/contest_facts/nhl.csv (results --facts) with its tests and commits the real table from Ben's export; the second prices a contest from a matching row (FIELD_SIZE_SOURCE=HISTORY, prior_curve on the row's pool and paid places), checked by a cloud-style rehearsal with no data/raw"
+    impact: "Band 1 (contests routed to the right shape): a contest whose DraftKings page answers 403 and that no template or lobby row matches, which is every contest of a cloud run (B91), is priced on its family prior, 5,000 entries and 1,000 paid for large_gpp (B62, B108). The 82 engine-era contests had 9 to 14,268 entrants; they fall under 42 keys, 22 of which recur and cover 62 contests with an unchanged prize pool (NHL $200 Dime Time: 6 contests, 1,972 to 2,378 entrants, $200, 23 to 28% paid). Deterministic; the gain is unmeasured, and Showdown was priced on the same prior and still finished well, so the mispricing is not shown to be the Classic problem: the facts matter most once an objective reads the whole payout curve (C51's exp_payout arm). After C47, which edits the same resolve and prior_curve and is ready with its failing test written."
+    backlog: [B111]
+    findings: []
+    checks:
+      - pytest -m c50 -q
+  - id: C51
+    title: Classic replay, the objective's picks against the projection's and exp_payout's on the real contest, Showdown as the control (measurement)
+    depends: [C48]
+    marker: c51
+    band: 1
+    size: L
+    gated_on: "5 settled Classic slates that each have a standings export and a bank (C48's record, or REBUILT from a local run's saved inputs and scenario cache; Ben's 09-29 and 09-30 runs qualify), the fewest at which a slate sign test with every slate agreeing reaches one-sided 0.05 (1/32); Ben flips the row to TODO and runs it on his machine or uploads the standings to the session"
+    effort: "high: learn/standings.py (lineups and FPTS), learn/grade_forecasts.py fetch_boxscores (players the standings do not list), C48's record and bank, objectives.split_tie (DK ties), a run's scenario cache where it survives, a docs/experiments/ preregistration"
+    breakpoint: "the preregistration committed before code; then the replay reading per mode on the gated slates (three arms, payout per fee primary), committed with the slate count; then the exact PIT where a scenario cache survives"
+    impact: "Band 1 (tail and ceiling terms reaching the solver), measurement, gated: the large_gpp objective counts only payouts from top-1% finishes, while DraftKings' tables for contests Ben enters pay 26 to 40% of the pool in the top 1% (the test fixtures' mini-MAX, $1K Daily Dollar and Showdown $150 Quarter Jukebox), and the family cut is entrants (500), so a 2,300-entry $200 Dime Time paying 23% is chosen like a top-heavy GPP. Engine-era Classic finished in the money 23 times in 136 against 32.2 expected (p 0.03 before clustering) and put 0 of 135 GPP entries in the top 1%, while Showdown finished in the money 34 times in 78 against 22.4. Evidence for a measurement, not a fix; one slate's standings score hundreds of bank lineups against the real field. Its reading comes before Classic selection tuning is adopted (C22, C41, C42)."
+    backlog: [B112]
+    findings: []
+    checks:
+      - pytest -m c51 -q
+  - id: C52
+    title: Classic bust attribution, goalie, primary stack, shape, ownership and dead spots (measurement)
+    depends: [C51]
+    marker: c52
+    band: 1
+    size: M
+    gated_on: "C51 DONE and 10 settled Classic slates with standings (about 10 entries in each tail per 5 slates is too few to describe)"
+    effort: "medium: C51's replay rows, C48's record (implied totals, goalie state), learn/standings.py FPTS and the box scores, scripts/standings_synthesis.py describe (the per-entry fields it already reads)"
+    breakpoint: "the attribution rows for the entries and the bank, committed; then the bottom-10% and top-10% comparison appended to C51's experiment file"
+    impact: "Band 1, measurement, gated: the review's R5 asks what the engine's choices have in common when an entry finishes in the bottom 10%, against the top 10%. In NHL the candidates are the goalie, the primary stack and its game environment, the shape, ownership and dead roster spots (a goalie who did not start; the 09-29 Adin Hill entry scored 0, and the 10-03 cloud file shipped an unconfirmed goalie in 2 entries). Descriptive only."
+    backlog: [B112]
+    findings: []
+    checks:
+      - pytest -m c52 -q
   - id: C18
     title: Joint own-entry accounting in the greedy fill and the QA evaluator
     depends: [C14]
@@ -287,7 +355,7 @@ chunks:
     size: S
     effort: "medium: build/tiebreak.py, build/provisional.py 230, the own_then_dup region of build/portfolio.py"
     breakpoint: "a measurement of how often the band-only ownership tie-break moves a pick on the saved caches, committed; then the core exemption only if the tie-break moves picks away from the top-2 chalk; DONE when rejected"
-    impact: "Band 1: ownership level against the field. Top-1% lineups held the slate's top two chalk pieces at 90 to 100% (MacKinnon 47% owned; McDavid and Draisaitl 32% and 25%) and differentiated with 1 to 3 low-owned teammates; their own-sum exceeded the field's whenever the chalk hit (3 slates: thin). The read-only audit shows own and dup reorder lineups only inside the tie band, so today's penalty is small; this chunk measures before it changes anything."
+    impact: "Band 1: ownership level against the field. Top-1% lineups held the slate's top two chalk pieces at 90 to 100% (MacKinnon 47% owned; McDavid and Draisaitl 32% and 25%) and differentiated with 1 to 3 low-owned teammates; their own-sum exceeded the field's whenever the chalk hit (3 slates: thin). The read-only audit shows own and dup reorder lineups only inside the tie band, so today's penalty is small; this chunk measures before it changes anything. If it would change selection, adoption waits on C51's reading of the Classic objective (B112)."
     backlog: [B46]
     findings: []
     checks:
@@ -339,7 +407,7 @@ chunks:
     size: M
     effort: "high: models/ownership.py, models/field.py (sampled fields under scaled ownership), build/portfolio.py (screening and the knob loop), build/objectives.py (utility across field scenarios), config/ownership.yaml"
     breakpoint: "the ownership error band measured from the graded forecasts and committed as a function; then the field sampler draws from the low and high bands and the report prints each candidate tail spread; selection uses it only if the spread moves a pick"
-    impact: "Band 1: ownership level against the field. Plan section 6 asks for ownership as ranges and alternatives under low, base and high scenarios; nothing in src, config or the queue does this (C35 only resamples the field for the standard error). With per-player ownership error of 3.9 to 4.3 points and team stack shares off by 20 points on the 09-30 forecast, a selection optimal only at the base field can be badly placed when the field differs. Evidence: one graded forecast, so the measured spread comes first and selection use is conditional. Depends on C19 because that chunk changes the field model this one perturbs."
+    impact: "Band 1: ownership level against the field. Plan section 6 asks for ownership as ranges and alternatives under low, base and high scenarios; nothing in src, config or the queue does this (C35 only resamples the field for the standard error). With per-player ownership error of 3.9 to 4.3 points and team stack shares off by 20 points on the 09-30 forecast, a selection optimal only at the base field can be badly placed when the field differs. Evidence: one graded forecast, so the measured spread comes first and selection use is conditional. Depends on C19 because that chunk changes the field model this one perturbs. If it would change selection, adoption waits on C51's reading of the Classic objective (B112)."
     backlog: [B74]
     checks:
       - pytest -m c41 -q
@@ -351,7 +419,7 @@ chunks:
     size: M
     effort: "high: build/portfolio.py _greedy (one pass, order family, fee, file; lines 360 to 430), the saved scenario caches of the 09-29 and 09-30 runs, a docs/experiments/ preregistration"
     breakpoint: "the preregistration committed first; then the gap between the greedy portfolio and a bounded swap-improvement pass measured on the saved caches; DONE on rejected if the gain is inside the standard error"
-    impact: "Band 1 (tail terms reaching the solver): selection is a one-pass greedy fill with no improvement pass, where plan section 7 specifies bounded local search, and the order (family, fee, file) can decide which entries get the better candidates. Unmeasured (judgment). Depends on C18 because that chunk rewrites the same accounting. Experiment: DONE on rejected is valid."
+    impact: "Band 1 (tail terms reaching the solver): selection is a one-pass greedy fill with no improvement pass, where plan section 7 specifies bounded local search, and the order (family, fee, file) can decide which entries get the better candidates. Unmeasured (judgment). Depends on C18 because that chunk rewrites the same accounting. Experiment: DONE on rejected is valid. If it would change selection, adoption waits on C51's reading of the Classic objective (B112)."
     backlog: [B75]
     checks:
       - pytest -m c42 -q
@@ -690,6 +758,9 @@ deferred:
   - item: "CI and merge cost of a cloud run's entered-record pull request (B106)"
     trigger: "Ben turns on Allow auto-merge in the repo settings, or the next change to .github/workflows/ci.yml, whichever comes first"
     backlog: [B106]
+  - item: "Entered lineups public before lock (B113)"
+    trigger: "Ben answers flag 67: the repo made private closes B113 with no code and C48 goes TODO; kept public, a chunk makes the run session push data/entered/<slate>.* only after the slate's last lock, and C48 follows it"
+    backlog: [B113]
 flag_recommendations:
   2: "Record Ben's 2026-10-02 answer in the flags table: 40% goalie and game fee share with the LINEUPS fallback (done in this plan); C27 fixes the feasibility test behind it."
   3: "Replace the placeholder mix with the observed one (5 to 10 entries per slate, 1 to 2 per contest, fees $0.10 to $1, 20-max and 150-max GPPs plus Showdown) so family priors and C21's sleeve sizes fit what Ben plays."
@@ -705,3 +776,4 @@ flag_recommendations:
   18: "Default taken: tools/cloud_bootstrap.sh starts the history backfill in the background when the store is absent and Phase A never waits for it (B71, C39)."
   19: "Default taken: the delivery message names the refresh command and the lock time; no cloud scheduled routine is created until Ben registers one (B77, C43)."
   20: "Default taken: a first publish with no predecessor is never blocked for EDIT_STOP cells (it warns) and never changes cells of a game that has started; with a predecessor, pinned cells are diffed against it (B53, C14)."
+  67: "Make the repo private: one setting closes B113 and keeps the bank (flag 66) and the facts table (flag 65) off the public web; a post-lock push needs a chunk, and a cloud container can be reclaimed before the slate locks, which would lose the record."
