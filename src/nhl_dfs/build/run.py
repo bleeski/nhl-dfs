@@ -1083,6 +1083,7 @@ def _contest_facts(fam_cfg: dict, messages: list[str]):
     """C50 (flags 65 and 73 to 79): the committed contest facts table (models/contest_facts.default_path, read now, local
     only). None when switched off (silently: the earlier result exactly), absent or unreadable (reported; the contests then
     keep their family priors)."""
+    import csv
     from nhl_dfs.models import contest_facts
     from nhl_dfs.models import contests as contests_mod
 
@@ -1094,7 +1095,7 @@ def _contest_facts(fam_cfg: dict, messages: list[str]):
         return None
     try:
         return contest_facts.load(path)
-    except (ValueError, OSError, UnicodeDecodeError) as exc:  # reported; the run continues on the priors
+    except (ValueError, OSError, UnicodeDecodeError, csv.Error) as exc:  # reported; the run continues on the priors
         messages.append(f"contest facts table unreadable ({type(exc).__name__}: {str(exc)[:120]}); contests nothing else "
                         "describes use their family priors")
         return None

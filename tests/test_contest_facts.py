@@ -72,7 +72,11 @@ def test_the_key_keeps_case_and_every_bracketed_tag_that_is_not_a_suffix():
 
 def test_the_name_patterns_agree_with_c49_and_the_config():
     kinds = dict(eh.KIND_RULES)
-    assert cf.BOOSTER.pattern == kinds["top_n"].pattern
+    assert cf.BOOSTER.pattern == kinds["top_n"].pattern and cf.CASH.pattern == kinds["cash"].pattern
+    assert [k for k, _ in eh.KIND_RULES][:3] == ["satellite", "cash", "top_n"]  # is_booster_name follows this order
+    for name in ("NHL Showdown $1 Triple Up [Top 9 Win $3] (MIN @ FLA)", "NHL 40x Micro Booster [Top 5 Win $10]",
+                 "NHL $1K Synthetic Booster [Top 5 Win $1K]", "NHL $2 Satellite [Top 3 Win $10]", "NHL $200 Dime Time"):
+        assert cf.is_booster_name(name) == (eh.kind(name) == "top_n"), name
     assert set(kinds["satellite"].pattern.split("|")) <= set(cf.SATELLITE.pattern.split("|"))
     sat = next(p["pattern"] for p in contests.load_contest_families()["name_patterns"] if p["family"] == "satellite")
     assert sat == cf.SATELLITE.pattern
@@ -136,21 +140,26 @@ def test_no_other_persons_name_and_no_booster_is_written(tmp_path):
     p = _export(tmp_path, [
         ("Classic", "NHL $10 vs. somebody", "1001", "2026-10-01 19:00:00", "2", "$5.00", "$9.00", "1"),
         ("Classic", "Ben's Friday League", "1002", "2026-10-01 19:00:00", "8", "$5.00", "$36.00", "3"),
+        ("Classic", "NHL Smith Family League", "1007", "2026-10-01 19:00:00", "8", "$5.00", "$36.00", "3"),
+        ("Classic", "NHL $50 Synthetic Empty", "1008", "2026-10-01 19:00:00", "8", "$5.00", "$0.00", "3"),
         ("Classic", "NHL $1K Synthetic Booster [Top 5 Win $1K]", "1003", "2026-10-01 19:00:00", "300", "$5.00", "$1,250.00", "5"),
         ("Classic", "NHL $2 Synthetic Qualifier", "1004", "2026-10-01 19:00:00", "30", "$0.25", "$6.00", "3"),
-        ("Classic", "NHL $85 Synthetic Keeper", "1005", "2026-10-01 19:00:00", "100", "$1.00", "$85.00", "20")])
+        ("Classic", "NHL $85 Synthetic Keeper", "1005", "2026-10-01 19:00:00", "100", "$1.00", "$85.00", "20"),
+        ("Showdown Captain Mode", "NHL Showdown $1 Triple Up [Top 9 Win $3] (MIN @ FLA)", "1006", "2026-10-01 19:00:00", "31",
+         "$1.00", "$27.00", "9")])
     d = _distill(p)
-    assert [r.name_key for r in d.rows] == ["NHL $85 Synthetic Keeper"]
+    assert [r.name_key for r in d.rows] == ["NHL $85 Synthetic Keeper", "NHL Showdown $1 Triple Up [Top 9 Win $3]"]
     assert d.left_out == {"name carries 'vs'": 1, "name does not start with 'NHL '": 1, "Booster (Top N Win, flag 76)": 1,
-                          "satellite": 1}
+                          "satellite": 1, "name carries no dollar amount": 1}
+    assert d.refused == [("'NHL $50 Synthetic Empty' (classic, $5.00)", "no prize pool or no places paid ($0.00, 3 paid)")]
 
 
 def test_the_last_contest_is_the_latest_start_then_the_highest_id(tmp_path):
     p = _export(tmp_path, [("Showdown Captain Mode", "NHL Showdown $20 Synthetic Dime (AAA @ BBB)", "1003", "2026-10-01 19:00:00", "150", "$0.10", "$20.00", "40"),
                            ("Showdown Captain Mode", "NHL Showdown $20 Synthetic Dime (CCC @ DDD)", "1001", "2026-10-01 22:00:00", "120", "$0.10", "$20.00", "40"),
-                           ("Showdown Captain Mode", "NHL Showdown $20 Synthetic Dime (EEE @ FFF)", "1002", "2026-10-01 22:00:00", "204", "$0.10", "$20.00", "40")])
+                           ("Showdown Captain Mode", "NHL Showdown $20 Synthetic Dime (EEE @ FFF)", "1002", "2026-10-01 22:00:00", "130", "$0.10", "$20.00", "40")])
     r = _distill(p).rows[0]
-    assert (r.mode, r.contests_seen, r.max_entrants, r.last_entrants) == ("showdown", 3, 204, 204)
+    assert (r.mode, r.contests_seen, r.max_entrants, r.last_entrants) == ("showdown", 3, 150, 130)
     assert r.first_date == r.last_date == date(2026, 10, 1)
 
 
@@ -172,7 +181,7 @@ def test_load_refuses_a_bad_header_a_duplicate_key_and_a_bad_value(tmp_path):
     good = cf.render(_distill(HISTORY).rows).decode("utf-8").splitlines()
     for bad, why in [(["mode,name_key,fee"] + good[1:], "header"), (good + [good[1]], "appears twice"),
                      (good + [good[1].replace("classic", "tiers", 1)], "mode"),
-                     (good + [good[1].replace(",1.00,", ",-1.00,", 1)], "line")]:
+                     (good + [good[1].replace(",1.00,", ",-1.00,", 1)], "not a dollar amount")]:
         p = tmp_path / "bad.csv"
         p.write_text("\n".join(bad) + "\n", encoding="utf-8")
         with pytest.raises(ValueError, match=why):
@@ -194,7 +203,8 @@ def test_the_committed_table_loads_holds_recurring_keys_and_no_entry_fields():
 
 def test_the_results_command_writes_the_table_only_where_it_is_told(tmp_path, capsys):
     out = tmp_path / "facts.csv"
-    rc = cli.main(["results", "--history", str(HISTORY), "--facts", "--facts-out", str(out), "--since", "2026-01-01"])
+    rc = cli.main(["results", "--history", str(HISTORY), "--facts", "--facts-out", str(out), "--since", "2026-01-01",
+                   "--outputs-root", str(tmp_path)])
     text = capsys.readouterr().out
     assert rc == 0 and out.is_file() and "CONTEST FACTS (C50" in text and "No entry id, place, points or winnings" in text
     assert "Written: 9 rows (classic 6, showdown 3); 2 recurring (2 or more contests) covering 5 contests." in text
@@ -239,7 +249,9 @@ SAT = cf.FactsRow("classic", "NHL $2 Synthetic Satellite", 25, 30, 30, 600, 3, 2
 BOOST = cf.FactsRow("classic", "NHL 40x Micro Booster [Top 5 Win $10]", 25, 237, 237, 5000, 5, 2, D1, D9)
 BOOST_K = cf.FactsRow("classic", "NHL $1K Synthetic Booster [Top 5 Win $1K]", 500, 300, 300, 125000, 5, 2, D1, D9)
 ODD = cf.FactsRow("classic", "NHL $40 Synthetic Odd", 100, 40, 40, 3400, 50, 2, D1, D9)  # pays more places than entrants seen
-TABLE = cf.FactsTable(Path("facts.csv"), "0" * 64, {r.key: r for r in (DIME, BIG, TRIPLE, WTA, SAT, BOOST, BOOST_K, ODD)})
+TRIPLE_TOP9 = cf.FactsRow("showdown", "NHL Showdown $1 Triple Up [Top 9 Win $3]", 100, 31, 31, 2700, 9, 2, D1, D9)
+TABLE = cf.FactsTable(Path("facts.csv"), "0" * 64,
+                      {r.key: r for r in (DIME, BIG, TRIPLE, TRIPLE_TOP9, WTA, SAT, BOOST, BOOST_K, ODD)})
 
 
 def _rows(name, fee, n=5, cid=CID):
@@ -284,6 +296,10 @@ def test_a_large_row_is_large_gpp_and_a_cash_row_pays_its_places_flat():
     ct = ob.contest_from(tri, CFG)
     assert (tri.family, tri.family_source, tri.field_size) == ("cash", "name_pattern", 31)  # the name's family is kept
     assert ct.paid == 9 and set(ct.prizes_cents.tolist()) == {300}  # B94's case: 9 places of $3 on a $27 pool
+    top9 = _ctx("NHL Showdown $1 Triple Up [Top 9 Win $3] (STL @ COL)", "$1", 1, mode="showdown")
+    ct = ob.contest_from(top9, CFG)  # a cash name that also says Top 9 Win is cash (C49, flag 71) and uses its row (flag 76)
+    assert (top9.family, top9.field_size_label, top9.top_n, ct.paid, set(ct.prizes_cents.tolist())) == \
+        ("cash", "HISTORY", None, 9, {300})
     wta = _ctx("NHL $10 Synthetic Winner Take All", "$1", 1)
     ct = ob.contest_from(wta, CFG)
     assert (wta.family, ct.paid, int(ct.prizes_cents[0])) == ("wta", 1, 1000)  # flag 77: a winner-take-all keeps 1 paid
@@ -385,8 +401,8 @@ def test_prior_curve_without_the_new_arguments_is_unchanged_and_with_them_pays_t
     assert len(flat) == 9 and 2701 - 9 < int(flat.sum()) <= 2701 and "(given)" in d
     fb, _, _, d = ob.prior_curve("small_field", 100, 100, CFG, pool_cents=5000, n_paid=40)  # 40 x $2 > $50: flat fallback
     assert len(fb) == 40 and set(fb.tolist()) == {125} and "flat (the power shape's fallback" in d
-    w, _, _, _ = ob.prior_curve("wta", 12, 100, CFG, pool_cents=1000, n_paid=3)
-    assert w.tolist() == [1000]
+    w, _, _, d = ob.prior_curve("wta", 12, 100, CFG, pool_cents=1000, n_paid=3)
+    assert w.tolist() == [1000] and "1 of 12 paid (winner-take-all: 1)" in d
 
 
 # -- the full offline run: HISTORY on the contest line, in the manifest, RUN_NOTES and the QA packet -------------------------

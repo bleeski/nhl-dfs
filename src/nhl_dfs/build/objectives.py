@@ -204,8 +204,9 @@ def prior_curve(family: str, field_size: int, fee_cents: int, fam_cfg: dict, *, 
         shape = spec["shape"]
         if shape == "power" and (n_paid <= 1 or pool <= int(round(fee_cents * float(spec["min_cash_mult"]))) * n_paid):
             shape = "flat (the power shape's fallback: the pool cannot pay min cash to every paid place)"
+        paid_how = " (winner-take-all: 1)" if spec["shape"] == "wta" else (" (given)" if given_paid else "")
         detail = (f"PRIOR {family}: pool ${pool / 100:,.2f}" + (" (given)" if pool_cents is not None else f" (rake {rake:g})")
-                  + f", {n_paid} of {field_size} paid" + (" (given)" if given_paid else "") + f", shape {shape}")
+                  + f", {n_paid} of {field_size} paid{paid_how}, shape {shape}")
     if spec["shape"] == "tickets":
         face = pool // n_paid
         return np.zeros(n_paid, np.int64), np.ones(n_paid, bool), face, detail + f", ticket face {face / 100:.2f} (pool / seats)"

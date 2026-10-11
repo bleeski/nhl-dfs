@@ -435,6 +435,7 @@ def facts(history: Path, *, since: date | None = None, out: Path | None = None) 
         raise ValueError(f"{Path(history).name}: no contest facts from {window} (every key refused or left out)")
     path = Path(out) if out is not None else cf.default_path()
     sha = cf.write(path, d.rows)
+    cf.load(path)  # the table a run will read must load: a row it would refuse fails here, loudly
     rec = d.recurring
     by_mode = Counter(r.mode for r in d.rows)
     left = ", ".join(f"{n} {why}" for why, n in sorted(d.left_out.items())) or "none"
@@ -450,5 +451,7 @@ def facts(history: Path, *, since: date | None = None, out: Path | None = None) 
         f"- Refused: {len(d.refused)} keys (flag 79)" + (":" if d.refused else "."),
     ]
     lines += [f"  - {label}: {why}" for label, why in d.refused]
-    lines += [f"- Table: {path} (sha256 {sha}). No entry id, place, points or winnings is written."]
+    lines += [f"- Table: {path} (sha256 {sha}). No entry id, place, points or winnings is written. Keys written (check that "
+              "each is a DraftKings public contest name):"]
+    lines += [f"  - {r.label()}: {r.contests_seen} contest{'s' if r.contests_seen != 1 else ''}" for r in sorted(d.rows, key=lambda r: r.key)]
     return "\n".join(lines) + "\n", path

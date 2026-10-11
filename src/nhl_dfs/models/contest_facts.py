@@ -11,8 +11,8 @@ the lobby row and C47's Booster rule fail (FIELD_SIZE_SOURCE=HISTORY, PAYOUT_SOU
 The key (flag 78): the contest name without its game suffix "(AAA @ BBB)", its "(k/n)" counter and its "(Early)" or
 "(Late)" tag, spaces collapsed, case kept; with the mode (classic or showdown) and the fee in cents. A key whose prize pool or
 places paid changed between contests, a contest that lists two values, or a key with a ticket prize is refused (flag 79).
-Satellites, Boosters ("Top N Win", flag 76), freerolls, and names that do not start "NHL " or that carry "vs" (head-to-head
-and private leagues, so no other person's name is committed) are left out and only counted. Reads and writes local files
+Satellites, Boosters ("Top N Win" names that are not cash, flag 76), freerolls, and names that do not start "NHL ", carry
+"vs" or carry no dollar amount (head-to-head and private leagues, so no other person's name is committed) are left out and only counted. Reads and writes local files
 only; it never fetches.
 """
 
@@ -41,15 +41,25 @@ MODES = ("classic", "showdown")
 
 COUNTER = re.compile(r"\s*\(\d+/\d+\)")
 SESSION_TAG = re.compile(r"\s*\((?:Early|Late)\)", re.IGNORECASE)
-# C49's kind patterns (learn/entry_history.KIND_RULES) plus the config's satellite pattern; tests check they agree
+# C49's kind patterns (learn/entry_history.KIND_RULES, first match wins: satellite, cash, top_n) plus the config's satellite
+# pattern; tests check they agree
 SATELLITE = re.compile(r"satellite|qualifier|\bsat\b", re.IGNORECASE)
+CASH = re.compile(r"double up|triple up", re.IGNORECASE)
 BOOSTER = re.compile(r"\btop\s+\d+\s+win\b", re.IGNORECASE)
 VS = re.compile(r"\bvs\b", re.IGNORECASE)
+DOLLAR = re.compile(r"\$\s*\d")  # DraftKings' public contest names carry a dollar amount; a user-named league need not
 NAME_PREFIX = "NHL "
 
 
 def default_path() -> Path:
     return DEFAULT_PATH
+
+
+def is_booster_name(name: str) -> bool:
+    """A Booster by C49's order (flag 76): the words Top N Win, and not a satellite or a C49 cash name (Double Up, Triple Up;
+    the config's wider cash words such as Quintuple Up are not read here, which errs toward leaving a name out). A Triple Up named
+    "[Top 9 Win $3]" is cash (C49, flag 71) and may use a row; a "Top 5 Win $1K" name C47 cannot read is still a Booster."""
+    return bool(BOOSTER.search(name)) and not SATELLITE.search(name) and not CASH.search(name)
 
 
 def name_key(name: str) -> str:
@@ -164,7 +174,10 @@ def load(path) -> FactsTable:
     p = Path(path)
     raw = p.read_bytes()
     reader = csv.reader(io.StringIO(raw.decode("utf-8-sig"), newline=""))
-    recs = [(reader.line_num, rec) for rec in reader]
+    try:
+        recs = [(reader.line_num, rec) for rec in reader]
+    except csv.Error as exc:
+        raise ValueError(f"{p.name} line {reader.line_num}: unreadable CSV ({exc})") from None
     if not recs or tuple(recs[0][1]) != COLUMNS:
         raise ValueError(f"{p.name}: the header is not {','.join(COLUMNS)}")
     rows: dict[tuple[str, str, int], FactsRow] = {}
@@ -215,9 +228,11 @@ def left_out_reason(name: str) -> str | None:
         return "name does not start with 'NHL '"
     if VS.search(name):
         return "name carries 'vs'"
+    if not DOLLAR.search(name):
+        return "name carries no dollar amount"
     if SATELLITE.search(name):
         return "satellite"
-    if BOOSTER.search(name):
+    if is_booster_name(name):
         return "Booster (Top N Win, flag 76)"
     return None
 
@@ -266,6 +281,8 @@ def distill(rows: Iterable, *, since: date | None = None, until: date | None = N
                 why = "prize pool changed between contests (" + ", ".join(usd(p) for p in pools) + ")"
             elif len(paid) > 1:
                 why = "places paid changed between contests (" + ", ".join(f"{p:,}" for p in paid) + ")"
+            elif pools[0] < 1 or paid[0] < 1:
+                why = f"no prize pool or no places paid ({usd(pools[0])}, {paid[0]} paid)"
         if why is not None:
             refused.append((label, why))
             continue

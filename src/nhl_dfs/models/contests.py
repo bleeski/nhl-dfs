@@ -26,8 +26,8 @@ A contest that the page, a template, the lobby row and C47's rule all leave unpr
 of the same recurring contest when the committed contest facts table (models/contest_facts, data/contest_facts/nhl.csv; C50,
 flags 65 and 73 to 79) has a row for its mode, name key and fee: the most entrants seen (FIELD_SIZE_SOURCE=HISTORY), the
 family by the size rule a lobby row uses, and the family's prior shape on the row's prize pool and places paid
-(PAYOUT_SOURCE stays PRIOR, the note names the row). Never for a satellite or a "Top N Win" name, or when the fee, a lobby
-row's pool or the room for an opponent disagrees with the row.
+(PAYOUT_SOURCE stays PRIOR, the note names the row). Never for a satellite or a Booster ("Top N Win" and not a cash name), or
+when the fee, a lobby row's pool or the room for an opponent disagrees with the row.
 """
 
 from __future__ import annotations
@@ -327,7 +327,7 @@ def usable_facts_row(name: str, fee: str, mode: str | None, own_entries: int, ra
     if is_satellite_name(name, cfg) or cf.SATELLITE.search(name) or \
             (raw_lobby is not None and is_satellite_name(raw_lobby.name, cfg)):
         return "contest facts are never used for a satellite"
-    if cf.BOOSTER.search(name):
+    if cf.is_booster_name(name):
         return "contest facts are never used for a Top N Win name (flag 76)"
     if mode not in cf.MODES:
         return f"the run's mode {mode!r} is not one the contest facts know"

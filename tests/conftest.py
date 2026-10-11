@@ -55,8 +55,11 @@ def _no_facts_table_written():
     yield
     import nhl_dfs.models.contest_facts as contest_facts
 
-    if contest_facts.DEFAULT_PATH.name == "nhl.csv" and "no_history" in str(contest_facts.DEFAULT_PATH):
-        assert not contest_facts.DEFAULT_PATH.exists(), "a test wrote the session's redirected contest facts table"
+    p = contest_facts.DEFAULT_PATH
+    if p.name == "nhl.csv" and "no_history" in str(p):
+        written = p.exists()
+        p.unlink(missing_ok=True)  # one offending test fails, never every test after it
+        assert not written, "a test wrote the session's redirected contest facts table"
 
 
 @pytest.fixture(autouse=True)

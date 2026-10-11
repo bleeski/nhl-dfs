@@ -535,10 +535,10 @@ reads it to tune, select or book money (booking stays with settle, C29).
 - Distill: `results --facts [--history <csv>] [--since <date>] [--facts-out <path>]` (C49's command; writes only the table and
   prints a summary). Rows: settled, paid NHL Classic and Showdown rows dated from `--since` (default 2026-09-29, the engine era).
   Key (flag 78): mode (C49's format), the name without its game suffix "(AAA @ BBB)", its "(k/n)" counter and its "(Early)" or
-  "(Late)" tag, spaces collapsed, case kept, and the fee in cents. Left out and only counted: satellites, "Top N Win" names
-  (flag 76), freerolls, other game types, and names that do not start "NHL " or that carry "vs" (no other person's name is
-  committed). Refused with the reason printed (flag 79): a key whose prize pool or places paid changed between contests, a
-  contest that lists two values, a key with a ticket prize (shown in the export only when Ben won it, so a partial guard).
+  "(Late)" tag, spaces collapsed, case kept, and the fee in cents. Left out and only counted: satellites, Boosters (the words
+  Top N Win after satellite and cash names, C49's kind order, flag 76; a Triple Up named "[Top 9 Win $3]" is cash and kept), freerolls, other game types, and names that do not start "NHL ", carry "vs" or carry no dollar amount (no other person's
+  name is committed; the summary lists every key written). Refused with the reason printed (flag 79): a key whose prize pool or places paid changed between contests, a key
+  with no pool or no places paid, a contest that lists two values, a key with a ticket prize (shown in the export only when Ben won it, so a partial guard).
   Per row: the most entrants seen, the last contest's entrants (latest start, then contest id), the one pool and places
   paid, the contests seen, the first and last dates.
 - Pricing (`resolve(..., facts, mode)`): after the page (EXACT), C47's Booster rule, a template (TEMPLATE) and a usable lobby row
@@ -548,7 +548,7 @@ reads it to tune, select or book money (booking stays with settle, C29).
   flag 75), and `prior_curve(..., pool_cents=, n_paid=)` keeps the family's shape on the row's pool and places paid
   (winner-take-all keeps 1 paid; a power curve that cannot pay 2 x fee to every place is flat and says so; flag 77).
   `PAYOUT_SOURCE` stays PRIOR. Not used, the reason appended to the size note (the routing otherwise unchanged): a satellite
-  name (entries or lobby), any "Top N Win" name (flag 76, also when C47 could not size it), no row at the fee (a row at
+  name (entries or lobby), a Booster name (flag 76, also when C47 could not size it), no row at the fee (a row at
   another fee is named), another mode, a lobby row read for the contest whose prize pool differs or whose max entries are
   below the row's most entrants seen, a row paying more places than its entrants seen, own entries that leave no opponent.
   A row is used whatever its last date (flag 74).
