@@ -73,7 +73,7 @@ def test_name_variants_read_into_n_flat_prizes(name, paid, prize):
 
 
 @pytest.mark.parametrize("name", ["NHL Top 5 Win", "NHL Win $10", "Top 0 Win $10", "Top 5 Win $1,00", "Top 5 Winners $10",
-                                  "Top Five Win $10", "NHL $10 Top 5"])
+                                  "Top Five Win $10", "NHL $10 Top 5", "NHL [Top 5 Win $10K]", "Top 3 Win $1M"])
 def test_a_name_without_both_n_and_x_is_not_read(name):
     assert contests.top_n_from_name(name) is None
     assert contests.family_from_name(name, CFG) == contests.family_from_name(name, contests.without_top_n(CFG))
@@ -123,9 +123,10 @@ def test_the_derived_size_is_235_and_labeled_with_the_placeholder_rake():
 
 
 def test_the_derived_size_is_exact_decimal_arithmetic():
-    """5 x $10 / ($0.50 x 0.80) = 125 exactly: a float could floor it to 124."""
+    """1 x $10 / ($0.10 x 0.80) = 125 exactly; in floats the same division is 124.99999999999997, which floors to 124."""
+    assert int(1 * 10.0 / (0.10 * (1 - 0.2))) == 124  # the float trap this guards against
     cfg = {**CFG, "payout_priors": {**CFG["payout_priors"], "rake": 0.2}}
-    assert contests.resolve(rows(fee="$0.50"), cfg=cfg)[CID].field_size == 125
+    assert contests.resolve(rows("NHL Mini [Top 1 Win $10]", fee="$0.10"), cfg=cfg)[CID].field_size == 125
 
 
 def test_a_usable_lobby_row_size_wins_over_the_derived_size():
@@ -146,6 +147,11 @@ def test_a_booster_that_cannot_be_sized_routes_as_before_and_says_why(fee, n):
     assert (c.family, c.field_size, c.payout_source) == (old.family, old.field_size, old.payout_source)
     assert c.top_n is None and "routed as before C47" in c.payout_note
     assert ob.contest_from(c, CFG).field_size == c.field_size  # never a KeyError on any outcome
+
+
+def test_a_lobby_row_no_larger_than_the_prize_count_never_sizes_a_booster():
+    c = ctx_of(lobby={int(CID): lobby_row(max_entries=5)}, n=3)
+    assert c.field_size_source == "name_derived" and "do not exceed the name's 5 prizes" in c.size_note
 
 
 def test_contest_from_works_on_every_way_a_booster_resolves():
@@ -184,11 +190,24 @@ def test_a_booster_is_never_priced_on_a_template_table(tmp_path):
     assert ct.payout_source is PayoutSource.PRIOR and ct.detail.startswith("NAME: 5 paid x $10.00")
 
 
+def test_a_booster_that_falls_back_still_never_takes_a_template_table(tmp_path):
+    """300 own entries: the store's lobby row (237 max) leaves no opponent and the derived 235 no room, so the contest
+    routes as before C47, except that the template table the store would match is still refused (the card)."""
+    store = _template_store(tmp_path)
+    c = contests.resolve(rows(n=300), cfg=CFG, templates=store)[CID]
+    assert (c.payout_source, c.template, c.top_n) == (PayoutSource.PRIOR, None, None)
+    assert "routed as before C47" in c.payout_note
+    old = contests.resolve(rows(n=300), cfg=contests.without_top_n(CFG), templates=store)[CID]
+    assert old.payout_source is PayoutSource.TEMPLATE  # what the old routing would have done
+
+
 def test_a_booster_page_is_exact_and_top_n_and_a_flat_table_without_the_phrase_does_not_move():
     page = detail(NAME, [(1, 5, "10")], 237)
     c = contests.resolve(rows(), {CID: page}, cfg=CFG)[CID]
     assert (c.family, c.payout_source, c.field_size_label) == ("top_n", PayoutSource.EXACT, "EXACT")
     assert ob.contest_from(c, CFG).detail.startswith("EXACT")
+    six = contests.resolve(rows(), {CID: detail(NAME, [(1, 6, "10")], 237)}, cfg=CFG)[CID]  # the page pays 6, not 5
+    assert "in the top 6)" in six.objective_line()
     plain = detail("NHL $1 Flat Nine", [(1, 9, "3")], 31, fee="1")  # 9 of 31 flat, 0.29 < the 0.30 cash cut
     assert contests.family_from_detail(plain, CFG) == contests.family_from_detail(plain, contests.without_top_n(CFG)) == "small_field"
     tiered = detail(NAME, [(1, 1, "20"), (2, 4, "10")], 237)  # a Booster name whose page is not flat keeps the old rule
@@ -268,8 +287,14 @@ def _select_two(family, b_share: float = 0.25, risk: dict = RISK):
     return sel, (a, b, c)
 
 
+FLAT_RISK = {**RISK, "frontier": {**RISK["frontier"], "kappas": [0.0] * 5}}  # no risk term: the objective alone decides
+
+
 def test_less_overlap_beats_a_near_copy_on_p_at_least_one():
-    sel, (a, b, c) = _select_two("top_n")
+    """B and C have the same own chance (25%). With the risk term at zero, adding B to A adds nothing to P(at least one)
+    and adding C adds 0.25, so C is taken. (The discriminating case, where the old objective takes the near-copy, is
+    test_a_near_copy_with_a_higher_own_chance_...; with the default knobs the risk term alone would also spread these.)"""
+    sel, (a, b, c) = _select_two("top_n", 0.25, FLAT_RISK)
     assert {sel.by_entry["e1"], sel.by_entry["e2"]} == {a.role_ids, c.role_ids}
     f = sel.portfolio.per_contest["T"]
     assert f["p_at_least_one"] == pytest.approx(0.55) and f["exp_top_n_finishes"] == pytest.approx(0.55)
@@ -293,9 +318,8 @@ def test_summing_each_entry_chance_cannot_tell_the_near_copy_from_the_spread_pai
 def test_a_near_copy_with_a_higher_own_chance_wins_the_summed_objective_and_loses_the_booster_one():
     """B (27%, always with A) has a higher own chance than C (25%, never with A). With the risk term at zero (every knob 0)
     the summed expected payout (small_field) takes B; the Booster objective takes C, for P(at least one) 0.55 not 0.30."""
-    flat_risk = {**RISK, "frontier": {**RISK["frontier"], "kappas": [0.0] * 5}}
-    old, (a, b, c) = _select_two("small_field", 0.27, flat_risk)
-    new, _ = _select_two("top_n", 0.27, flat_risk)
+    old, (a, b, c) = _select_two("small_field", 0.27, FLAT_RISK)
+    new, _ = _select_two("top_n", 0.27, FLAT_RISK)
     assert {old.by_entry["e1"], old.by_entry["e2"]} == {a.role_ids, b.role_ids}
     assert {new.by_entry["e1"], new.by_entry["e2"]} == {a.role_ids, c.role_ids}
     assert new.portfolio.per_contest["T"]["p_at_least_one"] == pytest.approx(0.55)

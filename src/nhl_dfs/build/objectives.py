@@ -877,7 +877,8 @@ def top_n_figures(m: Metrics, contest: Contest) -> dict:
     """A "Top N Win $X" contest's portfolio figures (C47, flags 64 and 70) from the joint metrics of its own entries, ranked
     against each other: P(at least one own entry in the top N) as E[min($X, own payout)] / $X (exactly the probability
     when no tie straddles the line; a tie there counts as its share), the expected top-N finishes E[own payout] / $X, and
-    the P(at least one) the same entries would have if they were independent, 1 - prod(1 - each entry's P(top N))."""
+    the P(at least one) the same entries would have if they were independent, 1 - prod(1 - each entry's P(top N)), each
+    entry's P(top N) read in the joint ranking (its own siblings above it count), as B108's figure was."""
     S, J = m.payout_cents.shape
     prize = int(contest.prizes_cents[0]) if contest.paid else 0
     out = {"objective": "p_at_least_one_top_n", "top_n": contest.paid, "prize": prize / 100.0, "entries": J, "n_scenarios": S}

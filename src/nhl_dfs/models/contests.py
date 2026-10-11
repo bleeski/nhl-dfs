@@ -50,7 +50,9 @@ FIELD_SIZE_LABELS = {"contest_detail": "EXACT", "lobby": "LOBBY", "family_prior"
 # they were before the family existed (models/field.py would otherwise fall back to the retired "old" mixture for it)
 FIELD_FAMILY = {"top_n": "large_gpp"}
 # "Top N Win $X" (C47, flag 71): N a positive integer, X dollars with optional thousands commas and one or two cent digits
-TOP_N_RE = re.compile(r"\btop\s+(\d+)\s+win\s+\$\s*(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?(?!\d|,\d|\.\d)", re.IGNORECASE)
+# ("$10K" or "$1M" is not read: the amount must end there)
+TOP_N_RE = re.compile(r"\btop\s+(\d+)\s+win\s+\$\s*(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?(?!\d|,\d|\.\d|[kKmM]\b)",
+                      re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -155,6 +157,8 @@ class ContestContext:
         if self.family != "top_n" or self.top_n is None:
             return ""
         n = self.top_n.paid
+        if isinstance(self.detail, ContestDetail):  # the page's own table, which may pay another count than the name
+            n = max((t.max_pos for t in self.detail.payout_table if t.cash > 0), default=n)
         return (f"OBJECTIVE contest {self.contest_id}: P(at least one own entry in the top {n}) (family top_n, flags 64 and 70; "
                 f"own entries chosen together on the selection scenarios, ties on expected top-{n} finishes; the first "
                 "(provisional) publish ranks them on projected mean)")
@@ -328,6 +332,8 @@ def booster_context(cid: str, name: str, fee: str, tn: TopN, own_entries: int, l
     72). Returns the reason instead when neither can size it (the contest then routes as it did before C47)."""
     table = f"table from the contest name: {tn.label()} ('{tn.text}'), never EXACT, never a template table"
     sized = usable_lobby_row(cid, name, fee, own_entries, lobby, cfg)
+    if isinstance(sized, LobbyRow) and sized.max_entries <= tn.paid:
+        sized = f"the lobby row's {sized.max_entries} max entries do not exceed the name's {tn.paid} prizes"
     if isinstance(sized, LobbyRow):
         size, src = int(sized.max_entries), "lobby"
         pool = tn.paid * tn.prize
@@ -385,7 +391,7 @@ def resolve(entries, details: Mapping[str, ContestDetail] | None = None, cfg: di
                 continue
             cfg, note = without_top_n(base_cfg), b
         p = family_prior(cid, e.contest_name.strip(), cfg)
-        if use_templates and str(cid).isdigit():
+        if use_templates and str(cid).isdigit() and tn is None:  # a Booster name never takes a template table (C47)
             row = templates.lobby.get(int(cid))
             sat = is_satellite_name(e.contest_name, cfg) or (row is not None and is_satellite_name(row.name, cfg))
             m = templates.match(int(cid), satellite=sat, fee=fee_value(e.fee))

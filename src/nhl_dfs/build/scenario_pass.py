@@ -397,7 +397,8 @@ def _grow_fields(work, proj, contexts, fb, own_n, prov, st, risk_cfg, seed, over
     for fam in sorted({contests_mod.field_family(c.family) for c in contexts.values()}):
         if fam not in g["families"]:
             continue
-        need = min(target, max(c.field_size - own_n[cid] for cid, c in contexts.items() if contests_mod.field_family(c.family) == fam))
+        need = min(target, max(c.field_size - own_n[cid] for cid, c in contexts.items()
+                               if contests_mod.field_family(c.family) == fam))
         have = fields[fam].n
         if need <= have:
             report[fam] = {"draws": have, "grown_by": 0, "shape_mix": field_mod.shape_report(fields[fam], work, own_cfg)}

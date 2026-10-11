@@ -3,8 +3,9 @@
 Two candidates whose metric values are within the materiality band are ordered by lower
 projected ownership, then by lower duplicate risk (large GPP), or duplicate risk first (WTA and
 small field, config/contest_families.yaml `selection`), or not by ownership at all (cash and
-satellite, policy "mean"), or by more expected top-N finishes (`alt`) in a "Top N Win $X" contest
-(policy "finishes", C47 flag 70; a caller without that figure leaves alt 0 and gets "mean"). The band is never smaller than the metric's Monte Carlo standard error:
+satellite, policy "mean"), or by more expected top-N finishes (`alt`) in a "Top N Win $X"
+contest (policy "finishes", C47 flag 70; a caller without that figure leaves alt 0 and gets
+"mean"). The band is never smaller than the metric's Monte Carlo standard error:
     band = max(band_pct x |anchor value|, se_mult x anchor standard error).
 Ownership never moves a choice past one band: `rank` anchors each band at the best remaining
 candidate, so no candidate is ever placed ahead of one more than one band better.

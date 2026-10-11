@@ -509,7 +509,8 @@ reads it to tune, select or book money (booking stays with settle, C29).
 - With no contest page: N flat prizes of $X from the name, `PAYOUT_SOURCE=PRIOR` with the note "table from the contest name"
   (never EXACT, never a template table; the template lookup is skipped). Field size: a usable lobby row (`LOBBY`), else
   floor(N x X / (fee x (1 - rake))) in Decimal with `payout_priors.rake` (`FIELD_SIZE_SOURCE=PRIOR`, stored `name_derived`, the
-  formula and "placeholder" in the note). Neither possible: routed as before with the reason in the payout note.
+  formula and "placeholder" in the note). Neither possible: routed as before with the reason in the payout note,
+  and still never on a template table.
 - With the contest page: its table is EXACT; the family is `top_n` when the name passed the gate and the table pays one flat cash
   amount, else the exact rules as before.
 - Family `top_n`: filled last in `family_order`; the own-goalie rule covers it (Classic); its field is the large_gpp sample
