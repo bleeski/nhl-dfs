@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import random
 from datetime import date, datetime, timezone
 from fractions import Fraction
@@ -20,6 +21,14 @@ pytestmark = pytest.mark.c49
 
 FIX = Path(__file__).parent / "fixtures" / "entry_history"
 HISTORY = FIX / "history_synthetic.csv"
+ENTERED = FIX / "entered"  # one minimized entered record: two of the 10-03 entries
+ENTRIES_HEADER = ["Entry ID", "Contest Name", "Contest ID", "Entry Fee", "C", "C", "W", "W", "W", "D", "D", "G", "UTIL"]
+
+
+@pytest.fixture(autouse=True)
+def _scratch_ledger(tmp_path, monkeypatch):
+    """The gate line reads <ledger root>/graded.json; never the real data/ledger in a test."""
+    monkeypatch.setenv("NHL_DFS_LEDGER_ROOT", str(tmp_path / "default_ledger"))
 
 
 def _table() -> list[list[str]]:
@@ -201,7 +210,7 @@ def test_under_20_slates_a_slice_is_thin_with_slate_counts_and_no_interval():
     assert sd.slates == 4 and sd.thin and not sd.intervals
     assert (sd.better, sd.worse, sd.even) == (3, 1, 0)
     assert "| showdown | 5 | 4 (4) |" in text and "3 / 1 / 0 THIN |" in text
-    assert "- format=showdown:" not in text
+    assert "- format=showdown: finish" not in text  # no interval line for a THIN slice
 
 
 def test_at_20_slates_the_interval_is_seeded_and_independent_of_by_and_row_order(tmp_path):
@@ -238,22 +247,131 @@ def clean_env(monkeypatch):
         monkeypatch.delenv(k, raising=False)
 
 
+def _roots(tmp_path: Path) -> list[str]:
+    return ["--entered", str(ENTERED), "--runs-root", str(tmp_path / "runs"), "--outputs-root", str(tmp_path / "outputs"),
+            "--ledger-root", str(tmp_path / "ledger")]
+
+
 def test_the_command_prints_and_writes_the_report(tmp_path, capsys, clean_env):
-    out = tmp_path / "outputs"
-    rc = cli.main(["results", "--history", str(HISTORY), "--since", "2026-09-29", "--by", "format", "--outputs-root",
-                   str(out)])
+    rc = cli.main(["results", "--history", str(HISTORY), "--since", "2026-09-29", "--by", "format"] + _roots(tmp_path))
     printed = capsys.readouterr().out
     assert rc == 0
     assert "## By format" in printed and "| classic | 9 | 7 (7) |" in printed
-    written = list((out / "results").glob("*.md"))
+    assert "2 of 13 engine-era entries in the window join" in printed
+    lines = printed.splitlines()
+    assert lines[-2].startswith("Ownership gate (C12 field_fit): nothing settled on this machine")
+    assert lines[-1].startswith("report: ")
+    written = list((tmp_path / "outputs" / "results").glob("*.md"))
     assert len(written) == 1 and written[0].read_text(encoding="utf-8") in printed
 
 
 def test_the_command_refuses_a_wrong_file_and_says_how_to_pass_one(tmp_path, capsys, clean_env, monkeypatch):
     table = _table()
     table[0][2] = "Entry_Id"
-    rc = cli.main(["results", "--history", str(_write(tmp_path, table)), "--outputs-root", str(tmp_path / "o")])
-    assert rc == 1 and "RESULTS=REFUSED" in capsys.readouterr().out and not (tmp_path / "o").exists()
+    rc = cli.main(["results", "--history", str(_write(tmp_path, table))] + _roots(tmp_path))
+    assert rc == 1 and "RESULTS=REFUSED" in capsys.readouterr().out and not (tmp_path / "outputs").exists()
     monkeypatch.setattr(results, "HISTORY_DIR", tmp_path / "none")
-    assert cli.main(["results", "--outputs-root", str(tmp_path / "o")]) == 2
+    assert cli.main(["results"] + _roots(tmp_path)) == 2
     assert "results needs --history" in capsys.readouterr().out
+
+
+# -- the recorded label -----------------------------------------------------------------------------------------------------
+
+def _entries_file(path: Path, ids: list[str]) -> None:
+    cells = [f"Synthetic Player {i} ({90000100 + i})" for i in range(9)]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as fh:
+        csv.writer(fh, lineterminator="\r\n").writerows(
+            [ENTRIES_HEADER] + [[i, "NHL $6K Synthetic Hip Check [20 Entry Max]", "900000120", "$1"] + cells for i in ids])
+
+
+def test_recorded_joins_entered_records_and_local_runs_by_entry_id(tmp_path):
+    runs, outs = tmp_path / "runs", tmp_path / "outputs"
+    run = runs / "20261003-180000-classic" / "inputs"
+    _entries_file(run / "DKEntries.csv", ["9000000022"])
+    _entries_file(run / "DKSalaries.csv", ["9000000016"])  # never read, whatever it holds
+    _entries_file(runs / "_scratch" / "inputs" / "DKEntries.csv", ["9000000017"])  # scratch runs are skipped
+    _entries_file(outs / "classic-20261004-0000000000" / "DKEntries.csv", ["9000000023"])
+    rec = eh.recorded_ids(ENTERED, runs, outs)
+    assert rec.ids == {"9000000020", "9000000021", "9000000022", "9000000023"}
+    assert len(rec.files) == 3 and not rec.unreadable
+    text, built = results.build(HISTORY, since=date(2026, 9, 29), by="recorded,era", records=rec,
+                                ledger_root=tmp_path / "ledger")
+    assert (_slice(built, "recorded", "recorded=recorded").n, _slice(built, "recorded", "recorded=unrecorded").n) == (4, 9)
+    assert "4 of 13 engine-era entries in the window join" in text and "RECORDED_JOIN=FAILED" not in text
+    sep29 = [r for r in eh.read_history(HISTORY).rows if r.entry_key == "9000000016"][0]
+    assert eh.era(sep29) == "engine" and sep29.entry_key not in rec.ids  # the era never comes from the join
+
+
+def test_a_join_that_matches_nothing_is_reported_as_failed_not_as_unrecorded(tmp_path):
+    _entries_file(tmp_path / "entered" / "classic-20261003-1111111111.csv", ["9999999999"])
+    rec = eh.recorded_ids(tmp_path / "entered", None, None)
+    text, built = results.build(HISTORY, by="recorded", records=rec, ledger_root=tmp_path / "ledger")
+    assert "RECORDED_JOIN=FAILED" in text
+    assert [s.label for s in built[0][1]] == ["all", "recorded=join failed"]
+    _, none = results.build(HISTORY, by="recorded", records=eh.recorded_ids(tmp_path / "nothing", None, None),
+                            ledger_root=tmp_path / "ledger")
+    assert [s.label for s in none[0][1]] == ["all", "recorded=no records"]
+
+
+# -- in the money -----------------------------------------------------------------------------------------------------------
+
+def test_in_the_money_and_its_expectation_including_places_paid_above_the_field():
+    assert [_entry(100, p, paid=20).in_money for p in (20, 21)] == [True, False]
+    assert _entry(100, paid=20).exp_in_money == Fraction(20, 100)
+    over = _entry(9, paid=12)
+    assert over.exp_in_money == 1 and over.exp_in_money_card == Fraction(12, 9)
+    _, built = results.build(HISTORY, by="format")
+    sd = _slice(built, "format", "format=showdown")
+    assert (sd.in_money, sd.exp_in_money) == (3, 1)  # places 5, 80, 1, 90 and 1 of 100 with 20 paid
+
+
+def test_the_definition_checks_print_both_forms(tmp_path):
+    table = _table()
+    table[2][13] = "12"  # the 9-entry Double Up paying 12 places
+    table[10][8] = "$0.00"  # an entry in the money with no winnings
+    text, _ = results.build(_write(tmp_path, table), by="format", ledger_root=tmp_path / "ledger")
+    line = next(ln for ln in text.splitlines() if ln.startswith("- all: rake ROI"))
+    assert "(used), entry mean" in line and "cash only" in line and "P / N" in line
+    assert "1 entries with places paid above entrants" in line
+    assert "1 entries where place <= places paid disagrees with winnings above $0" in line
+
+
+# -- the own-entry spread ---------------------------------------------------------------------------------------------------
+
+def test_the_own_entry_spread_against_random_draws():
+    hf = eh.read_history(HISTORY)
+    rows = results.select(hf, None)
+    [hip] = results.spread(rows)  # the only contest with 3 or more own entries
+    assert (hip.contest_key, hip.entrants, hip.own) == ("900000120", 1000, 3)
+    assert hip.sd == pytest.approx(0.000816, abs=1e-6) and hip.share_at_or_below == 0.0  # places 1, 2, 3: clustered
+    assert results.spread(rows) == [hip]  # seeded by the contest key
+    wide = [_entry(10000, p) for p in range(250, 10001, 500)]  # 20 entries spread over the field
+    [ref] = results.spread(wide)
+    assert ref.own == 20 and ref.random_median_sd == pytest.approx(0.280, abs=0.004)
+    assert results.spread(wide[:2]) == []
+
+
+# -- the gate line ----------------------------------------------------------------------------------------------------------
+
+def _graded(root: Path, entry: dict) -> None:
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "graded.json").write_text(json.dumps({entry.get("run_id", "r"): entry}), encoding="utf-8")
+
+
+def test_the_gate_line_reads_the_settled_evidence_and_is_the_last_line(tmp_path):
+    led = tmp_path / "ledger"
+    assert "nothing settled on this machine" in results.gate_line(led)
+    _graded(led, {"run_id": "20261001-220000-classic", "frozen": True, "mode": "classic",
+                  "slate_id": "classic-20261001-aaaaaaaaaa", "slate_date": "2026-10-01", "games": ["SYN@FAK"],
+                  "contests": {"900000101": {"family": "large_gpp", "labels": 1200}}, "played": [],
+                  "complete_payout": False, "settled_utc": "2026-10-02T12:00:00Z"})
+    line = results.gate_line(led)
+    assert "classic slate_groups 1 of 30, ownership_labels 1,200 of 15,000, holdout_groups not counted yet (B82) of 10" in line
+    assert "showdown slate_groups 0 of 50" in line and "(met)" not in line
+    text, _ = results.build(HISTORY, by="format", ledger_root=led)
+    assert text.rstrip("\n").splitlines()[-1] == line
+    _graded(led, {"run_id": "old", "frozen": True})  # an older or damaged index: the reason, never a crash
+    assert "unreadable (KeyError" in results.gate_line(led)
+    (led / "graded.json").write_text("{not json", encoding="utf-8")
+    assert "unreadable (JSONDecodeError" in results.gate_line(led)

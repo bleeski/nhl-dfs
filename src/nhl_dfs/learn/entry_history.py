@@ -80,6 +80,18 @@ class HistoryRow:
         return Fraction(self.entrants + 1, 2 * self.entrants)
 
     @property
+    def in_money(self) -> bool:
+        return self.place <= self.places_paid
+
+    @property
+    def exp_in_money(self) -> Fraction:
+        return Fraction(min(self.places_paid, self.entrants), self.entrants)
+
+    @property
+    def exp_in_money_card(self) -> Fraction:  # P / N as the card writes it, above 1 when P exceeds N (definition check)
+        return Fraction(self.places_paid, self.entrants)
+
+    @property
     def top1(self) -> bool:
         return self.place <= self.entrants // 100
 
@@ -270,3 +282,38 @@ def entries_bucket(own_entries: int) -> str:
         if own_entries <= top:
             return label
     return ENTRIES_TOP
+
+
+# -- the recorded label: the join to the engine's own entry records -------------------------------------------------------
+
+@dataclass(frozen=True)
+class RecordSources:
+    ids: frozenset[str]
+    files: tuple[str, ...]  # files read
+    unreadable: tuple[str, ...]  # "path: reason"
+
+
+def recorded_ids(entered_dir, runs_root, outputs_root) -> RecordSources:
+    """Entry IDs in data/entered/*.csv, a local run's runs/<run id>/inputs/DKEntries.csv (scratch runs/_* skipped; the folder
+    also holds DKSalaries.csv, never read) and outputs/*/DKEntries.csv, read with the repo's own entries parser."""
+    from nhl_dfs.intake.entries import read_entries
+
+    cands: list[Path] = []
+    if entered_dir is not None and Path(entered_dir).is_dir():
+        cands += sorted(Path(entered_dir).glob("*.csv"))
+    if runs_root is not None and Path(runs_root).is_dir():
+        cands += sorted(d / "inputs" / "DKEntries.csv" for d in Path(runs_root).iterdir()
+                        if d.is_dir() and not d.name.startswith("_") and (d / "inputs" / "DKEntries.csv").is_file())
+    if outputs_root is not None and Path(outputs_root).is_dir():
+        cands += sorted(d / "DKEntries.csv" for d in Path(outputs_root).iterdir()
+                        if d.is_dir() and (d / "DKEntries.csv").is_file())
+    ids: set[str] = set()
+    files: list[str] = []
+    bad: list[str] = []
+    for f in cands:
+        try:
+            ids |= {e.entry_id.strip() for e in read_entries(f).entries}
+            files.append(str(f))
+        except (ValueError, OSError, UnicodeDecodeError) as exc:
+            bad.append(f"{f}: {exc}"[:200])
+    return RecordSources(ids=frozenset(ids), files=tuple(files), unreadable=tuple(bad))

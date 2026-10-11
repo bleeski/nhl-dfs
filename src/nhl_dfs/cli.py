@@ -816,14 +816,20 @@ def cmd_results(args: argparse.Namespace) -> int:
         return 2
     if not args.history:
         print(f"history: {path} (the newest CSV under {results.HISTORY_DIR})")
+    from nhl_dfs.learn import entry_history
+
+    runs_root = Path(args.runs_root)
+    outputs_root = Path(args.outputs_root) if args.outputs_root else _outputs_default(runs_root)
     try:
         since = date.fromisoformat(args.since) if args.since else None
-        text, _ = results.build(path, since=since, by=args.by)
+        records = entry_history.recorded_ids(Path(args.entered), runs_root, outputs_root)
+        text, _ = results.build(path, since=since, by=args.by, records=records,
+                                ledger_root=Path(args.ledger_root) if args.ledger_root else None)
     except (ValueError, OSError) as exc:
         print(f"RESULTS=REFUSED: {exc}")
         return 1
     print(text, end="")
-    out = results.write(text, Path(args.outputs_root) if args.outputs_root else _outputs_default(RUNS_ROOT))
+    out = results.write(text, outputs_root)
     print(f"report: {out}")
     return 0
 
@@ -986,8 +992,12 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("results", help="C49: NHL entries from DraftKings' contest entry history against a random entry")
     sp.add_argument("--history", type=str, default=None, help="the export CSV (default: newest under data/standings/history)")
     sp.add_argument("--since", type=str, default=None, help="Eastern contest date YYYY-MM-DD, inclusive")
-    sp.add_argument("--by", type=str, default=None, help="comma list of format,kind,field,month,entries,era; a+b crosses")
+    sp.add_argument("--by", type=str, default=None,
+                    help="comma list of format,kind,field,month,entries,era,recorded; a+b crosses two")
+    sp.add_argument("--entered", type=str, default=str(REPO_ROOT / "data" / "entered"), help="entered records to join")
+    sp.add_argument("--runs-root", type=str, default=str(RUNS_ROOT), help="local runs to join (NHL_DFS_RUNS_ROOT)")
     sp.add_argument("--outputs-root", type=str, default=None, help="default outputs/ (NHL_DFS_OUTPUTS_ROOT)")
+    sp.add_argument("--ledger-root", type=str, default=None, help="graded.json for the gate line (NHL_DFS_LEDGER_ROOT)")
     sp.set_defaults(func=cmd_results)
 
     return parser
