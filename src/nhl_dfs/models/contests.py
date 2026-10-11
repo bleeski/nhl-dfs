@@ -21,6 +21,13 @@ table) and sized from its lobby row when one is usable, else derived as floor(N 
 configured placeholder rake (FIELD_SIZE_SOURCE=PRIOR, stored source name_derived, with the formula in the note). The
 name is read only when the config's name patterns, in order, land on the top_n pattern (satellite and cash names come
 first) and both N and $X are written; any other name routes exactly as before.
+
+A contest that the page, a template, the lobby row and C47's rule all leave unpriced is sized and priced from Ben's own history
+of the same recurring contest when the committed contest facts table (models/contest_facts, data/contest_facts/nhl.csv; C50,
+flags 65 and 73 to 79) has a row for its mode, name key and fee: the most entrants seen (FIELD_SIZE_SOURCE=HISTORY), the
+family by the size rule a lobby row uses, and the family's prior shape on the row's prize pool and places paid
+(PAYOUT_SOURCE stays PRIOR, the note names the row). Never for a satellite or a Booster ("Top N Win" and not a cash name), or
+when the fee, a lobby row's pool or the room for an opponent disagrees with the row.
 """
 
 from __future__ import annotations
@@ -36,6 +43,7 @@ import yaml
 
 from nhl_dfs.contracts.statuses import PayoutSource
 from nhl_dfs.data.sources.dk_public import ContestDetail
+from nhl_dfs.models import contest_facts as cf
 from nhl_dfs.models.payout_templates import LobbyRow, TemplateMatch, TemplateStore, template_key
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -44,8 +52,10 @@ CONTEST_FAMILIES_YAML = REPO_ROOT / "config" / "contest_families.yaml"
 FAMILIES = ("cash", "satellite", "wta", "small_field", "large_gpp", "top_n")
 SELECTIONS = ("mean", "dup_first", "own_then_dup", "finishes")
 # ContestContext.field_size_source (stored, kept for old manifests) -> the printed FIELD_SIZE_SOURCE (C38); a size derived
-# from a "Top N Win $X" name rests on the placeholder rake, so it prints PRIOR (C47, flag 72)
-FIELD_SIZE_LABELS = {"contest_detail": "EXACT", "lobby": "LOBBY", "family_prior": "PRIOR", "name_derived": "PRIOR"}
+# from a "Top N Win $X" name rests on the placeholder rake, so it prints PRIOR (C47, flag 72); a contest facts row's most
+# entrants seen prints HISTORY (C50, flag 73)
+FIELD_SIZE_LABELS = {"contest_detail": "EXACT", "lobby": "LOBBY", "family_prior": "PRIOR", "name_derived": "PRIOR",
+                     "history": "HISTORY"}
 # The sampled field a family's contests share (C47, flag 68): a Booster's opponents are drawn from the large_gpp field, as
 # they were before the family existed (models/field.py would otherwise fall back to the retired "old" mixture for it)
 FIELD_FAMILY = {"top_n": "large_gpp"}
@@ -109,19 +119,20 @@ class ContestContext:
     name: str
     fee: str  # as written in DKEntries.csv
     family: str
-    family_source: str  # "contest_detail" | "template" | "name_pattern" | "default"
+    family_source: str  # "contest_detail" | "template" | "name_pattern" | "default" | "lobby" | "history"
     payout_source: PayoutSource
     field_size: int
-    field_size_source: str  # "contest_detail" | "lobby" (the lobby row's max entries) | "family_prior"
+    field_size_source: str  # "contest_detail" | "lobby" (the lobby row's max entries) | "family_prior" | "name_derived" | "history"
     detail: ContestDetail | FamilyPrior  # a TEMPLATE contest carries the matched table's ContestDetail
     template: TemplateMatch | None = None  # set exactly when payout_source is TEMPLATE
     payout_note: str = ""  # why a contest stayed PRIOR although templates were looked up
     size_note: str = ""  # the lobby row behind a LOBBY size, or why the size stayed a family prior (C38)
     top_n: TopN | None = None  # what a "Top N Win $X" name says (C47); set for every top_n contest
+    facts: cf.FactsRow | None = None  # the contest facts row that sized and priced it (C50); set exactly for HISTORY
 
     @property
     def field_size_label(self) -> str:
-        """The printed FIELD_SIZE_SOURCE: EXACT (contest page), LOBBY (lobby row) or PRIOR (family prior)."""
+        """The printed FIELD_SIZE_SOURCE: EXACT (contest page), LOBBY (lobby row), HISTORY (contest facts row) or PRIOR."""
         return FIELD_SIZE_LABELS[self.field_size_source]
 
     def record(self) -> dict:
@@ -144,12 +155,14 @@ class ContestContext:
             out["field_size_note"] = self.size_note
         if self.top_n is not None:
             out["top_n"] = self.top_n.record()
+        if self.facts is not None:
+            out["contest_facts"] = self.facts.record()
         return out
 
     def size_line(self) -> str:
         """The one printed line per contest: FIELD_SIZE_SOURCE=LOBBY contest 196302810 (31 max entries, 1 per user; ...)."""
         why = self.size_note or {"EXACT": "max entries from the contest page", "LOBBY": "lobby row",
-                                 "PRIOR": f"family prior for {self.family}"}[self.field_size_label]
+                                 "HISTORY": "contest facts row", "PRIOR": f"family prior for {self.family}"}[self.field_size_label]
         return f"FIELD_SIZE_SOURCE={self.field_size_label} contest {self.contest_id} ({why})"
 
     def objective_line(self) -> str:
@@ -201,6 +214,9 @@ def validate_contest_families(cfg: dict) -> None:
     lf = cfg.get("lobby_field_size")
     if lf is not None and not isinstance((lf or {}).get("enabled"), bool):
         raise ValueError("contest_families: lobby_field_size.enabled must be true or false")
+    cfa = cfg.get("contest_facts")
+    if cfa is not None and not isinstance((cfa or {}).get("enabled"), bool):
+        raise ValueError("contest_families: contest_facts.enabled must be true or false")
     sel = cfg.get("selection") or {}
     pct = sel.get("tie_band_pct")
     if not isinstance(pct, (int, float)) or not 0 <= pct < 1:
@@ -287,10 +303,59 @@ def family_from_lobby(name: str, row: LobbyRow, cfg: dict) -> tuple[str, str]:
     contest whose family is only the declared default is cut by the exact path's own rule (family_from_detail:
     max entries <= exact_rules.small_field_max_entries is small_field), so it is classed the same whether its page
     answered or not. Max entries only: max per user is recorded in the note, not a threshold."""
+    return family_from_size(name, row.max_entries, cfg, "lobby")
+
+
+def family_from_size(name: str, size: int, cfg: dict, source: str) -> tuple[str, str]:
+    """The size rule shared by a lobby row (C38) and a contest facts row (C50, flag 75): a name family is kept; a
+    default-family contest of 1 to exact_rules.small_field_max_entries entries is small_field, labeled `source`."""
     fam, src = family_from_name(name, cfg)
-    if src == "default" and 0 < row.max_entries <= int(cfg["exact_rules"]["small_field_max_entries"]):
-        return "small_field", "lobby"
+    if src == "default" and 0 < size <= int(cfg["exact_rules"]["small_field_max_entries"]):
+        return "small_field", source
     return fam, src
+
+
+def facts_enabled(cfg: dict) -> bool:
+    """C50 (flags 73 to 79): size and price a contest from its contest facts row when nothing else describes it (default
+    yes). False restores the earlier result exactly."""
+    return bool((cfg.get("contest_facts") or {}).get("enabled", True))
+
+
+def usable_facts_row(name: str, fee: str, mode: str | None, own_entries: int, raw_lobby: LobbyRow | None,
+                     facts: cf.FactsTable, cfg: dict) -> cf.FactsRow | str:
+    """The contest's facts row when it can size and price the contest, else the reason it cannot (flags 76 and 79)."""
+    if is_satellite_name(name, cfg) or cf.SATELLITE.search(name) or \
+            (raw_lobby is not None and is_satellite_name(raw_lobby.name, cfg)):
+        return "contest facts are never used for a satellite"
+    if cf.is_booster_name(name):
+        return "contest facts are never used for a Top N Win name (flag 76)"
+    if mode not in cf.MODES:
+        return f"the run's mode {mode!r} is not one the contest facts know"
+    entry_fee = fee_value(fee)
+    key = cf.name_key(name)
+    if entry_fee is None or entry_fee <= 0 or entry_fee * 100 != (entry_fee * 100).to_integral_value():
+        return f"the entries file fee {fee!r} cannot match a contest facts row"
+    fee_cents = int(entry_fee * 100)
+    row = facts.get(mode, key, fee_cents)
+    if row is None:
+        others = facts.other_fees(mode, key)
+        if others:
+            return (f"the contest facts row for '{key}' ({mode}) has fee " + ", ".join(cf.usd(r.fee_cents) for r in others)
+                    + f", not the entries file's {cf.usd(fee_cents)}")
+        return f"no contest facts row for '{key}' ({mode}, {cf.usd(fee_cents)})"
+    if raw_lobby is not None:
+        lobby_pool = raw_lobby.prize_pool * 100
+        if lobby_pool != row.pool_cents:
+            return f"the lobby prize pool ${raw_lobby.prize_pool:,.2f} differs from the contest facts row {row.label()}'s {cf.usd(row.pool_cents)}"
+        if 0 < raw_lobby.max_entries < row.max_entrants:
+            return (f"the lobby's {raw_lobby.max_entries:,} max entries are below the {row.max_entrants:,} entrants the contest "
+                    f"facts row {row.label()} has seen")
+    if row.places_paid > row.max_entrants:
+        return f"the contest facts row {row.label()} pays {row.places_paid:,} places, more than its {row.max_entrants:,} entrants seen"
+    if own_entries >= row.max_entrants:
+        return (f"the entries file holds {own_entries} entries in this contest, so the contest facts row {row.label()}'s "
+                f"{row.max_entrants:,} entrants leave no opponent")
+    return row
 
 
 def lobby_note(row: LobbyRow) -> str:
@@ -358,15 +423,19 @@ def booster_context(cid: str, name: str, fee: str, tn: TopN, own_entries: int, l
 
 
 def resolve(entries, details: Mapping[str, ContestDetail] | None = None, cfg: dict | None = None,
-            templates: TemplateStore | None = None, lobby: Mapping[int, LobbyRow] | None = None) -> dict[str, ContestContext]:
+            templates: TemplateStore | None = None, lobby: Mapping[int, LobbyRow] | None = None,
+            facts: cf.FactsTable | None = None, mode: str | None = None) -> dict[str, ContestContext]:
     """ContestContext per distinct contest id in an EntriesFile (or EntryRows), file order. A contest the endpoint did
     not describe asks `templates` (when given and enabled in the config) for its template's cached table before it
     falls to its family prior; a contest with no table is then sized from its lobby row (C38: `lobby`, else the
     store's own lobby rows) when the row agrees with the entries file, and only otherwise from the family prior. A
-    "Top N Win $X" contest (C47) is read from its name instead (booster_context) and never asks for a template."""
+    "Top N Win $X" contest (C47) is read from its name instead (booster_context) and never asks for a template. A contest
+    still unsized is sized and priced from its row in `facts` (C50, the run's `mode`) before it falls to the family prior;
+    with no table, or contest_facts switched off, nothing changes."""
     base_cfg = cfg if cfg is not None else load_contest_families()
     details = details or {}
     use_templates = templates is not None and templates_enabled(base_cfg)
+    use_facts = facts is not None and facts_enabled(base_cfg)
     lobby_map = lobby if lobby is not None else (templates.lobby if templates is not None else None)
     rows = list(getattr(entries, "entries", entries))
     own_n = Counter(str(e.contest_id) for e in rows)
@@ -409,6 +478,19 @@ def resolve(entries, details: Mapping[str, ContestDetail] | None = None, cfg: di
             out[cid] = ContestContext(cid, p.name, e.fee, p.family, p.family_source, PayoutSource.PRIOR,
                                       p.field_size, "lobby", p, None, note, lobby_note(sized))
             continue
+        if use_facts and tn is None:  # C50: a Top N Win name never reaches here with facts (usable_facts_row refuses it)
+            raw = lobby_map.get(int(cid)) if lobby_map is not None and str(cid).isdigit() else None
+            row = usable_facts_row(p.name, e.fee, mode, own_n[cid], raw, facts, cfg)
+            if isinstance(row, cf.FactsRow):
+                fam, src = family_from_size(p.name, row.max_entrants, cfg, "history")
+                p = FamilyPrior(cid, p.name, fam, src, int(row.max_entrants), row.places_paid / row.max_entrants)
+                pnote = f"{note}; {row.payout_note(fam)}" if note else row.payout_note(fam)
+                out[cid] = ContestContext(cid, p.name, e.fee, fam, src, PayoutSource.PRIOR, p.field_size, "history", p,
+                                          None, pnote, row.size_note(), facts=row)
+                continue
+            sized = f"{sized}; {row}"
+        elif use_facts:
+            sized = f"{sized}; contest facts are never used for a Top N Win name (flag 76)"
         out[cid] = ContestContext(cid, p.name, e.fee, p.family, p.family_source, PayoutSource.PRIOR,
                                   p.field_size, "family_prior", p, None, note, sized)
     return out

@@ -206,13 +206,14 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
         contexts, fb, field_cal = prov["contexts"], prov["fb"], prov["field_cal"]
     else:
         from nhl_dfs.build import provisional as prov_mod
-        from nhl_dfs.build.run import _lobby_rows, _payout_templates  # lazy: run.py imports this module
+        from nhl_dfs.build.run import _contest_facts, _lobby_rows, _payout_templates  # lazy: run.py imports this module
         from nhl_dfs.models import field_inputs, ownership
 
         # C38 and C16 (B93): the lobby rows size the contests and a cached template table prices them, as in the provisional
         # pass (local files only, never a fetch); the contest pages were not answered here, so no details.
         templates = _payout_templates(entries, cache, run.path.parent, fam_cfg, messages)
-        contexts = contests_mod.resolve(entries, {}, fam_cfg, templates, _lobby_rows(entries, cache, templates, fam_cfg, messages))
+        contexts = contests_mod.resolve(entries, {}, fam_cfg, templates, _lobby_rows(entries, cache, templates, fam_cfg, messages),
+                                        _contest_facts(fam_cfg, messages), pool.mode.value)  # C50: the same facts rows
         statuses = {rid: p for rid, (p, _) in st.items() if rid in work.by_role_id}
         own_cfg_fb = ownership.load_ownership_config()
         inputs = field_inputs.collect(work, snapshot=snapshot, role_state=roles, now=clock(), own_cfg=own_cfg_fb)  # C17
@@ -322,6 +323,7 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
                         **({"payout_note": ctx.payout_note} if ctx.payout_note else {}),
                         **({"field_size_note": ctx.size_note} if ctx.size_note else {}),
                         **({"top_n": ctx.top_n.record()} if ctx.top_n is not None else {}),
+                        **({"contest_facts": ctx.facts.record()} if getattr(ctx, "facts", None) is not None else {}),
                         **({"top_n_figures": {**ref.per_contest[cid], "measured_on": "referee scenarios"}}
                            if cid in ref.per_contest else {})}  # C47: the Booster's portfolio objective and its two figures
                        for cid, ctx in contexts.items()]

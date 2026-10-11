@@ -273,7 +273,8 @@ def acceptance(risk_cfg: dict, qa_cfg: dict, fam_cfg: dict) -> dict:
 
 def _contest_row(cid: str, n: int, cache, sc: dict) -> dict:
     """One contest of the packet's portfolio. A top_n contest (C47) also names its table's source, its field size label
-    and its portfolio objective with the referee figures, read from the run's scenario section."""
+    and its portfolio objective with the referee figures, read from the run's scenario section; a contest sized from a
+    contest facts row (C50) names the row (key, contests seen, last date) and its size and payout notes."""
     row: dict[str, Any] = {"contest_id": cid, "entries": n,
                            "family": (cache.contests[cid].family if cache and cid in cache.contests else None)}
     srow = next((x for x in sc.get("contests") or [] if str(x.get("contest_id")) == str(cid)), None)
@@ -282,6 +283,10 @@ def _contest_row(cid: str, n: int, cache, sc: dict) -> dict:
                     "FIELD_SIZE_SOURCE": srow.get("FIELD_SIZE_SOURCE"), "field_size_note": srow.get("field_size_note"),
                     "portfolio_objective": "P(at least one own entry in the top N), own entries ranked together (flag 70)",
                     "figures": srow.get("top_n_figures")})
+    elif srow is not None and srow.get("FIELD_SIZE_SOURCE") == "HISTORY":  # C50: the contest facts row that sized and priced it
+        row.update({"PAYOUT_SOURCE": srow.get("PAYOUT_SOURCE"), "payout_note": srow.get("payout_note"),
+                    "FIELD_SIZE_SOURCE": "HISTORY", "field_size_note": srow.get("field_size_note"),
+                    "contest_facts": srow.get("contest_facts")})
     return row
 
 

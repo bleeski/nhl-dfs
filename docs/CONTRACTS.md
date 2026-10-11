@@ -261,7 +261,8 @@ coerced to a known value (CLAUDE.md); other vocabularies here that have no
 - Off-switch: `config/contest_families.yaml lobby_field_size.enabled` (independent of `payout_templates.enabled`); false restores
   the family priors exactly.
 - Cloud sessions: no run phase fetches the lobby and a container has no `data/raw`, so a cloud contest prints
-  `FIELD_SIZE_SOURCE=PRIOR` (no lobby capture lists this contest). B91 carries the fix with C16's.
+  `FIELD_SIZE_SOURCE=PRIOR` (no lobby capture lists this contest). B91 carries the fix with C16's; C50 sizes a recurring contest
+  from the committed contest facts table instead (`FIELD_SIZE_SOURCE=HISTORY`, see "Contest facts").
 
 ## Inputs reach the field features and the simulator (C17, `models/field_inputs.py`, `build/run.py`, `scenario_pass.py`, `sim/market.py`; B63, B20, B51, B66, B85, B93; flags 30 to 32)
 
@@ -524,3 +525,41 @@ reads it to tune, select or book money (booking stays with settle, C29).
   (E[min($X, own payout)] / $X), `exp_top_n_finishes` (E[own payout] / $X), each with its SE, and
   `p_at_least_one_if_independent`; in `scenario.contests[*].top_n_figures`, a RUN_NOTES "Booster" line under the contest table,
   the QA packet's contest row and the CLI note `OBJECTIVE contest <id>: P(at least one own entry in the top N) ...`.
+
+## Contest facts from the entry history (C50, `models/contest_facts.py`, `models/contests.py`, `build/objectives.py`; B111; flags 65, 73 to 79)
+
+- Table: `data/contest_facts/nhl.csv` (committed, flag 65), columns `mode, name_key, fee, max_entrants, last_entrants, prize_pool,
+  places_paid, contests_seen, first_date, last_date` (dollars with two decimals, Eastern dates, LF, sorted by mode, name key and
+  fee, byte-identical on a rerun). Nothing about Ben's entries: no entry id, place, points or winnings. `load` refuses another
+  header, a bad value or a duplicate key.
+- Distill: `results --facts [--history <csv>] [--since <date>] [--facts-out <path>]` (C49's command; writes only the table and
+  prints a summary). Rows: settled, paid NHL Classic and Showdown rows dated from `--since` (default 2026-09-29, the engine era).
+  Key (flag 78): mode (C49's format), the name without its game suffix "(AAA @ BBB)", its "(k/n)" counter and its "(Early)" or
+  "(Late)" tag, spaces collapsed, case kept, and the fee in cents. Left out and only counted: satellites, Boosters (the words
+  Top N Win after satellite and cash names, C49's kind order, flag 76; a Triple Up named "[Top 9 Win $3]" is cash and kept), freerolls, other game types, and names that do not start "NHL ", carry "vs" or carry no dollar amount (no other person's
+  name is committed; the summary lists every key written). Refused with the reason printed (flag 79): a key whose prize pool or places paid changed between contests, a key
+  with no pool or no places paid, a contest that lists two values, a key with a ticket prize (shown in the export only when Ben won it, so a partial guard).
+  Per row: the most entrants seen, the last contest's entrants (latest start, then contest id), the one pool and places
+  paid, the contests seen, the first and last dates.
+- Pricing (`resolve(..., facts, mode)`): after the page (EXACT), C47's Booster rule, a template (TEMPLATE) and a usable lobby row
+  (LOBBY) all fail, a row with the run's mode, the name's key and the entries file's fee sizes the contest at its most entrants
+  seen (`field_size_source=history`, printed `FIELD_SIZE_SOURCE=HISTORY`; flag 73), the family by the lobby row's size rule
+  (`family_from_size`: a name family kept, a default-family contest at or under 500 is small_field, family source `history`;
+  flag 75), and `prior_curve(..., pool_cents=, n_paid=)` keeps the family's shape on the row's pool and places paid
+  (winner-take-all keeps 1 paid; a power curve that cannot pay 2 x fee to every place is flat and says so; flag 77).
+  `PAYOUT_SOURCE` stays PRIOR. Not used, the reason appended to the size note (the routing otherwise unchanged): a satellite
+  name (entries or lobby), a Booster name (flag 76, also when C47 could not size it), no row at the fee (a row at
+  another fee is named), another mode, a lobby row read for the contest whose prize pool differs or whose max entries are
+  below the row's most entrants seen, a row paying more places than its entrants seen, own entries that leave no opponent.
+  A row is used whatever its last date (flag 74).
+- Labels: one printed line per contest, `FIELD_SIZE_SOURCE=HISTORY contest <id> (contest facts row '<key>' (<mode>, $<fee>):
+  <max> max entrants seen (last <n>), pool $<pool>, <paid> places paid, <k> contests <first> to <last>; data/contest_facts/nhl.csv)`
+  and `PAYOUT_SOURCE=PRIOR contest <id> (prior <family> curve on the contest facts row's pool $<pool> and <paid> places paid; row
+  '<key>' (<mode>, $<fee>), <k> contests, last <date>)`. The manifest (`provisional.contests[*]`, `scenario.contests[*]`) carries
+  `contest_facts`; RUN_NOTES (both contest tables and Messages), the CLI `note:` lines and the QA packet's contest row name it.
+- Run: `build/run._contest_facts` reads the table once per pass (`contest_facts.default_path()`, local only); absent or unreadable
+  is one message and the family priors; `config/contest_families.yaml contest_facts.enabled: false` returns None silently and
+  restores the earlier result exactly. Late swap and refresh read the contests frozen at build time. `cli field` on a
+  baseline-only run stays the family-prior diagnostic.
+- Tests: `tests/conftest.py` points `contest_facts.DEFAULT_PATH` at a missing temporary file for every test and checks that none
+  writes it, so a refresh of the committed table cannot move an unrelated test; C50's tests pass their own tables.

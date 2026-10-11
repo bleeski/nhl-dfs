@@ -1079,6 +1079,28 @@ def _lobby_rows(entries, cache, templates, fam_cfg: dict, messages: list[str]):
         return None
 
 
+def _contest_facts(fam_cfg: dict, messages: list[str]):
+    """C50 (flags 65 and 73 to 79): the committed contest facts table (models/contest_facts.default_path, read now, local
+    only). None when switched off (silently: the earlier result exactly), absent or unreadable (reported; the contests then
+    keep their family priors)."""
+    import csv
+    from nhl_dfs.models import contest_facts
+    from nhl_dfs.models import contests as contests_mod
+
+    if not contests_mod.facts_enabled(fam_cfg):
+        return None
+    path = contest_facts.default_path()
+    if not path.is_file():
+        messages.append(f"contest facts table not found at {path}; contests nothing else describes use their family priors")
+        return None
+    try:
+        return contest_facts.load(path)
+    except (ValueError, OSError, UnicodeDecodeError, csv.Error) as exc:  # reported; the run continues on the priors
+        messages.append(f"contest facts table unreadable ({type(exc).__name__}: {str(exc)[:120]}); contests nothing else "
+                        "describes use their family priors")
+        return None
+
+
 def _provisional_pass(run, entries, pool, after_b, st, starts, offline, runtime, caps, seed, slate_id,
                       outputs_root, cache, m, messages, out_root, rm=None, *, odds=None, clock) -> dict:
     """Returns what the scenario pass (C8) builds on: contexts, fields, FIELD_CALIBRATION, the
@@ -1104,7 +1126,8 @@ def _provisional_pass(run, entries, pool, after_b, st, starts, offline, runtime,
         save_contest_details(run, got, m, "provisional pass contest detail")
     templates = _payout_templates(entries, cache, out_root, fam_cfg, messages)
     lobby = _lobby_rows(entries, cache, templates, fam_cfg, messages)
-    contexts = contests_mod.resolve(entries, details, fam_cfg, templates, lobby)
+    facts = _contest_facts(fam_cfg, messages)
+    contexts = contests_mod.resolve(entries, details, fam_cfg, templates, lobby, facts, pool.mode.value)
     payout = contests_mod.overall_payout_source(contexts.values())
     messages.extend(contests_mod.payout_lines(contexts.values()))  # C16: one PAYOUT_SOURCE line per contest
     messages.extend(contests_mod.field_size_lines(contexts.values()))  # C38: one FIELD_SIZE_SOURCE line per contest

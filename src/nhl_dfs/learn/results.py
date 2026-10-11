@@ -419,3 +419,39 @@ def write(text: str, outputs_root: Path, now: datetime | None = None) -> Path:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(text, encoding="utf-8")
     return out
+
+
+# -- contest facts (C50) --------------------------------------------------------------------------------------------------
+
+def facts(history: Path, *, since: date | None = None, out: Path | None = None) -> tuple[str, Path]:
+    """C50 (B111, flags 65 and 73 to 79): distill the export into data/contest_facts/nhl.csv (or `out`), one row per (mode,
+    name key, fee). Returns the summary text and the path written. The window defaults to the engine era."""
+    from nhl_dfs.models import contest_facts as cf
+
+    hf = eh.read_history(history)
+    window = since or eh.ENGINE_ERA_START
+    d = cf.distill(hf.rows, since=window)
+    if not d.rows:
+        raise ValueError(f"{Path(history).name}: no contest facts from {window} (every key refused or left out)")
+    path = Path(out) if out is not None else cf.default_path()
+    sha = cf.write(path, d.rows)
+    cf.load(path)  # the table a run will read must load: a row it would refuse fails here, loudly
+    rec = d.recurring
+    by_mode = Counter(r.mode for r in d.rows)
+    left = ", ".join(f"{n} {why}" for why, n in sorted(d.left_out.items())) or "none"
+    lines = [
+        "CONTEST FACTS (C50; B111; flags 65 and 73 to 79)",
+        f"- Export: {Path(history).name} (sha256 {hf.sha256[:12]}): {len(hf.rows)} settled NHL rows; "
+        f"{hf.other_sport_rows} rows of other sports counted, not read.",
+        f"- Window: Eastern contest dates from {window}" + ("" if since else " (the engine era, the default; --since to change)")
+        + f": {d.contests_read} contests (paid, Classic or Showdown) under {len(d.rows) + len(d.refused)} keys.",
+        f"- Left out by name or fee (contests): {left}.",
+        f"- Written: {len(d.rows)} rows (" + ", ".join(f"{m} {by_mode[m]}" for m in cf.MODES) + f"); {len(rec)} recurring "
+        f"(2 or more contests) covering {sum(r.contests_seen for r in rec)} contests.",
+        f"- Refused: {len(d.refused)} keys (flag 79)" + (":" if d.refused else "."),
+    ]
+    lines += [f"  - {label}: {why}" for label, why in d.refused]
+    lines += [f"- Table: {path} (sha256 {sha}). No entry id, place, points or winnings is written. Keys written (check that "
+              "each is a DraftKings public contest name):"]
+    lines += [f"  - {r.label()}: {r.contests_seen} contest{'s' if r.contests_seen != 1 else ''}" for r in sorted(d.rows, key=lambda r: r.key)]
+    return "\n".join(lines) + "\n", path

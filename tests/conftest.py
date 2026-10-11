@@ -41,7 +41,25 @@ def _no_real_history(tmp_path_factory):
         import nhl_dfs.data.history.status as history_status
 
         mp.setattr(history_status, "BOOTSTRAP_STATE", root / "history_bootstrap.state")
+        # C50: the committed contest facts table never reaches a test that did not ask for it (a later refresh of the table
+        # must not move unrelated tests); C50's own tests pass a table or point this path at one
+        import nhl_dfs.models.contest_facts as contest_facts
+
+        mp.setattr(contest_facts, "DEFAULT_PATH", root / "contest_facts" / "nhl.csv")
         yield
+
+
+@pytest.fixture(autouse=True)
+def _no_facts_table_written():
+    """C50: nothing may create the redirected facts table; a test that writes one passes its own path."""
+    yield
+    import nhl_dfs.models.contest_facts as contest_facts
+
+    p = contest_facts.DEFAULT_PATH
+    if p.name == "nhl.csv" and "no_history" in str(p):
+        written = p.exists()
+        p.unlink(missing_ok=True)  # one offending test fails, never every test after it
+        assert not written, "a test wrote the session's redirected contest facts table"
 
 
 @pytest.fixture(autouse=True)

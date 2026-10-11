@@ -67,9 +67,17 @@ payout_templates:
 lobby_field_size:
   enabled: true
 
+# Contest facts from Ben's entry history (C50, flags 65 and 73 to 79): a contest that the page, a template, the lobby row and
+# the Top-N name rule all leave unpriced, and whose mode, name (without the game, k/n and Early or Late suffix) and fee match a
+# row of data/contest_facts/nhl.csv, is sized at the row's most entrants seen (FIELD_SIZE_SOURCE=HISTORY) and priced on the
+# family's prior shape below with the row's prize pool and places paid (PAYOUT_SOURCE stays PRIOR). Never for satellites or
+# Top N Win names. Set false to restore the earlier result exactly.
+contest_facts:
+  enabled: true
+
 # Payout curve priors (C8, build/objectives.prior_curve). Used only when the DK contest endpoint
 # did not describe the contest (PAYOUT_SOURCE=PRIOR, after payout_templates found no table); every figure built on them is an
-# uncalibrated scenario proxy. PLACEHOLDERS: rake, shapes, min-cash multiple and exponent are
+# uncalibrated scenario proxy. A contest facts row (C50) replaces the rake's pool and the paid fraction, never the shape. PLACEHOLDERS: rake, shapes, min-cash multiple and exponent are
 # engineering choices, not facts about DK contests.
 payout_priors:
   rake: 0.15                    # share of fees not returned as prizes
