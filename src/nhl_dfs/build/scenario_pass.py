@@ -232,7 +232,7 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
     for purpose in ("selection", "referee"):
         fields[purpose] = {}
         for cid, ctx in contexts.items():
-            fld = fb.fields[ctx.family]
+            fld = fb.fields[contests_mod.field_family(ctx.family)]  # a top_n contest shares large_gpp's (C47)
             fields[purpose][cid] = ob.field_spec(fld.lineups, fld.keys, ctx.field_size - own_n[cid], risk_cfg,
                                                  n_scenarios=sets[purpose].n, seed=seed, salt=f"{cid}|{purpose}")
     own_by = {cid: fb.marginals[cid].own for cid in contexts}
@@ -320,7 +320,10 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
                         "field_size_source": ctx.field_size_source, "FIELD_SIZE_SOURCE": ctx.field_size_label,
                         **({"payout_template": ctx.template.record()} if ctx.template is not None else {}),
                         **({"payout_note": ctx.payout_note} if ctx.payout_note else {}),
-                        **({"field_size_note": ctx.size_note} if ctx.size_note else {})}
+                        **({"field_size_note": ctx.size_note} if ctx.size_note else {}),
+                        **({"top_n": ctx.top_n.record()} if ctx.top_n is not None else {}),
+                        **({"top_n_figures": {**ref.per_contest[cid], "measured_on": "referee scenarios"}}
+                           if cid in ref.per_contest else {})}  # C47: the Booster's portfolio objective and its two figures
                        for cid, ctx in contexts.items()]
     sec["frontier_all"] = [p.record() for p in sel.frontier]
     sec["frontier"] = [p.record() for p in pf.frontier_report(sel.frontier)]
@@ -379,6 +382,7 @@ def _grow_fields(work, proj, contexts, fb, own_n, prov, st, risk_cfg, seed, over
     counts off the joined field, so field and ownership stay one object. Cash (a mid-field line) and
     WTA (a handful of opponents) keep the provisional field."""
     from nhl_dfs.build.provisional import FieldBuild
+    from nhl_dfs.models import contests as contests_mod
     from nhl_dfs.models import field as field_mod
     from nhl_dfs.models import ownership
 
@@ -390,10 +394,11 @@ def _grow_fields(work, proj, contexts, fb, own_n, prov, st, risk_cfg, seed, over
     margs = dict(fb.marginals)
     report = {}
     feats = None
-    for fam in sorted({c.family for c in contexts.values()}):
+    for fam in sorted({contests_mod.field_family(c.family) for c in contexts.values()}):
         if fam not in g["families"]:
             continue
-        need = min(target, max(c.field_size - own_n[cid] for cid, c in contexts.items() if c.family == fam))
+        need = min(target, max(c.field_size - own_n[cid] for cid, c in contexts.items()
+                               if contests_mod.field_family(c.family) == fam))
         have = fields[fam].n
         if need <= have:
             report[fam] = {"draws": have, "grown_by": 0, "shape_mix": field_mod.shape_report(fields[fam], work, own_cfg)}
@@ -417,7 +422,7 @@ def _grow_fields(work, proj, contexts, fb, own_n, prov, st, risk_cfg, seed, over
         joined = field_mod.join(fields[fam], extra)
         fields[fam] = joined
         for cid, c in contexts.items():
-            if c.family == fam:
+            if contests_mod.field_family(c.family) == fam:
                 margs[cid] = field_mod.marginals(joined, work, c.field_size)
         report[fam] = {"draws": joined.n, "requested": joined.requested, "grown_by": extra.n,
                        "distinct": len(set(joined.keys)), "seconds": round(time.perf_counter() - t, 2),

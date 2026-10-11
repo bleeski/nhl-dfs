@@ -19,7 +19,7 @@ from typing import Iterable, Mapping, Sequence
 
 from nhl_dfs.contracts.geometry import Mode
 
-DEFAULT_FAMILIES = ("large_gpp", "small_field", "wta")
+DEFAULT_FAMILIES = ("large_gpp", "small_field", "wta", "top_n")  # top_n: C47, flag 68
 
 
 def settings(risk_cfg: Mapping | None) -> tuple[bool, frozenset[str]]:

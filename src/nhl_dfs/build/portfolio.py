@@ -19,6 +19,11 @@ relaxed in the plan's order when nothing passes (OVERLAP, then EXPOSURE, then CO
 REPEAT), recorded. The goalie and game caps (build/exposure.py, DOLLARS or LINEUPS mode) survive
 EXPOSURE; CONCENTRATION relaxes them only by the smallest step some candidate needs (B36).
 
+Top-N flat contests (C47, flags 64 and 70): in a "Top N Win $X" contest the family utility of a step is the change in
+E[min($X, the contest's own payout)], so its own entries are added for P(at least one own entry in the top N) (a tie at
+the line counts as its share), not for each entry's own chance summed; inside the band the candidate adding more expected
+top-N finishes wins (tiebreak policy "finishes"). The risk term, the caps and every other family are unchanged.
+
 Frontier: one portfolio per knob setting (five kappas, config/risk.yaml), each measured jointly
 (own entries ranked together). Dominated points are dropped from the report; the choice is the
 highest tail utility with P(lose >= 80%) and the fee concentrations inside the budget, else the
@@ -381,10 +386,20 @@ def _greedy(kappa: float, order: list, entry_contest: Mapping[str, str], fees: M
         m = len(oc.cols)
         rows = step if 2 * m <= K else ob._chunk_rows(S, 2 * m * 160, cap_mb)  # the placed-entry temporaries stay inside the cap
         su, sq, n80 = np.zeros(K), np.zeros(K), np.zeros(K)
+        top_n = st.contest.family == "top_n" and st.contest.paid > 0  # C47 (flags 64, 70): at least one own entry in the top N
+        if top_n:
+            prize = int(st.contest.prizes_cents[0])  # one flat prize, cents
+            held = oc.total[0] if oc.total is not None else np.zeros(S, np.int64)  # the contest's own payout so far
+            fin = np.zeros(K)
         for a in range(0, S, rows):
             b = min(S, a + rows)
             pay, util = oc.marginal(a, b)  # the whole contest's change, not just the newcomer's
-            u = util / 100.0
+            if top_n:  # change in min($X, own payout): the first own entry paid counts, a tie at the line counts its share
+                h = held[a:b, None].astype(np.int64)
+                u = (np.minimum(h + pay, prize) - np.minimum(h, prize)) / 100.0
+                fin += pay.sum(axis=0)
+            else:
+                u = util / 100.0
             su += u.sum(axis=0)
             sq += (u * u).sum(axis=0)
             n80 += ((pay_total[a:b, None] + pay) <= thr).sum(axis=0)
@@ -409,7 +424,8 @@ def _greedy(kappa: float, order: list, entry_contest: Mapping[str, str], fees: M
                 ok = [k for k in ok if ex[k] == over]
             if not ok:
                 continue
-            items = [tiebreak.Item(candidates[k].key, float(score[k]), float(se[k]), float(st.own_pct[k]), float(st.dup[k]), k)
+            items = [tiebreak.Item(candidates[k].key, float(score[k]), float(se[k]), float(st.own_pct[k]), float(st.dup[k]), k,
+                                   float(fin[k]) / (S * prize) if top_n else 0.0)  # expected top-N finishes added (C47)
                      for k in ok]
             pick = tiebreak.rank(items, risk_cfg, st.policy)[0]
             break

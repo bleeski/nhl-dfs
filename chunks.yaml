@@ -761,6 +761,15 @@ deferred:
   - item: "Entered lineups public before lock (B113)"
     trigger: "Ben answers flag 67: the repo made private closes B113 with no code and C48 goes TODO; kept public, a chunk makes the run session push data/entered/<slate>.* only after the slate's last lock, and C48 follows it"
     backlog: [B113]
+  - item: "Late swap, QA swaps and refresh on a Booster's joint objective (B114)"
+    trigger: "the next planning session that ranks the queue (late swap is the near-lock default path and still scores a Booster entry on its own), or the first late swap of a slate with a Booster entry, whichever comes first"
+    backlog: [B114]
+  - item: "Cash contests whose names state Top N Win $X (B115)"
+    trigger: "a settled cash contest whose standings show the cash prior (45% of a 200-entry field, flat) mispriced it, or C50's contest facts covering a Triple Up, whichever comes first"
+    backlog: [B115]
+  - item: "The tie band and the frontier utility of a Booster (B116)"
+    trigger: "the first rehearsal or real run with a Booster beside other contests in which more than one knob is inside the risk budget"
+    backlog: [B116]
 flag_recommendations:
   2: "Record Ben's 2026-10-02 answer in the flags table: 40% goalie and game fee share with the LINEUPS fallback (done in this plan); C27 fixes the feasibility test behind it."
   3: "Replace the placeholder mix with the observed one (5 to 10 entries per slate, 1 to 2 per contest, fees $0.10 to $1, 20-max and 150-max GPPs plus Showdown) so family priors and C21's sleeve sizes fit what Ben plays."

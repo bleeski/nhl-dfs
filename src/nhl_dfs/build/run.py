@@ -1108,6 +1108,7 @@ def _provisional_pass(run, entries, pool, after_b, st, starts, offline, runtime,
     payout = contests_mod.overall_payout_source(contexts.values())
     messages.extend(contests_mod.payout_lines(contexts.values()))  # C16: one PAYOUT_SOURCE line per contest
     messages.extend(contests_mod.field_size_lines(contexts.values()))  # C38: one FIELD_SIZE_SOURCE line per contest
+    messages.extend(contests_mod.objective_lines(contexts.values()))  # C47: one OBJECTIVE line per top_n contest
 
     # Prefit behind the one gate: historical labels count toward the floors, never around them.
     field_cal = FieldCalibration.PRIOR

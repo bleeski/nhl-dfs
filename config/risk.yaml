@@ -39,7 +39,7 @@ tiebreak:
 # enabled: false switches the rule off everywhere (discovery, selection, late swap, QA); the OWN_GOALIE line then says OFF.
 own_goalie:
   enabled: true
-  families: [large_gpp, small_field, wta]
+  families: [large_gpp, small_field, wta, top_n]  # top_n: C47, flag 68
 
 # Candidate discovery (build/portfolio.discover): search allocation, not scenario probabilities.
 discovery:

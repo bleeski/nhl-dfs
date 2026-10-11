@@ -36,6 +36,7 @@ from nhl_dfs.build import scenario_cache as scache
 from nhl_dfs.build import tiebreak
 from nhl_dfs.contracts.geometry import Mode, lineup_key
 from nhl_dfs.contracts.statuses import FieldCalibration, Participation
+from nhl_dfs.models.contests import field_family
 
 KINDS = ("scenario", "provisional", "baseline")
 ORDER = {"auto": KINDS, "scenario": KINDS, "provisional": KINDS[1:], "baseline": KINDS[2:]}
@@ -422,7 +423,7 @@ class ScenarioObjective:
         if key not in self._fields:
             self._fields.clear()  # bound memory (B16): one sorted field alive at a time; targets come sorted by contest
             fam = self.cache.contest_family[cid]
-            lus, ks = self.cache.families[fam]
+            lus, ks = self.cache.families[field_family(fam)]  # a top_n contest shares large_gpp's field (C47)
             scen = self.sets[purpose]
             spec = ob.field_spec(lus, ks, self.cache.n_opponents[cid], self.risk_cfg, n_scenarios=scen.n,
                                  seed=self.cache.seed, salt=f"{cid}|{purpose}")

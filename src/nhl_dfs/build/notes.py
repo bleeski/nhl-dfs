@@ -192,6 +192,22 @@ def _shape_line(fam: str, sm: dict | None) -> str | None:
                 [cmp("stack3", "3+ stack"), cmp("stack4", "4+"), cmp("stack5", "5+"), cmp("two3", "two 3+ stacks")]) + f"; top shapes {top}.")
 
 
+def _top_n_line(c: dict) -> str:
+    """A Booster's line under the contest table (C47): the objective with its two referee figures, the table's source and
+    the field size label. Empty for every other contest."""
+    f = c.get("top_n_figures")
+    if not f or "p_at_least_one" not in f:
+        return ""
+    n = f["top_n"]
+    return (f"- Booster {c['contest_id']}: objective P(at least one own entry in the top {n}) {f['p_at_least_one']:.3f} "
+            f"+/- {f['p_at_least_one_se']:.3f} on the {f.get('measured_on', 'referee scenarios')} ({f['entries']} entries "
+            f"ranked together; expected top-{n} finishes {f['exp_top_n_finishes']:.3f} +/- {f['exp_top_n_finishes_se']:.3f}; "
+            f"{f['p_at_least_one_if_independent']:.3f} if the entries were independent). Table: PAYOUT_SOURCE="
+            f"{c.get('PAYOUT_SOURCE')} ({c.get('payout_note') or c.get('detail', '')}). Field size: FIELD_SIZE_SOURCE="
+            f"{c.get('FIELD_SIZE_SOURCE')} ({c.get('field_size_note', '')}). Modeled scenario figures; the first (provisional) "
+            "publish ranked these entries on projected mean.")
+
+
 def _scenario_lines(s: dict[str, Any]) -> list[str]:
     """C8 section. Every payout figure is a scenario estimate with its Monte Carlo standard error and
     the three evidence states; a PRIOR payout curve makes it an uncalibrated scenario proxy."""
@@ -226,6 +242,7 @@ def _scenario_lines(s: dict[str, Any]) -> list[str]:
     for c in s.get("contests", []):
         out.append(f"| {c['contest_id']} {c['name']} | {c['family']} ({c['family_source']}) | {_payout_cell(c)} | {_size_cell(c)} "
                    f"| {c['fee']:.2f} | {c['paid_positions']} / {c['cash_line']} | {c['first_prize']:.2f} | {c['field']} |")
+    out += [x for x in (_top_n_line(c) for c in s.get("contests", [])) if x]
     out += ["", "Frontier (selection scenarios; dominated points removed; knobs that chose the same portfolio share a row):", "",
             "| Knobs (kappa) | Tail utility / fees | P(lose >= 80% of fees) | E[payout] $ | Max goalie fee share | Max game fee share "
             "| Max Captain fee share | Most lineups on one goalie / game | Inside budget |", "|---|---:|---:|---:|---:|---:|---:|---:|---|"]

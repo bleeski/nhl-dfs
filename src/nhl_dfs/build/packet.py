@@ -271,6 +271,20 @@ def acceptance(risk_cfg: dict, qa_cfg: dict, fam_cfg: dict) -> dict:
     }
 
 
+def _contest_row(cid: str, n: int, cache, sc: dict) -> dict:
+    """One contest of the packet's portfolio. A top_n contest (C47) also names its table's source, its field size label
+    and its portfolio objective with the referee figures, read from the run's scenario section."""
+    row: dict[str, Any] = {"contest_id": cid, "entries": n,
+                           "family": (cache.contests[cid].family if cache and cid in cache.contests else None)}
+    srow = next((x for x in sc.get("contests") or [] if str(x.get("contest_id")) == str(cid)), None)
+    if srow is not None and srow.get("family") == "top_n":
+        row.update({"PAYOUT_SOURCE": srow.get("PAYOUT_SOURCE"), "table": srow.get("payout_note") or srow.get("detail"),
+                    "FIELD_SIZE_SOURCE": srow.get("FIELD_SIZE_SOURCE"), "field_size_note": srow.get("field_size_note"),
+                    "portfolio_objective": "P(at least one own entry in the top N), own entries ranked together (flag 70)",
+                    "figures": srow.get("top_n_figures")})
+    return row
+
+
 def build(run, round_no: int, cfg: dict | None = None, *, now: datetime | None = None, canary: str | None = None,
           runs_root: Path | None = None) -> dict:
     from nhl_dfs.build.objectives import load_risk_config
@@ -298,8 +312,7 @@ def build(run, round_no: int, cfg: dict | None = None, *, now: datetime | None =
         "evidence": {k: v.m["statuses"].get(k) for k in ("FILE_VALID", "NEWS_STATE", "MODEL_STATUS", "PAYOUT_SOURCE",
                                                           "OUTCOME_CALIBRATION", "FIELD_CALIBRATION")},
         "portfolio": {"entries": len(v.lineups), "fees": round(total_fee, 2),
-                      "contests": [{"contest_id": cid, "entries": n, "family": (c.contests[cid].family if c and cid in c.contests else None)}
-                                   for cid, n in sorted(contests.items())],
+                      "contests": [_contest_row(cid, n, c, sc) for cid, n in sorted(contests.items())],
                       "p_lose80": (sc.get("portfolio") or {}).get("p_lose80"),
                       "exp_payout": (sc.get("portfolio") or {}).get("exp_payout")},
         "locks": {"counts": ls.counts(), "started_games": sorted(ls.started_games)},
