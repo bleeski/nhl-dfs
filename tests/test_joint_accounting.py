@@ -24,8 +24,8 @@ pytestmark = pytest.mark.c18
 
 CFG = ob.load_risk_config()
 TOP_PCT = float(CFG["objectives"]["top_pct"])
-FAMILIES = ("large_gpp", "small_field", "wta", "cash", "satellite")
-EXACT_UTILITY = {"large_gpp", "small_field", "cash"}
+FAMILIES = ("large_gpp", "small_field", "wta", "cash", "satellite", "top_n")  # top_n: C47, its utility is its payout
+EXACT_UTILITY = {"large_gpp", "small_field", "cash", "top_n"}
 
 
 # -- fixtures -----------------------------------------------------------------------------------------------------

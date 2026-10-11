@@ -80,6 +80,7 @@ def test_a_name_without_both_n_and_x_is_not_read(name):
 
 
 NO_PHRASE = ["NHL $200 Dime Time", "NHL $5 Double Up", "NHL $1 Triple Up [Top 9 Win $3]", "NHL Satellite [5 Seats]",
+             "NHL Showdown $1 Triple Up [Top 9 Win $3] (STL @ COL)",  # a real lobby name (dk_lobby_showdown_1003.json)
              "NHL $25 Winner Take All", "NHL Small Field $3", "NHL Single Entry $5", "NHL Synthetic Classic",
              "Top 5 Win $10 Satellite", "NHL Top 5 Win"]
 
@@ -356,18 +357,22 @@ EARLY = datetime(2026, 10, 15, 12, 0, tzinfo=timezone.utc)  # every fixture game
 SMALL = {"design": 300, "selection": 800, "referee": 800, "field_target": 400}
 
 
-@pytest.fixture(scope="module")
-def booster_run(tmp_path_factory):
-    tmp = tmp_path_factory.mktemp("c47run")
-    src = LS / "DKEntries.template.csv"
+def _renamed(src: Path, dst: Path) -> Path:
+    """The fixture's entries file with every entry moved into the Booster: its name and a $0.25 fee (derived size 235)."""
     with open(src, encoding="utf-8-sig", newline="") as fh:
         table = list(csv.reader(fh))
     for r in table[1:]:
         if len(r) > 3 and r[0].strip().isdigit():
             r[1], r[3] = NAME, "$0.25"
-    entries = tmp / "DKEntries.csv"
-    with open(entries, "w", encoding="utf-8", newline="") as fh:
+    with open(dst, "w", encoding="utf-8", newline="") as fh:
         csv.writer(fh).writerows(table)
+    return dst
+
+
+@pytest.fixture(scope="module")
+def booster_run(tmp_path_factory):
+    tmp = tmp_path_factory.mktemp("c47run")
+    entries = _renamed(LS / "DKEntries.template.csv", tmp / "DKEntries.csv")
     cache = HttpCache(tmp / "raw", config=load_sources_config(), offline=True)
     r = run_slate(LS / "DKSalaries.csv", entries, offline=True, baseline_only=False, scenario=True, scenario_n=SMALL,
                   out_root=tmp / "runs", outputs_root=tmp / "outputs", cache=cache, clock=lambda: EARLY)
@@ -414,3 +419,17 @@ def test_the_qa_packet_names_the_booster_table_size_and_objective(booster_run):
     assert row["family"] == "top_n" and row["PAYOUT_SOURCE"] == "PRIOR" and "contest name" in row["table"]
     assert row["FIELD_SIZE_SOURCE"] == "PRIOR" and "derived" in row["field_size_note"]
     assert "at least one own entry" in row["portfolio_objective"] and row["figures"]["entries"] == 5
+
+
+def test_a_scenario_late_swap_of_a_booster_run_accepts_the_finishes_policy(booster_run, tmp_path):
+    """Late swap reads the contest's selection policy ("finishes") and ranks with it; it still scores a Booster entry on
+    its own (B114), but it must run."""
+    from nhl_dfs.build import late_swap
+    from test_started_slate import _in_progress
+
+    cur = _renamed(LS / "DKEntries.current.csv", tmp_path / "current.csv")
+    r = late_swap.run(booster_run.r.run.run_id, cur, runs_root=booster_run.tmp / "runs", as_of=EARLY, offline=True,
+                      salary_path=_in_progress(tmp_path), objective="scenario")
+    assert r.statuses["FILE_VALID"] == "TRUE", r.messages[:5]
+    assert r.manifest["objective"]["kind"] == "scenario"
+    assert r.manifest["changed_cells"]  # the swap really ranked candidates
