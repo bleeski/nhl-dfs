@@ -63,6 +63,7 @@ Tracker for `BUILD_CHUNKS.md` (final, 26 September 2026). Every development sess
 | C51 | GATED | C48 | | | | | band 1, measurement; B112; gate: 5 settled Classic slates with standings and a bank (recorded or REBUILT); Ben flips it to TODO |
 | C52 | GATED | C51 | | | | | band 1, measurement; B112 (attribution half); gate: C51 DONE and 10 settled Classic slates |
 | C53 | TODO | C2c, C15 | | | | | band 0; B118 (post-lock export cells tagged (LOCKED) unreadable: late swap FILE_VALID=FALSE on 2026-10-11) B119 (every version delivered as DKEntries.csv; a late repair reached DraftKings after lock) and B120 (Ben's in-session report is a news source) |
+| C54 | TODO | C7, C53 | | | | | band 1; B121 (RotoWire NHL news as a second goalie and scratch source beside Daily Faceoff; the researcher agent already checks it) |
 
 ## Open [BEN] flags
 

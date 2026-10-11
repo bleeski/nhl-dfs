@@ -214,6 +214,19 @@ chunks:
     findings: []
     checks:
       - pytest -m c53 -q
+  - id: C54
+    title: RotoWire NHL news as a second goalie and scratch source
+    depends: [C7, C53]
+    marker: c54
+    band: 1
+    size: M
+    effort: "medium: data/sources/dailyfaceoff.py starting_goalies (the GoalieReport shape to match), build/goalies.py (the goalie board and gate), build/packet.py line 498 (the research request urls), config/qa.yaml research.urls, config/sources.yaml, docs/sources.md, a recorded RotoWire page under tests/fixtures/http/"
+    breakpoint: "first commit records a RotoWire news page and parses today's goalie confirmations and scratches into GoalieReport-shaped rows with the cited reporter and time; the second feeds them to the goalie board beside Daily Faceoff (CONFLICTED on disagreement) and adds the feed to the research request urls"
+    impact: "Band 1 (goalie choice and share): on 2026-10-11 Daily Faceoff still showed Kochetkov (4 entries) and Woll (2) EXPECTED at 22:42Z although both teams had announced them, and RotoWire had posted Kochetkov's start; a confirmed swap of a non-starting goalie is a whole dead slot, and the engine saw confirmations only through a researcher call (B121). Judgment, one slate."
+    backlog: [B121]
+    findings: []
+    checks:
+      - pytest -m c54 -q
   - id: C48
     title: Forecast record per entered lineup and the scored bank, kept beside the entered record
     depends: [C18]
