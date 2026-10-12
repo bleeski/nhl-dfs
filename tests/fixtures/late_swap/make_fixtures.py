@@ -69,10 +69,10 @@ def classic_rows():
                 n = seen[pos]
                 name = f"{TEAM_WORD[team]} {pos}{n}"
                 roster = {"C": "C/UTIL", "LW": "W/UTIL", "RW": "W/UTIL", "D": "D/UTIL", "G": "G"}[pos]
-                salary = sal + 100 * (ti % 2) - (100 if team == home else 0)
-                appg = round(salary / 650, 1)
+                price = sal + 100 * (ti % 2) - (100 if team == home else 0)  # DK salary: a synthetic player price
+                appg = round(price / 650, 1)
                 status = CLASSIC_STATUS.get((team, pos, n), "")
-                rows.append((pos, name, str(rid), roster, salary, _game(team, CLASSIC_GAMES), team, appg, status))
+                rows.append((pos, name, str(rid), roster, price, _game(team, CLASSIC_GAMES), team, appg, status))
     return rows
 
 
@@ -153,14 +153,14 @@ def showdown_rows():
                 seen[pos] = seen.get(pos, 0) + 1
                 n = seen[pos]
                 name = f"{TEAM_WORD[team]} {pos}{n}"
-                salary = sal - (200 if team == home else 0)
-                appg = round(salary / 700, 1)
+                price = sal - (200 if team == home else 0)  # DK salary: a synthetic player price
+                appg = round(price / 700, 1)
                 status = SHOWDOWN_STATUS.get((team, pos, n), "")
                 game = _game(team, SHOWDOWN_GAMES)
                 rid += 1
-                rows.append((pos, name, str(rid), "CPT", int(salary * 1.5), game, team, appg, status))
+                rows.append((pos, name, str(rid), "CPT", int(price * 1.5), game, team, appg, status))
                 rid += 1
-                rows.append((pos, name, str(rid), "FLEX", salary, game, team, appg, status))
+                rows.append((pos, name, str(rid), "FLEX", price, game, team, appg, status))
     return rows
 
 
@@ -216,9 +216,9 @@ EMBEDDED_FROM_ENTRY = 7  # the list's header sits beside the 7th entry, so entry
 def make_postlock():
     rows = classic_rows()
     started = [r for r in rows if r[6] in POSTLOCK_STARTED]
-    salary_rows = [r if r[6] not in POSTLOCK_STARTED else r[:5] + ("In-Progress",) + r[6:] for r in rows]
+    pool_rows = [r if r[6] not in POSTLOCK_STARTED else r[:5] + ("In-Progress",) + r[6:] for r in rows]
     out = HERE / "postlock"
-    _write(out / "DKSalaries.csv", _salary_lines(salary_rows))
+    _write(out / "DKSalaries.csv", _salary_lines(pool_rows))
     ids = _ids(rows)
     _check(read_salary(HERE / "classic" / "DKSalaries.csv"), POSTLOCK_LINEUPS, ids)
     team_of = {r[1]: r[6] for r in rows}
