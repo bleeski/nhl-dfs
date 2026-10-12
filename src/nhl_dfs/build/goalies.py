@@ -214,7 +214,12 @@ def _match_rotowire(fetch, pool) -> tuple[dict, dict, dict, list[str], list[str]
     return starts, expected, scratches, unmatched, notes
 
 
-_READ_TIME = ", item dated only, time is when the page was read"  # flag 94 (c)
+_READ_TIME = ", dated item, time = page read"  # flag 94 (c)
+
+
+def _rw_when(t, read_utc) -> str:
+    """A RotoWire row's time in a message, labeled when it is the page's read time (flag 94 c)."""
+    return _iso(t) + (", page read time" if read_utc is not None and t == read_utc else "")
 
 
 def _rw_label(rep, read_utc: datetime | None = None) -> str:
@@ -378,12 +383,13 @@ def build(pool, *, dk_rec=None, csv_status=None, now: datetime, cache=None, offl
             if team in dk_p and not confirmed_agree:  # a confirmation already beats Starting=P (the line above says so)
                 others.append(("DraftKings salary file Starting=P", dk_p[team]))
             if team in rw_exp and rw_exp[team][0] != k_rw and _rw_later(rotowire, rw_exp[team][1], rep):
-                others.append((f"a later RotoWire item (expected, {_iso(rw_exp[team][1].news_created_utc)})", rw_exp[team][0]))
+                others.append((f"a later RotoWire item (expected, {_rw_when(rw_exp[team][1].news_created_utc, rotowire.fetched_utc)})",
+                               rw_exp[team][0]))
             diff = [(lab, k) for lab, k in others if k != k_rw]
             if conflict:
-                conflict += f"; RotoWire confirms {name[k_rw]} ({rw_time})"
+                conflict += f"; RotoWire confirms {name[k_rw]} ({_rw_when(rep.news_created_utc, rotowire.fetched_utc)})"
             elif diff:
-                conflict = (f"RotoWire confirms {name[k_rw]} ({rw_time}) but " +
+                conflict = (f"RotoWire confirms {name[k_rw]} ({_rw_when(rep.news_created_utc, rotowire.fetched_utc)}) but " +
                             "; ".join(f"{lab} names {name[k]}" for lab, k in diff) + ": CONFLICTED, no automatic repair")
             else:
                 agree = [lab for lab, k in others if k == k_rw]
@@ -395,7 +401,7 @@ def build(pool, *, dk_rec=None, csv_status=None, now: datetime, cache=None, offl
         for k in sorted(keys):  # C54: a scratch of the goalie another source names as the starter is a disagreement
             if k in rw_scr and starter == k and not conflict:
                 conflict = (f"{name[k]} named starter ({s_source}) but RotoWire reports him out "
-                            f"({_iso(rw_scr[k].published_utc)}): CONFLICTED, no automatic repair")
+                            f"({_rw_when(rw_scr[k].published_utc, rotowire.fetched_utc)}): CONFLICTED, no automatic repair")
         if conflict:
             board.conflicted_teams.add(team)
             board.problems.append(f"{team}: {conflict}")

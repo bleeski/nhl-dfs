@@ -398,15 +398,18 @@ class _PageParser(HTMLParser):
     def handle_starttag(self, tag, attrs):
         a = dict(attrs)
         classes = (a.get("class") or "").split()
+        if tag == "div" and "news-update" in classes:  # a new item; an item left open by a missing end tag closes here
+            if self.cur is not None:
+                self.items.append(self.cur)
+            self.cur = {"text": {}, "links": [], "logo": None, "href": None}
+            self.stack = [(tag, None)]
+            return
         if self.cur is None:
-            if tag == "div" and "news-update" in classes:
-                self.cur = {"text": {}, "links": [], "logo": None, "href": None}
-                self.stack = [(tag, None)]
             return
         field_ = next((_FIELDS[c] for c in classes if c in _FIELDS), None)
-        if field_ == "logo":
+        if field_ == "logo" and self.cur["logo"] is None:
             self.cur["logo"] = a.get("alt")
-        if field_ == "headline":
+        if field_ == "headline" and self.cur["href"] is None:
             self.cur["href"] = a.get("href")
         if tag == "a" and self._field() == "news" and a.get("href"):
             self.cur["links"].append([a["href"], ""])
@@ -414,8 +417,8 @@ class _PageParser(HTMLParser):
             self.stack.append((tag, field_))
 
     def handle_endtag(self, tag):
-        if self.cur is None or tag in _VOID:
-            return
+        if self.cur is None or tag in _VOID or all(t != tag for t, _ in self.stack):
+            return  # a stray end tag closes nothing
         while self.stack:
             t, _ = self.stack.pop()
             if t == tag:
@@ -447,6 +450,8 @@ def parse_news_page(html: Any) -> list[NewsItem]:
     p = _PageParser()
     p.feed(html)
     p.close()
+    if p.cur is not None:  # the last item was never closed
+        p.items.append(p.cur)
     if not p.items:
         raise SourceSchemaError("rotowire: no news items")
     out: list[NewsItem] = []
@@ -553,13 +558,12 @@ def fetch_news(games: dict[str, SlateGame], *, cache: HttpCache, now: datetime) 
             return out
     out.source = "live" if (go_live and not f.from_cache) else "stored"
     out.fetched_utc = f.fetched_at_utc
-    read_items(parse_news_page(f.data), games, now, out, page_url=url, fetched_utc=f.fetched_at_utc,
-               live=out.source == "live")
+    read_items(parse_news_page(f.data), games, now, out, page_url=url, fetched_utc=f.fetched_at_utc)
     log.info("rotowire: %s, %s", out.source, out.counts)
     return out
 
 
-READ_GRACE_S = 60.0  # flag 94 (b): a stored page read at most this long after the run clock still counts
+READ_GRACE_S = 60.0  # flag 94 (b): a page read at most this long after the run clock counts (a live read lands within seconds)
 _EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 
@@ -573,14 +577,16 @@ def chronological(items: list[NewsItem]) -> list[NewsItem]:
 
 
 def read_items(items: list[NewsItem], games: dict[str, SlateGame], now: datetime, out: NewsFetch, *,
-               page_url: str | None = None, fetched_utc: datetime | None = None, live: bool = False) -> NewsFetch:
+               page_url: str | None = None, fetched_utc: datetime | None = None) -> NewsFetch:
     """The slate's rows from parsed items, oldest first. A timed item counts on its New York date and not after the
     clock (flag 87); a dated item (the page prints dates only, flag 94) counts on its printed date when the page was
-    read in this pass or at most READ_GRACE_S after the clock, and carries the page's read time."""
+    read at most READ_GRACE_S after the clock (live or stored: a rehearsal clock sees no later news), and carries the
+    page's read time."""
     names, codes = team_names(), team_map()
     out.count("items", len(items))
     page_known = fetched_utc is not None and fetched_utc.tzinfo is not None and (
-        live or (fetched_utc - now).total_seconds() <= READ_GRACE_S)
+        (fetched_utc - now).total_seconds() <= READ_GRACE_S)
+    read_day = fetched_utc.astimezone(ET).date() if page_known else None
     unknown: set[str] = set()
     for it in chronological(items):
         if not it.player:
@@ -609,6 +615,9 @@ def read_items(items: list[NewsItem], games: dict[str, SlateGame], now: datetime
                 continue
             if not page_known:
                 out.count("skipped_after_clock")
+                continue
+            if it.published_day > read_day:  # a date after the read: the zone reading of flag 94 (a) would be wrong
+                out.count("skipped_future_date")
                 continue
             if it.published_day != game.day:
                 out.count("skipped_other_day")

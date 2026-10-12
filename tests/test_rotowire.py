@@ -695,15 +695,15 @@ def test_dated_items_count_on_their_own_day_only():
     assert nxt.counts == {"items": 6, "skipped_other_day": 6}
 
 
-@pytest.mark.parametrize("now, live, counted", [
-    (RECAPS_READ, False, True),
-    (RECAPS_READ - timedelta(seconds=59), False, True),  # a page read just after the clock (flag 94 b)
-    (RECAPS_READ - timedelta(seconds=61), False, False),  # a replay clock before the page was read: nothing counts
-    (RECAPS_READ - timedelta(hours=2), True, True),  # read in this pass
+@pytest.mark.parametrize("now, counted", [
+    (RECAPS_READ, True),
+    (RECAPS_READ - timedelta(seconds=59), True),  # a page read just after the clock, as a live read is (flag 94 b)
+    (RECAPS_READ - timedelta(seconds=61), False),  # a rehearsal or replay clock before the read: nothing counts
+    (RECAPS_READ - timedelta(hours=2), False),  # live or stored alike (flag 94 b as amended)
 ])
-def test_a_dated_item_counts_only_when_the_page_was_read_by_the_clock(now, live, counted):
+def test_a_dated_item_counts_only_when_the_page_was_read_by_the_clock(now, counted):
     items = rw.parse_news_page(_page(RECAPS))
-    out = rw.read_items(items, _recap_games(SUNDAY), now, rw.NewsFetch(), fetched_utc=RECAPS_READ, live=live)
+    out = rw.read_items(items, _recap_games(SUNDAY), now, rw.NewsFetch(), fetched_utc=RECAPS_READ)
     assert out.counts.get("today", 0) == (6 if counted else 0)
     assert out.counts.get("skipped_after_clock", 0) == (0 if counted else 6)
 
@@ -794,3 +794,37 @@ def test_page_order_decides_later_between_dated_items():  # CONSTRUCTED items, t
     fetch = SimpleNamespace(reports=out.reports)
     assert goalies._rw_later(fetch, out.reports[1], out.reports[0])
     assert not goalies._rw_later(fetch, out.reports[0], out.reports[1])
+
+
+def test_a_dated_item_after_the_reads_own_day_is_skipped():  # CONSTRUCTED: the zone reading of flag 94 (a) failing
+    items = rw.parse_news_page(_page(RECAPS))
+    early = datetime(2026, 10, 11, 3, 0, tzinfo=timezone.utc)  # 23:00 New York on 10-10: the page cannot date 10-11
+    out = rw.read_items(items, _recap_games(SUNDAY), early, rw.NewsFetch(), fetched_utc=early)
+    assert out.counts == {"items": 6, "skipped_future_date": 6}
+
+
+def test_a_missing_end_tag_in_one_item_leaves_the_others_whole():  # CONSTRUCTED: one end tag removed in memory
+    raw = _page(RECAPS)
+    i = raw.index('<div class="news-update__news">Kochetkov')
+    j = raw.index("</div>", i)
+    broken = raw[:j] + raw[j + len("</div>"):]
+    assert [(x.player, x.team, x.news_id, x.published_day) for x in rw.parse_news_page(broken)] == \
+        [(x.player, x.team, x.news_id, x.published_day) for x in rw.parse_news_page(raw)]
+    stray = raw.replace('<div class="news-update__main">', '</span><div class="news-update__main">', 1)
+    assert len(rw.parse_news_page(stray)) == 6
+
+
+@pytest.mark.parametrize("expected_last, status", [(True, "CONFLICTED"), (False, "CONFIRMED")])
+def test_page_order_breaks_a_time_tie_on_the_board(tmp_path, monkeypatch, fake_codes, expected_last, status):
+    b = base(tmp_path)
+    cur = clean_current(tmp_path)
+    p = pool()
+    inject_df(monkeypatch, [])
+    at = BEFORE - timedelta(minutes=30)
+    start = rw_report("DDD", "Delta G1", at=at)
+    exp = rw_report("DDD", "Delta G2", at=at, state=GoalieState.EXPECTED)
+    inject_rw(monkeypatch, news([start, exp] if expected_last else [exp, start], fetched=at))
+    g = swap(tmp_path, b, cur).manifest["goalies"]
+    assert g["persons"][person(p, "Delta G1")]["status"] == status
+    if expected_last:
+        assert any("a later RotoWire item (expected, " in x and "page read time" in x for x in g["problems"])
