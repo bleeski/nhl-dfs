@@ -100,7 +100,7 @@ and the page's Get More News button leads to the subscription page. One item:
 
 | Element | Read as |
 |---|---|
-| `div.news-update` | one item; the page lists them newest first |
+| `div.news-update` | one item; the page lists them newest first. An injury item adds the class `is-injured` and a `div.news-update__inj` line with the body part (`Lower Body`), which is not read |
 | `img.news-update__logo`, its `alt` | the team code (`PHI`). The page's own team filter (`news.php?team=XXX`) lists the 32 NHL codes, so `config/teams.yaml` needs no `rotowire:` entry; a code not in the table is reported, not read |
 | `a.news-update__player-link` | the player |
 | `a.news-update__headline` | the headline; its `href` is the item URL, and the number that ends it is a news id that rises with each new item |
@@ -127,9 +127,17 @@ slate game by opponent, day or tonight, about the item's own player; the merge w
 DraftKings is flag 89 (any disagreement is CONFLICTED, never a silent pick). RotoWire never changes goalie
 probabilities (flag 92).
 
-**Citing (flag 90).** When an item's news paragraph links a post off rotowire.com, the row cites that post and its link
-text; otherwise the row reads RotoWire (aggregator) with the item URL. The cited post is never fetched. No item on the
-2026-10-12 recordings linked a post.
+**Citing (flag 90).** When an item's news paragraph links a post off rotowire.com, the row cites that post: its name is
+the link text when that reads as a name ("Rob Darragh of the Panthers' official site"), otherwise the linked account or
+site (a link on the word "placed" reads "@NJDevils on X"). Otherwise the row reads RotoWire (aggregator) with the item
+URL. The cited post is never fetched. On 2026-10-12 the morning recaps linked nothing and every item posted that day
+linked an X post.
+
+**Observed 2026-10-12.** 12:58Z: 25 items, all Sunday recaps (no statement). 15:05Z: seven items dated Monday among the
+25; "Markstrom will defend the road net against the Sabres on Monday, Rob Darragh of the Panthers' official site
+reports" (FLA @ BUF at 17:00Z) reads as a start; "Daws was the first goalie to leave the ice Monday, ..., indicating
+he'll be between the home pipes versus the Senators" stays an inference (flag 86 as amended); injured reserve
+placements and AHL recalls are not scratches.
 
 **Rate and attempts (flags 85, 91, 93).** 3.0 s between requests to www.rotowire.com, a 600 s TTL, cache first. Every
 attempt is written to `rotowire/attempts.json` under the cache root before the request goes out, and no request goes

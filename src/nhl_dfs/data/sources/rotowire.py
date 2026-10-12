@@ -102,8 +102,10 @@ _CONTRACTIONS = ((r"\bwon['’]t\b", "will not"), (r"\bcan['’]t\b", "cannot"),
                  (r"\b(is|has|was|does|did|are|should|would|could|were|have|had|must|might)n['’]t\b", r"\1 not"))
 _ABBREV = re.compile(r"\b(vs|St|Jr|Sr|Dr|Mr|No|Mt|Ft|a\.m|p\.m)\.(?=\s)")
 _DOT = "\u2024"  # one-dot leader: an abbreviation's period while sentences are split, restored after
-_GOALIE_JOB = r"(?:start|be in goal|be between the pipes|tend (?:the )?twine|guard (?:the )?(?:goal|cage|net|crease|blue paint)|" \
-              r"patrol (?:the )?(?:crease|cage|blue paint)|man (?:the )?(?:crease|cage|net)|defend (?:the )?(?:cage|net|goal)|" \
+_SIDE = r"(?:(?:home|road) )?"  # flag 86 as amended: RotoWire's 'defend the road net', 'be between the home pipes'
+_GOALIE_JOB = r"(?:start|be in goal|be between the " + _SIDE + r"pipes|tend (?:the )?twine|guard (?:the )?" + _SIDE + \
+              r"(?:goal|cage|net|crease|blue paint)|patrol (?:the )?" + _SIDE + r"(?:crease|cage|blue paint)|man (?:the )?" + \
+              _SIDE + r"(?:crease|cage|net)|defend (?:the )?" + _SIDE + r"(?:cage|net|goal)|" \
               r"get the (?:start|nod)|draw the start|be in net|start in goal|start in net)"
 NEGATED = re.compile(r"\b(?:will|would|is|does|did) not (?:\w+ ){0,2}?" + _GOALIE_JOB + r"\b|\bnot (?:be )?(?:starting|in goal|in net)\b", re.I)
 EXPECTED = re.compile(r"\b(?:expected|probable|likely|projected|slated|set|poised|in line|penciled in|tentatively scheduled|should|could|may|might|"
@@ -138,7 +140,8 @@ def last_name(player: str) -> str:
 _NEG_WORDS = re.compile(r"\b(?:not|never|no longer|yet to|whether|if|unless|nor|cannot|instead of|rather than)\b", re.I)
 _HEDGE_WORDS = re.compile(r"\b(?:could|may|might|likely|expected|expects|expecting|probably|possibly|potentially|perhaps|unclear|"
                           r"uncertain|doubtful|hope|hopes|hoping|hopeful|aims?|plans?|planning|slated|projected|probable|"
-                          r"tentatively|questionable|should)\b", re.I)
+                          r"tentatively|questionable|should|indicating|indicates|suggesting|suggests|signaling|signalling|"
+                          r"implying|implies|hinting|hints)\b", re.I)
 _CONDITIONAL_AFTER = re.compile(r"\b(?:if|unless|provided|assuming|in case|pending|depending)\b", re.I)
 _START_NOT_A_GAME = re.compile(r"^\s+(?:[a-z]+ing\b|a\b|an\b|the season\b|his rehab|the year\b|in the AHL\b|for the AHL\b|"
                                r"(?:the |his )?(?:practice|skate|skating|conditioning|rehab|stint|assignment)\b)", re.I)
@@ -441,6 +444,18 @@ def _clean(s: str | None) -> str:
     return " ".join((s or "").split())
 
 
+def _cited_name(href: str, text: str) -> str:
+    """The cited outlet (flag 90): the link text when it reads as a name ("Rob Darragh of the Panthers' official
+    site"), otherwise the account or the site the link points at (a link on the word "placed" reads @NJDevils on X)."""
+    t = _clean(text)
+    if len(t.split()) >= 2 and t[:1].isupper():
+        return t
+    m = re.match(r"https?://(?:www\.)?(?:x|twitter)\.com/([A-Za-z0-9_]+)", href)
+    if m:
+        return f"@{m.group(1)} on X"
+    return re.sub(r"^www\.", "", re.match(r"https?://([^/]+)", href).group(1))
+
+
 def parse_news_page(html: Any) -> list[NewsItem]:
     """The news items of the recorded page structure (docs/sources.md, flag 94), newest first as the page lists them.
     An item without a player or a readable date comes back with player "" or no date, and read_items skips and counts
@@ -465,7 +480,7 @@ def parse_news_page(html: Any) -> list[NewsItem]:
         href = raw["href"] or ""
         url = SITE + href if href.startswith("/") else (href or None)
         nid = re.search(r"-(\d+)/?$", href)
-        cited = next(((h, _clean(x)) for h, x in raw["links"]
+        cited = next(((h, _cited_name(h, x)) for h, x in raw["links"]
                       if re.match(r"https?://", h) and not re.match(r"https?://([\w-]+\.)*rotowire\.com(/|$)", h)), None)
         out.append(NewsItem(
             player=player, team=_clean(raw["logo"]).upper() or None, position=_clean(t.get("pos")) or None,

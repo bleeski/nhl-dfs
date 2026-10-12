@@ -48,7 +48,7 @@ def ranges(raw: bytes, keep_ids: list[int]) -> tuple[list[tuple[int, int]], list
     f = _start_tag(raw, b'class="filter-links-group"', m)
     out.append((f, _element(raw, f, _DIV)))
     kept = []
-    for it in re.finditer(rb'<div class="news-update">', raw):
+    for it in re.finditer(rb'<div class="news-update(?: [^"_]*)?">', raw):  # injury items add "is-injured"
         end = _element(raw, it.start(), _DIV)
         nid = re.search(rb'news-update__headline" href="[^"]*-(\d+)"', raw[it.start():end])
         if nid and int(nid.group(1)) in keep_ids:

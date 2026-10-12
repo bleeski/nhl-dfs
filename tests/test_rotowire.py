@@ -828,3 +828,90 @@ def test_page_order_breaks_a_time_tie_on_the_board(tmp_path, monkeypatch, fake_c
     assert g["persons"][person(p, "Delta G1")]["status"] == status
     if expected_last:
         assert any("a later RotoWire item (expected, " in x and "page read time" in x for x in g["problems"])
+
+
+# -- the second recording: today's goalie news (flag 86 as amended after it) -------------------------------------------
+# tests/fixtures/http/rotowire_hockey_news.html: the real page of 2026-10-12T15:05:09Z, trimmed to five whole items
+# (SOURCES.md). Today's real games (NHL schedule): FLA @ BUF 17:00Z, OTT @ NJD 23:00Z, VGK @ MIN 00:00Z on 10-13.
+
+NEWS = HTTP / "rotowire_hockey_news.html"
+NEWS_READ = datetime(2026, 10, 12, 15, 5, 9, tzinfo=timezone.utc)
+MONDAY = date(2026, 10, 12)
+DARRAGH = "https://x.com/darraghfla/status/2109654471366045721"
+
+
+def _monday_games(day=MONDAY):
+    out = {}
+    for away, home, start in (("FLA", "BUF", datetime(2026, 10, 12, 17, 0, tzinfo=timezone.utc)),
+                              ("OTT", "NJD", datetime(2026, 10, 12, 23, 0, tzinfo=timezone.utc)),
+                              ("VGK", "MIN", datetime(2026, 10, 13, 0, 0, tzinfo=timezone.utc))):
+        start = start + (datetime.combine(day, start.timetz()) - datetime.combine(MONDAY, start.timetz()))
+        out[home], out[away] = rw.SlateGame(home, away, day, start), rw.SlateGame(away, home, day, start)
+    return out
+
+
+def test_the_second_page_parses_with_its_cited_posts_and_both_days():
+    items = rw.parse_news_page(_page(NEWS))
+    assert [(i.news_id, i.player, i.team, i.position, i.published_day) for i in items] == [
+        (595587, "Nico Daws", "NJD", "G", MONDAY), (595586, "Jacob Markstrom", "FLA", "G", MONDAY),
+        (595582, "Connor Brown", "NJD", "RW", MONDAY), (595581, "Stefan Noesen", "NJD", "C", MONDAY),
+        (595572, "Pyotr Kochetkov", "CAR", "G", SUNDAY)]
+    m = items[1]
+    assert m.headline == "Starting in Buffalo"
+    assert m.news == ("Markstrom will defend the road net against the Sabres on Monday, Rob Darragh of the Panthers' "
+                      "official site reports.")
+    assert (m.cited_name, m.cited_url) == ("Rob Darragh of the Panthers' official site", DARRAGH)
+    assert m.url == "https://www.rotowire.com/hockey/headlines/jacob-markstrom-news-starting-in-buffalo-595586"
+    assert (items[2].cited_name, items[3].cited_name) == ("@NJDevils on X", "@NJDevils on X")  # a link on 'placed'
+    assert "Lower Body" not in items[2].news + items[2].headline  # the injury item's body-part line is not news
+
+
+@pytest.mark.parametrize("nid, kind_", [
+    (595586, "start"),  # will defend the road net against the Sabres on Monday (flag 86 as amended)
+    (595587, "ignored_statement"),  # first goalie off the ice, indicating he'll be between the home pipes: a hedge
+    (595582, "ignored_statement"),  # placed on injured reserve: never a scratch (flag 86)
+    (595581, "ignored_statement"),  # recalled from AHL Utica
+])
+def test_the_pages_real_sentences_classify_as_the_flags_say(nid, kind_):
+    it = next(i for i in rw.parse_news_page(_page(NEWS)) if i.news_id == nid)
+    assert rw.read_item(it, _monday_games()[it.team], rw.team_names())[0] == kind_
+
+
+def test_the_pages_confirmation_reaches_a_goalie_row_with_its_cited_post_and_the_read_time(tmp_path):
+    c, t = _cache(tmp_path, [("rotowire.com", 200, NEWS.read_bytes())], clock=lambda: NEWS_READ)
+    got = rw.fetch_news(_monday_games(), cache=c, now=NEWS_READ - timedelta(seconds=1))
+    assert got.source == "live" and len(t.calls) == 1
+    assert got.counts == {"items": 5, "skipped_other_teams": 1, "dated_only": 4, "today": 4, "ignored_statement": 3,
+                          "start": 1}
+    (r,) = got.reports
+    assert (r.team, r.goalie_name, r.state, r.opponent, r.game_date) == ("FLA", "Jacob Markstrom",
+                                                                         GoalieState.CONFIRMED, "BUF", MONDAY)
+    assert (r.source_name, r.source_url, r.strength_raw) == ("Rob Darragh of the Panthers' official site", DARRAGH,
+                                                              "will defend the road net")
+    assert r.news_created_utc == NEWS_READ == got.fetched_utc  # the page's read time (flag 94 c)
+    assert not got.scratches
+    line = goalies._rw_line(got, {}, NEWS_READ)
+    assert "1 start(s)" in line and "RotoWire times are when the page was read" in line
+
+
+def test_the_pages_confirmation_does_not_count_for_the_next_day_or_from_late_last_night():
+    items = rw.parse_news_page(_page(NEWS))
+    nxt = rw.read_items(items, _monday_games(MONDAY + timedelta(days=1)), NEWS_READ + timedelta(days=1),
+                        rw.NewsFetch(), fetched_utc=NEWS_READ)
+    assert nxt.counts.get("start", 0) == 0 and nxt.counts["skipped_other_day"] == 4
+    late = datetime(2026, 10, 11, 23, 30, tzinfo=rw.ET)  # CONSTRUCTED: a timed item at 23:30 New York the day before
+    it = rw.NewsItem("Jacob Markstrom", "FLA", "G", "", "Markstrom will defend the road net against the Sabres on "
+                     "Monday.", late.astimezone(timezone.utc), None)
+    out = rw.read_items([it], _monday_games(), NEWS_READ, rw.NewsFetch(), fetched_utc=NEWS_READ)
+    assert out.counts == {"items": 1, "skipped_other_day": 1}
+
+
+@pytest.mark.parametrize("text, expected", [  # CONSTRUCTED: the amended phrase family on the Saturday game
+    ("Kochetkov will defend the road net against the Lightning on Saturday.", "start"),
+    ("Kochetkov will guard the home goal Saturday against the Lightning.", "start"),
+    ("Kochetkov was first off the ice Saturday, indicating he will start against the Lightning.", "ignored_statement"),
+    ("Kochetkov will start against the Lightning on Saturday, suggesting Andersen is still hurt.", "start"),
+    ("Kochetkov will start against the Lightning on Saturday, suggesting a rest day Sunday.", "ignored_other_game"),
+])
+def test_home_or_road_before_the_net_word_and_the_new_hedges(text, expected):
+    assert kind(text) == expected
