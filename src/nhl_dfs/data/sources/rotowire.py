@@ -25,6 +25,7 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -58,6 +59,9 @@ class NewsItem:
     url: str | None  # the item's own link when the page gives one
     cited_name: str | None = None  # the outlet RotoWire credits, when it links the post
     cited_url: str | None = None
+    published_day: date | None = None  # the printed date; the page prints no time (flag 94)
+    news_id: int | None = None  # the number ending the headline link; rises with each new item
+    page_rank: int | None = None  # 0 is the top of the page (the newest)
 
 
 @dataclass(frozen=True)
@@ -98,8 +102,10 @@ _CONTRACTIONS = ((r"\bwon['’]t\b", "will not"), (r"\bcan['’]t\b", "cannot"),
                  (r"\b(is|has|was|does|did|are|should|would|could|were|have|had|must|might)n['’]t\b", r"\1 not"))
 _ABBREV = re.compile(r"\b(vs|St|Jr|Sr|Dr|Mr|No|Mt|Ft|a\.m|p\.m)\.(?=\s)")
 _DOT = "\u2024"  # one-dot leader: an abbreviation's period while sentences are split, restored after
-_GOALIE_JOB = r"(?:start|be in goal|be between the pipes|tend (?:the )?twine|guard (?:the )?(?:goal|cage|net|crease|blue paint)|" \
-              r"patrol (?:the )?(?:crease|cage|blue paint)|man (?:the )?(?:crease|cage|net)|defend (?:the )?(?:cage|net|goal)|" \
+_SIDE = r"(?:(?:home|road) )?"  # flag 86 as amended: RotoWire's 'defend the road net', 'be between the home pipes'
+_GOALIE_JOB = r"(?:start|be in goal|be between the " + _SIDE + r"pipes|tend (?:the )?twine|guard (?:the )?" + _SIDE + \
+              r"(?:goal|cage|net|crease|blue paint)|patrol (?:the )?" + _SIDE + r"(?:crease|cage|blue paint)|man (?:the )?" + \
+              _SIDE + r"(?:crease|cage|net)|defend (?:the )?" + _SIDE + r"(?:cage|net|goal)|" \
               r"get the (?:start|nod)|draw the start|be in net|start in goal|start in net)"
 NEGATED = re.compile(r"\b(?:will|would|is|does|did) not (?:\w+ ){0,2}?" + _GOALIE_JOB + r"\b|\bnot (?:be )?(?:starting|in goal|in net)\b", re.I)
 EXPECTED = re.compile(r"\b(?:expected|probable|likely|projected|slated|set|poised|in line|penciled in|tentatively scheduled|should|could|may|might|"
@@ -134,7 +140,8 @@ def last_name(player: str) -> str:
 _NEG_WORDS = re.compile(r"\b(?:not|never|no longer|yet to|whether|if|unless|nor|cannot|instead of|rather than)\b", re.I)
 _HEDGE_WORDS = re.compile(r"\b(?:could|may|might|likely|expected|expects|expecting|probably|possibly|potentially|perhaps|unclear|"
                           r"uncertain|doubtful|hope|hopes|hoping|hopeful|aims?|plans?|planning|slated|projected|probable|"
-                          r"tentatively|questionable|should)\b", re.I)
+                          r"tentatively|questionable|should|indicating|indicates|suggesting|suggests|signaling|signalling|"
+                          r"implying|implies|hinting|hints)\b", re.I)
 _CONDITIONAL_AFTER = re.compile(r"\b(?:if|unless|provided|assuming|in case|pending|depending)\b", re.I)
 _START_NOT_A_GAME = re.compile(r"^\s+(?:[a-z]+ing\b|a\b|an\b|the season\b|his rehab|the year\b|in the AHL\b|for the AHL\b|"
                                r"(?:the |his )?(?:practice|skate|skating|conditioning|rehab|stint|assignment)\b)", re.I)
@@ -341,9 +348,154 @@ def read_item(item: NewsItem, game: SlateGame, names: dict[str, list[str]]) -> t
 
 # -- the page ----------------------------------------------------------------------------------------------
 
+SITE = "https://www.rotowire.com"
+_ZONES = {"ET": "America/New_York", "EST": "America/New_York", "EDT": "America/New_York", "CT": "America/Chicago",
+          "CST": "America/Chicago", "CDT": "America/Chicago", "MT": "America/Denver", "MST": "America/Denver",
+          "MDT": "America/Denver", "PT": "America/Los_Angeles", "PST": "America/Los_Angeles",
+          "PDT": "America/Los_Angeles", "UTC": "UTC", "GMT": "UTC"}
+_STAMP = re.compile(r"^(?P<mon>[A-Za-z]{3,9})\.?\s+(?P<d>\d{1,2}),\s*(?P<y>\d{4})"
+                    r"(?:,?\s*(?:at\s+)?(?P<h>\d{1,2}):(?P<mi>\d{2})\s*(?P<ap>[AaPp])\.?[Mm]\.?"
+                    r"(?:\s+(?P<z>[A-Z]{2,3}))?)?$")
+_FIELDS = {"news-update__logo": "logo", "news-update__player-link": "player", "news-update__headline": "headline",
+           "news-update__pos": "pos", "news-update__timestamp": "stamp", "news-update__news": "news",
+           "news-update__analysis": "analysis"}
+_VOID = {"img", "br", "hr", "input", "meta", "link", "source", "wbr", "area", "base", "col", "embed", "param", "track"}
+
+
+_MONTH_WORDS = {**{n.lower(): k + 1 for k, n in enumerate(_MONTH_NAMES)}, **MONTHS, "sept": 9}
+
+
+def parse_stamp(text: str) -> tuple[datetime | None, date | None]:
+    """(an aware UTC time, the printed date) from an item's timestamp. The recorded page prints a date only
+    ("October 11, 2026"): the time is None then and the date is the item's day (flag 94). A time, if one is ever
+    printed, is read in its stated zone, America/New_York when none is given. Anything else raises ValueError."""
+    m = _STAMP.match(" ".join((text or "").split()))
+    if not m:
+        raise ValueError(f"timestamp not recognized: {text!r}")
+    month = _MONTH_WORDS.get(m["mon"].lower())
+    if month is None:
+        raise ValueError(f"month not recognized: {text!r}")
+    day = date(int(m["y"]), month, int(m["d"]))
+    if m["h"] is None:
+        return None, day
+    zone = _ZONES.get(m["z"] or "ET")
+    if zone is None:
+        raise ValueError(f"time zone not recognized: {text!r}")
+    hour = int(m["h"]) % 12 + (12 if m["ap"].lower() == "p" else 0)
+    local = datetime(day.year, day.month, day.day, hour, int(m["mi"]), tzinfo=ZoneInfo(zone))
+    return local.astimezone(timezone.utc), day
+
+
+class _PageParser(HTMLParser):
+    """Collects each <div class="news-update"> element's fields by class name; the analysis is read and dropped."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.items: list[dict[str, Any]] = []
+        self.cur: dict[str, Any] | None = None
+        self.stack: list[tuple[str, str | None]] = []  # open elements inside the current item: (tag, field)
+
+    def _field(self) -> str | None:
+        return next((f for _, f in reversed(self.stack) if f), None)
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        classes = (a.get("class") or "").split()
+        if tag == "div" and "news-update" in classes:  # a new item; an item left open by a missing end tag closes here
+            if self.cur is not None:
+                self.items.append(self.cur)
+            self.cur = {"text": {}, "links": [], "logo": None, "href": None}
+            self.stack = [(tag, None)]
+            return
+        if self.cur is None:
+            return
+        field_ = next((_FIELDS[c] for c in classes if c in _FIELDS), None)
+        if field_ == "logo" and self.cur["logo"] is None:
+            self.cur["logo"] = a.get("alt")
+        if field_ == "headline" and self.cur["href"] is None:
+            self.cur["href"] = a.get("href")
+        if tag == "a" and self._field() == "news" and a.get("href"):
+            self.cur["links"].append([a["href"], ""])
+        if tag not in _VOID:
+            self.stack.append((tag, field_))
+
+    def handle_endtag(self, tag):
+        if self.cur is None or tag in _VOID or all(t != tag for t, _ in self.stack):
+            return  # a stray end tag closes nothing
+        while self.stack:
+            t, _ = self.stack.pop()
+            if t == tag:
+                break
+        if not self.stack:
+            self.items.append(self.cur)
+            self.cur = None
+
+    def handle_data(self, data):
+        if self.cur is None:
+            return
+        f = self._field()
+        if f:
+            self.cur["text"][f] = self.cur["text"].get(f, "") + data
+            if f == "news" and self.cur["links"] and any(t == "a" for t, _ in self.stack):
+                self.cur["links"][-1][1] += data
+
+
+def _clean(s: str | None) -> str:
+    return " ".join((s or "").split())
+
+
+_X_NOT_ACCOUNTS = {"i", "intent", "home", "search", "hashtag", "share", "explore"}
+
+
+def _cited_name(href: str, text: str) -> str | None:
+    """The cited outlet (flag 90): the link text when it reads as a name ("Rob Darragh of the Panthers' official
+    site"), otherwise the account or the site the link points at (a link on the word "placed" reads @NJDevils on X);
+    None when the link has no host, so the row reads RotoWire (aggregator)."""
+    t = _clean(text)
+    if len(t.split()) >= 2 and t[:1].isupper():
+        return t
+    m = re.match(r"https?://(?:www\.)?(?:x|twitter)\.com/([A-Za-z0-9_]+)", href)
+    if m and m.group(1).lower() not in _X_NOT_ACCOUNTS:
+        return f"@{m.group(1)} on X"
+    h = re.match(r"https?://([^/?#:]+)", href)
+    return re.sub(r"^www\.", "", h.group(1)) if h else None
+
+
 def parse_news_page(html: Any) -> list[NewsItem]:
-    """The news items of the recorded page structure (docs/sources.md). Raises SourceSchemaError otherwise."""
-    raise SourceSchemaError("rotowire: page structure not recorded yet")
+    """The news items of the recorded page structure (docs/sources.md, flag 94), newest first as the page lists them.
+    An item without a player or a readable date comes back with player "" or no date, and read_items skips and counts
+    it. Raises SourceSchemaError when the page has no news item, or no item has both."""
+    if not isinstance(html, str):
+        raise SourceSchemaError("rotowire: the page is not text")
+    p = _PageParser()
+    p.feed(html)
+    p.close()
+    if p.cur is not None:  # the last item was never closed
+        p.items.append(p.cur)
+    if not p.items:
+        raise SourceSchemaError("rotowire: no news items")
+    out: list[NewsItem] = []
+    for rank, raw in enumerate(p.items):
+        t = raw["text"]
+        player = _clean(t.get("player"))
+        try:
+            when, day = parse_stamp(t.get("stamp", ""))
+        except ValueError:
+            when, day = None, None  # read_items skips and counts it (flag 94 e)
+        href = raw["href"] or ""
+        url = SITE + href if href.startswith("/") else (href or None)
+        nid = re.search(r"-(\d+)/?$", href)
+        cited = next(((h, _cited_name(h, x)) for h, x in raw["links"]
+                      if re.match(r"https?://[^/?#:]", h)
+                      and not re.match(r"https?://([\w-]+\.)*rotowire\.com([/?#:]|$)", h)), None)
+        out.append(NewsItem(
+            player=player, team=_clean(raw["logo"]).upper() or None, position=_clean(t.get("pos")) or None,
+            headline=_clean(t.get("headline")), news=_clean(t.get("news")), published_utc=when, url=url,
+            cited_name=(cited[1] or None) if cited else None, cited_url=cited[0] if cited else None,
+            published_day=day, news_id=int(nid.group(1)) if nid else None, page_rank=rank))
+    if not any(i.player and (i.published_day or i.published_utc) for i in out):
+        raise SourceSchemaError("rotowire: no news item has a player and a readable date")
+    return out
 
 
 def team_map(path: Path = TEAMS_YAML) -> dict[str, str]:
@@ -427,30 +579,74 @@ def fetch_news(games: dict[str, SlateGame], *, cache: HttpCache, now: datetime) 
             return out
     out.source = "live" if (go_live and not f.from_cache) else "stored"
     out.fetched_utc = f.fetched_at_utc
-    read_items(parse_news_page(f.data), games, now, out, page_url=url)
+    read_items(parse_news_page(f.data), games, now, out, page_url=url, fetched_utc=f.fetched_at_utc)
     log.info("rotowire: %s, %s", out.source, out.counts)
     return out
 
 
+READ_GRACE_S = 60.0  # flag 94 (b): a page read at most this long after the run clock counts (a live read lands within seconds)
+_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+
+def chronological(items: list[NewsItem]) -> list[NewsItem]:
+    """Oldest first (flag 94 d): by the news id when every item has one (the page's own order), otherwise by time and
+    then by reversed page position."""
+    if items and all(i.news_id is not None for i in items):
+        return sorted(items, key=lambda i: i.news_id)
+    return sorted(items, key=lambda i: (i.published_utc if i.published_utc is not None and i.published_utc.tzinfo
+                                        else _EPOCH, -(i.page_rank or 0)))
+
+
 def read_items(items: list[NewsItem], games: dict[str, SlateGame], now: datetime, out: NewsFetch, *,
-               page_url: str | None = None) -> NewsFetch:
+               page_url: str | None = None, fetched_utc: datetime | None = None) -> NewsFetch:
+    """The slate's rows from parsed items, oldest first. A timed item counts on its New York date and not after the
+    clock (flag 87); a dated item (the page prints dates only, flag 94) counts on its printed date when the page was
+    read at most READ_GRACE_S after the clock (live or stored: a rehearsal clock sees no later news), and carries the
+    page's read time."""
     names, codes = team_names(), team_map()
     out.count("items", len(items))
-    aware = [i for i in items if i.published_utc is not None and i.published_utc.tzinfo is not None]
-    for it in sorted(aware, key=lambda i: i.published_utc) + [i for i in items if i not in aware]:
+    page_known = fetched_utc is not None and fetched_utc.tzinfo is not None and (
+        (fetched_utc - now).total_seconds() <= READ_GRACE_S)
+    read_day = fetched_utc.astimezone(ET).date() if page_known else None
+    unknown: set[str] = set()
+    for it in chronological(items):
+        if not it.player:
+            out.count("skipped_malformed")
+            continue
         nhl = codes.get(it.team or "")
-        game = games.get(nhl or "")
+        if nhl is None:
+            out.count("unknown_team_code")
+            unknown.add(it.team or "(none)")
+            continue
+        game = games.get(nhl)
         if game is None:
             out.count("skipped_other_teams")
             continue
-        if it.published_utc is None or it.published_utc.tzinfo is None:
+        if it.published_utc is not None and it.published_utc.tzinfo is not None:
+            when = it.published_utc
+            if when > now:
+                out.count("skipped_after_clock")
+                continue
+            if when.astimezone(ET).date() != game.day:
+                out.count("skipped_other_day")
+                continue
+        elif it.published_utc is None and it.published_day is not None:
+            if fetched_utc is None or fetched_utc.tzinfo is None:
+                out.count("skipped_no_time")
+                continue
+            if not page_known:
+                out.count("skipped_after_clock")
+                continue
+            if it.published_day > read_day:  # a date after the read: the zone reading of flag 94 (a) would be wrong
+                out.count("skipped_future_date")
+                continue
+            if it.published_day != game.day:
+                out.count("skipped_other_day")
+                continue
+            when = fetched_utc
+            out.count("dated_only")
+        else:
             out.count("skipped_no_time")
-            continue
-        if it.published_utc > now:
-            out.count("skipped_after_clock")
-            continue
-        if it.published_utc.astimezone(ET).date() != game.day:
-            out.count("skipped_other_day")
             continue
         out.count("today")
         kind, clause, phrase = read_item(it, game, names)
@@ -466,10 +662,12 @@ def read_items(items: list[NewsItem], games: dict[str, SlateGame], now: datetime
             out.reports.append(GoalieReport(
                 team=nhl, team_slug=None, goalie_name=it.player, goalie_id=None, state=state, strength_raw=phrase,
                 strength_recognized=True, game_date=game.day, game_utc=game.start_utc, opponent=game.opponent,
-                source_name=src_name, source_url=src_url, news_created_utc=it.published_utc, path=SOURCE))
+                source_name=src_name, source_url=src_url, news_created_utc=when, path=SOURCE))
         else:
-            out.scratches.append(Scratch(it.player, nhl, clause, src_name or AGGREGATOR, src_url, it.published_utc,
+            out.scratches.append(Scratch(it.player, nhl, clause, src_name or AGGREGATOR, src_url, when,
                                          cancel=kind == "cancel"))
+    for code in sorted(unknown):
+        out.notes.append(f"RotoWire team code {code!r} is not in config/teams.yaml: its items are not read")
     return out
 
 
