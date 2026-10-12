@@ -609,3 +609,188 @@ def test_a_later_rotowire_expectation_for_another_goalie_is_conflicted(tmp_path,
     r = swap(tmp_path, b, cur)
     assert r.run.version_file(1).read_bytes() == cur.read_bytes()
     assert r.manifest["goalies"]["persons"][person(p, "Delta G1")]["status"] == "CONFLICTED"
+
+
+# -- the recorded page (C54 part 2; flags 93, 94) --------------------------------------------------------------------
+# tests/fixtures/http/rotowire_hockey_news_recaps.html: the real page of 2026-10-12T12:58:42Z, trimmed by deleting whole
+# byte ranges (make_rotowire_fixture.py; SOURCES.md). Its six items are Sunday 2026-10-11 recaps of CAR @ PHI, VAN @ NYR
+# and SEA @ WSH. Tests marked CONSTRUCTED change a copy in memory to reach an error path; nothing is stored.
+
+import re  # noqa: E402
+
+import yaml  # noqa: E402
+
+HTTP = TESTS / "fixtures" / "http"
+RECAPS = HTTP / "rotowire_hockey_news_recaps.html"
+RECAPS_READ = datetime(2026, 10, 12, 12, 58, 42, tzinfo=timezone.utc)  # the recording's request time (SOURCES.md)
+SUNDAY = date(2026, 10, 11)
+
+
+def _page(path):
+    return path.read_bytes().decode("utf-8")  # as HttpCache decodes an html body
+
+
+def _recap_games(day):
+    """The recaps' real games (NHL schedule of 2026-10-11), placed on `day`."""
+    out = {}
+    for away, home, hour in (("SEA", "WSH", 21), ("VAN", "NYR", 22), ("CAR", "PHI", 23)):
+        t = datetime(day.year, day.month, day.day, hour, tzinfo=timezone.utc)
+        out[home], out[away] = rw.SlateGame(home, away, day, t), rw.SlateGame(away, home, day, t)
+    return out
+
+
+def _attempts(root):
+    p = root / "rotowire" / "attempts.json"
+    return p.read_text(encoding="utf-8") if p.exists() else None
+
+
+def test_the_recorded_page_parses_into_its_items_newest_first():
+    items = rw.parse_news_page(_page(RECAPS))
+    assert [(i.player, i.team, i.position, i.news_id) for i in items] == [
+        ("Joseph Woll", "PHI", "G", 595578), ("Pyotr Kochetkov", "CAR", "G", 595572),
+        ("Elias Pettersson", "VAN", "D", 595571), ("Dylan Garand", "NYR", "G", 595561),
+        ("Alex Ovechkin", "WSH", "LW", 595558), ("Ben Meyers", "SEA", "LW", 595556)]
+    assert [i.page_rank for i in items] == list(range(6))
+    k = items[1]
+    assert k.headline == "Sharp in win"
+    assert k.news == "Kochetkov stopped 18 of 19 shots in Sunday's 4-1 win over the Flyers."
+    assert k.url == "https://www.rotowire.com/hockey/headlines/pyotr-kochetkov-news-sharp-in-win-595572"
+    assert k.published_utc is None and k.published_day == SUNDAY  # the page prints a date only (flag 94)
+    assert k.cited_url is None and k.cited_name is None  # no item on the page links a post: RotoWire (aggregator)
+    assert all(i.published_day == SUNDAY and i.published_utc is None for i in items)
+
+
+def test_the_analysis_paragraph_never_reaches_the_news():
+    raw = _page(RECAPS)
+    assert raw.count('class="news-update__analysis"') == 6 and "reveal our take" in raw
+    for i in rw.parse_news_page(raw):
+        assert "ANALYSIS" not in i.news + i.headline and "reveal our take" not in i.news + i.headline
+
+
+def test_every_team_code_in_the_pages_own_filter_is_an_nhl_code_mapped_to_itself():
+    codes = re.findall(r'news\.php\?team=([A-Z]{2,3})"', _page(RECAPS))
+    with open(rw.TEAMS_YAML, encoding="utf-8") as f:
+        nhl = {t["nhl"] for t in yaml.safe_load(f)["teams"]}
+    assert len(codes) == 32 and set(codes) == nhl
+    tm = rw.team_map()
+    assert all(tm[c] == c for c in codes)
+
+
+def test_a_team_code_not_in_the_table_is_reported_and_not_read():  # CONSTRUCTED
+    it = rw.NewsItem("Pyotr Kochetkov", "CRL", "G", "", "Kochetkov will start tonight against the Lightning.", None,
+                     None, published_day=SAT.day, news_id=1)
+    read = SAT.start_utc - timedelta(hours=1)
+    out = rw.read_items([it], {"CAR": SAT, "TBL": SAT}, read, rw.NewsFetch(), fetched_utc=read)
+    assert out.counts.get("unknown_team_code") == 1 and not out.reports
+    assert any("'CRL'" in n for n in out.notes)
+
+
+def test_dated_items_count_on_their_own_day_only():
+    items = rw.parse_news_page(_page(RECAPS))
+    same = rw.read_items(items, _recap_games(SUNDAY), RECAPS_READ, rw.NewsFetch(), fetched_utc=RECAPS_READ)
+    assert same.counts == {"items": 6, "dated_only": 6, "today": 6, "ignored_statement": 6}  # recaps state nothing
+    assert not same.reports and not same.scratches
+    nxt = rw.read_items(items, _recap_games(SUNDAY + timedelta(days=1)), RECAPS_READ, rw.NewsFetch(),
+                        fetched_utc=RECAPS_READ)
+    assert nxt.counts == {"items": 6, "skipped_other_day": 6}
+
+
+@pytest.mark.parametrize("now, live, counted", [
+    (RECAPS_READ, False, True),
+    (RECAPS_READ - timedelta(seconds=59), False, True),  # a page read just after the clock (flag 94 b)
+    (RECAPS_READ - timedelta(seconds=61), False, False),  # a replay clock before the page was read: nothing counts
+    (RECAPS_READ - timedelta(hours=2), True, True),  # read in this pass
+])
+def test_a_dated_item_counts_only_when_the_page_was_read_by_the_clock(now, live, counted):
+    items = rw.parse_news_page(_page(RECAPS))
+    out = rw.read_items(items, _recap_games(SUNDAY), now, rw.NewsFetch(), fetched_utc=RECAPS_READ, live=live)
+    assert out.counts.get("today", 0) == (6 if counted else 0)
+    assert out.counts.get("skipped_after_clock", 0) == (0 if counted else 6)
+
+
+def test_a_dated_item_without_a_read_time_is_skipped():
+    items = rw.parse_news_page(_page(RECAPS))
+    out = rw.read_items(items, _recap_games(SUNDAY), RECAPS_READ, rw.NewsFetch())
+    assert out.counts == {"items": 6, "skipped_no_time": 6}
+
+
+@pytest.mark.parametrize("text, utc, day", [  # CONSTRUCTED strings: the page prints the first form only
+    ("October 11, 2026", None, date(2026, 10, 11)),
+    ("Oct. 31, 2026 7:00 PM", datetime(2026, 10, 31, 23, 0, tzinfo=timezone.utc), date(2026, 10, 31)),  # EDT
+    ("November 2, 2026 7:00 PM ET", datetime(2026, 11, 3, 0, 0, tzinfo=timezone.utc), date(2026, 11, 2)),  # EST
+    ("November 2, 2026 6:00 PM CT", datetime(2026, 11, 3, 0, 0, tzinfo=timezone.utc), date(2026, 11, 2)),
+    ("Sept 30, 2026 12:05 AM", datetime(2026, 9, 30, 4, 5, tzinfo=timezone.utc), date(2026, 9, 30)),
+])
+def test_the_timestamp_reader(text, utc, day):
+    assert rw.parse_stamp(text) == (utc, day)
+
+
+@pytest.mark.parametrize("text", ["3 hours ago", "Octember 1, 2026", "October 11, 2026 7:00 PM XT", ""])
+def test_an_unreadable_timestamp_is_an_error_never_a_guess(text):
+    with pytest.raises(ValueError):
+        rw.parse_stamp(text)
+
+
+def test_an_item_without_a_player_or_a_date_is_skipped_and_counted():  # CONSTRUCTED: whole elements removed in memory
+    raw = _page(RECAPS)
+    raw = re.sub(r'<a class="news-update__player-link" href="/hockey/player/pyotr-kochetkov[^"]*">[^<]*</a>', "", raw)
+    raw = re.sub(r'(<div class="news-update__timestamp">)October 11, 2026(</div>\s*<div class="news-update__news">Woll)',
+                 r"\1\2", raw)
+    items = rw.parse_news_page(raw)
+    assert len(items) == 6 and items[1].player == "" and items[0].published_day is None
+    out = rw.read_items(items, _recap_games(SUNDAY), RECAPS_READ, rw.NewsFetch(), fetched_utc=RECAPS_READ)
+    assert out.counts["skipped_malformed"] == 1 and out.counts["skipped_no_time"] == 1 and out.counts["today"] == 4
+
+
+def _no_items(raw):
+    return raw[:raw.index('<div class="news-update">')] + raw[raw.index("</main>"):]
+
+
+def test_a_page_without_news_items_raises_and_the_board_says_daily_faceoff_alone(tmp_path):  # CONSTRUCTED
+    raw = _page(RECAPS)
+    with pytest.raises(rw.SourceSchemaError, match="no news items"):
+        rw.parse_news_page(_no_items(raw))
+    undated = re.sub(r'(<div class="news-update__timestamp">)[^<]*(</div>)', r"\1\2", raw)
+    with pytest.raises(rw.SourceSchemaError, match="no news item has a player and a readable date"):
+        rw.parse_news_page(undated)
+    c, t = _cache(tmp_path, [("rotowire.com", 200, _no_items(raw).encode("utf-8"))], clock=lambda: RECAPS_READ)
+    got = rw.fetch_news(_recap_games(SUNDAY), cache=c, now=RECAPS_READ)
+    assert got.source == "none" and len(t.calls) == 1 and not got.reports
+    line = goalies._rw_line(got, {}, RECAPS_READ)
+    assert line.startswith("RotoWire unavailable (") and line.endswith("board from Daily Faceoff alone")
+
+
+def test_a_second_read_inside_the_ttl_uses_the_stored_real_page_and_offline_sends_nothing(tmp_path):
+    clock = {"t": RECAPS_READ}
+    c, t = _cache(tmp_path, [("rotowire.com", 200, RECAPS.read_bytes())], clock=lambda: clock["t"])
+    games = _recap_games(SUNDAY)
+    first = rw.fetch_news(games, cache=c, now=RECAPS_READ - timedelta(seconds=2))  # the read lands after the clock
+    assert first.source == "live" and len(t.calls) == 1 and first.counts["today"] == 6
+    clock["t"] = RECAPS_READ + timedelta(seconds=599)
+    again = rw.fetch_news(games, cache=c, now=clock["t"])
+    assert again.source == "stored" and len(t.calls) == 1 and again.counts == first.counts
+    assert again.fetched_utc == RECAPS_READ
+    before = _attempts(tmp_path / "raw")
+    off, t2 = _cache(tmp_path, [("rotowire.com", 200, b"")], offline=True,
+                     clock=lambda: RECAPS_READ + timedelta(hours=3))
+    late = rw.fetch_news(games, cache=off, now=RECAPS_READ + timedelta(hours=3))
+    assert late.source == "stored" and t2.calls == [] and _attempts(tmp_path / "raw") == before
+    assert late.counts["today"] == 6
+
+
+def test_page_order_decides_later_between_dated_items():  # CONSTRUCTED items, the page's newest-first order
+    day, read = SAT.day, SAT.start_utc - timedelta(hours=2)
+    def item(nid, text, player="Pyotr Kochetkov"):
+        return rw.NewsItem(player, "CAR", "G", "", text, None, None, published_day=day, news_id=nid)
+    page = [item(12, "Andersen will start tonight against the Lightning.", "Frederik Andersen"),
+            item(11, "Kochetkov will start tonight against the Lightning."),
+            item(10, "Jarvis was scratched for tonight's game against the Lightning.", "Seth Jarvis"),
+            item(13, "Jarvis will play tonight against the Lightning.", "Seth Jarvis")]
+    page = [page[3]] + page[:3]  # newest first, as the page lists them
+    out = rw.read_items(page, {"CAR": SAT, "TBL": SAT}, SAT.start_utc, rw.NewsFetch(), fetched_utc=read)
+    assert [r.goalie_name for r in out.reports] == ["Pyotr Kochetkov", "Frederik Andersen"]  # oldest first
+    assert all(r.news_created_utc == read for r in out.reports)  # the page's read time (flag 94 c)
+    assert [(s.player, s.cancel) for s in out.scratches] == [("Seth Jarvis", False), ("Seth Jarvis", True)]
+    fetch = SimpleNamespace(reports=out.reports)
+    assert goalies._rw_later(fetch, out.reports[1], out.reports[0])
+    assert not goalies._rw_later(fetch, out.reports[0], out.reports[1])

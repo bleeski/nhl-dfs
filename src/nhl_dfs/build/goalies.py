@@ -214,11 +214,22 @@ def _match_rotowire(fetch, pool) -> tuple[dict, dict, dict, list[str], list[str]
     return starts, expected, scratches, unmatched, notes
 
 
-def _rw_label(rep) -> str:
+_READ_TIME = ", item dated only, time is when the page was read"  # flag 94 (c)
+
+
+def _rw_label(rep, read_utc: datetime | None = None) -> str:
     from nhl_dfs.data.sources.rotowire import AGGREGATOR
 
     who = "aggregator" if rep.source_name in (None, AGGREGATOR) else f"citing {rep.source_name}"
+    if read_utc is not None and rep.news_created_utc == read_utc:
+        who += _READ_TIME
     return f"{who}: {rep.source_url}" if rep.source_url else who
+
+
+def _rw_later(fetch, a, b) -> bool:
+    """Flag 94 (d): row a is later than row b by time, then by position among the fetch's rows (oldest first)."""
+    pos = {id(r): i for i, r in enumerate(fetch.reports)}
+    return (a.news_created_utc, pos.get(id(a), -1)) > (b.news_created_utc, pos.get(id(b), -1))
 
 
 def _rw_line(fetch, counts_extra: dict, now: datetime) -> str:
@@ -230,7 +241,9 @@ def _rw_line(fetch, counts_extra: dict, now: datetime) -> str:
     return (f"RotoWire news: {fetch.source}" + (f", {age} min old" if age is not None else "") +
             f"; today {c.get('today', 0)} item(s) on slate teams: {c.get('start', 0)} start(s), {c.get('expected', 0)} expected, "
             f"{c.get('scratch', 0)} scratch(es), {c.get('cancel', 0)} cancel(s), {ignored} ignored, "
-            f"{counts_extra.get('unmatched', 0)} unmatched")
+            f"{counts_extra.get('unmatched', 0)} unmatched" +
+            ("; items carry dates only, so RotoWire times are when the page was read" if c.get("dated_only") else "") +
+            (f"; {c['unknown_team_code']} item(s) with a team code not in config/teams.yaml" if c.get("unknown_team_code") else ""))
 
 
 # -- the board -------------------------------------------------------------------------------------------------
@@ -353,7 +366,7 @@ def build(pool, *, dk_rec=None, csv_status=None, now: datetime, cache=None, offl
             earlier = sorted({name[k] for k, _ in rw_starts[team][:-1] if k != k_rw})
             if earlier:
                 rw_notes.append(f"{team}: an earlier RotoWire item named {', '.join(earlier)}; the later one ({name[k_rw]}) is used")
-            rw_src, rw_time = f"RotoWire ({_rw_label(rep)})", _iso(rep.news_created_utc)
+            rw_src, rw_time = f"RotoWire ({_rw_label(rep, rotowire.fetched_utc)})", _iso(rep.news_created_utc)
             others = []
             if team in ovr_start:
                 others.append((f"accepted override ({_override_source(ovr_start[team][1])})", ovr_start[team][0]))
@@ -364,7 +377,7 @@ def build(pool, *, dk_rec=None, csv_status=None, now: datetime, cache=None, offl
             confirmed_agree = df_conf == k_rw or (team in ovr_start and ovr_start[team][0] == k_rw)
             if team in dk_p and not confirmed_agree:  # a confirmation already beats Starting=P (the line above says so)
                 others.append(("DraftKings salary file Starting=P", dk_p[team]))
-            if team in rw_exp and rw_exp[team][0] != k_rw and rw_exp[team][1].news_created_utc > rep.news_created_utc:
+            if team in rw_exp and rw_exp[team][0] != k_rw and _rw_later(rotowire, rw_exp[team][1], rep):
                 others.append((f"a later RotoWire item (expected, {_iso(rw_exp[team][1].news_created_utc)})", rw_exp[team][0]))
             diff = [(lab, k) for lab, k in others if k != k_rw]
             if conflict:
@@ -378,7 +391,7 @@ def build(pool, *, dk_rec=None, csv_status=None, now: datetime, cache=None, offl
                 s_source = rw_src + "".join(f" + {lab}" for lab in agree)
         elif team in rw_exp and not conflict and starter is None:
             k_rw, rep = rw_exp[team]
-            starter, s_state, s_source, s_time = k_rw, "EXPECTED", f"RotoWire expected ({_rw_label(rep)})", _iso(rep.news_created_utc)
+            starter, s_state, s_source, s_time = k_rw, "EXPECTED", f"RotoWire expected ({_rw_label(rep, rotowire.fetched_utc)})", _iso(rep.news_created_utc)
         for k in sorted(keys):  # C54: a scratch of the goalie another source names as the starter is a disagreement
             if k in rw_scr and starter == k and not conflict:
                 conflict = (f"{name[k]} named starter ({s_source}) but RotoWire reports him out "
@@ -397,7 +410,7 @@ def build(pool, *, dk_rec=None, csv_status=None, now: datetime, cache=None, offl
             elif k in rw_scr and not conflict:
                 sc = rw_scr[k]
                 gl.status, gl.report_utc = NOT_STARTING, _iso(sc.published_utc)
-                gl.source = board.scratches[k] = _scratch_label(sc)
+                gl.source = board.scratches[k] = _scratch_label(sc, rotowire.fetched_utc)
             elif conflict:
                 gl.status, gl.source, gl.starter_state = CONFLICTED, conflict, "CONFLICTED"
             elif starter is not None and s_state == "CONFIRMED":
@@ -422,7 +435,7 @@ def build(pool, *, dk_rec=None, csv_status=None, now: datetime, cache=None, offl
         goalie_keys = {k for ks in goalies.values() for k in ks}
         for k, sc in rw_scr.items():
             if k not in goalie_keys:
-                board.scratches[k] = _scratch_label(sc)
+                board.scratches[k] = _scratch_label(sc, rotowire.fetched_utc)
         fetched = rotowire.fetched_utc
         board.rotowire = {"source": rotowire.source, "fetched_utc": _iso(fetched),
                           "age_min": round((now - fetched).total_seconds() / 60.0, 1) if fetched else None,
@@ -441,10 +454,12 @@ def _who(pool, k: str) -> str:
     return f"{row.name} ({row.team})" if row is not None else k
 
 
-def _scratch_label(sc) -> str:
+def _scratch_label(sc, read_utc: datetime | None = None) -> str:
     from nhl_dfs.data.sources.rotowire import AGGREGATOR
 
     who = "aggregator" if sc.source_name in (None, AGGREGATOR) else f"citing {sc.source_name}"
+    if read_utc is not None and sc.published_utc == read_utc:
+        who += _READ_TIME
     return f"RotoWire scratch ({who}): {sc.statement[:120]}" + (f" {sc.source_url}" if sc.source_url else "")
 
 
