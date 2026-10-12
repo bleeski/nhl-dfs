@@ -11,6 +11,9 @@ reason "unreadable") and its entry is left unchanged.
 A cell whose occupant is a started-game row (the salary file's In-Progress marker, C15) is LOCKED "started" by
 the marker alone: no start time is needed, and the row having left the selectable pool does not make the entry
 unreadable.
+A cell DraftKings writes as "Name (ID) (LOCKED)" (its post-lock export, C53 flag 82) is LOCKED "started" by that
+marker whatever the clock says, and every row of that player's game is not addable; so is every row of a game the
+entries file's embedded player list marks In Progress. The cell is pinned, so it is written back byte for byte.
 
 Start time = draftables competition start (matched by draftable ID == role ID), else the
 salary file's Game Info. Participation and eligibility are NOT lock inputs; they are
@@ -26,7 +29,7 @@ from datetime import datetime, timedelta, timezone
 
 from nhl_dfs.contracts.statuses import CellLock
 from nhl_dfs.data.sources.dk_public import Draftables
-from nhl_dfs.intake.entries import EntriesFile, cell_role_id, template_permutation
+from nhl_dfs.intake.entries import EntriesFile, cell_role_id, embedded_started_ids, parse_cell, template_permutation
 from nhl_dfs.intake.salary import SalaryPool, parse_game_info, row_start
 
 REASON_STARTED = "started"
@@ -43,6 +46,7 @@ class CellState:
     reason: str  # one of the REASON_* prefixes, then detail
     role_id: str | None  # the occupant, None for a blank
     start_utc: datetime | None = None
+    dk_locked: bool = False  # the cell carries DraftKings' " (LOCKED)" marker (C53)
 
     @property
     def pinned(self) -> bool:
@@ -107,7 +111,20 @@ def compute(entries_current: EntriesFile, pool: SalaryPool, draftables: Draftabl
         if d.is_swappable is False and d.draftable_id in pool.by_role_id
     )
     marker = pool.started_by_role_id  # started by DK's marker (or by an earlier clock reduction), not by this clock
-    started = frozenset(rid for rid, t in starts.items() if now >= t) | frozenset(marker)
+    # C53 (flag 82): DraftKings' own lock evidence in the entries file, a LOCKED cell or an In Progress row of the
+    # embedded list, starts that player's whole game whatever the clock says
+    dk_ids = set(embedded_started_ids(entries_current))
+    for e in entries_current.entries:
+        for text in e.cells:
+            try:
+                rid, marked = parse_cell(text)
+            except ValueError:
+                continue
+            if marked and rid is not None:
+                dk_ids.add(rid)
+    dk_games = {game_of[r] for r in dk_ids if r in game_of}
+    dk_started = frozenset(r for r, g in game_of.items() if g in dk_games) | frozenset(r for r in dk_ids if r in pool.by_role_id)
+    started = frozenset(rid for rid, t in starts.items() if now >= t) | frozenset(marker) | dk_started
     edit_stop = frozenset(rid for rid, t in starts.items() if t - buffer <= now < t) - started
     started_games = frozenset(game_of[r] for r in started if r in game_of) | frozenset(_marker_games(pool))
     edit_stop_games = frozenset(game_of[r] for r in edit_stop) - started_games
@@ -119,7 +136,7 @@ def compute(entries_current: EntriesFile, pool: SalaryPool, draftables: Draftabl
         for col, text in enumerate(e.cells):
             k = perm[col]
             try:
-                rid = cell_role_id(text)
+                rid, marked = parse_cell(text)
             except ValueError:
                 cells[(e.entry_id, k)] = CellState(CellLock.LOCKED, f"{REASON_UNREADABLE}: cell {text!r} kept as is", None)
                 unreadable.add(e.entry_id)
@@ -130,15 +147,21 @@ def compute(entries_current: EntriesFile, pool: SalaryPool, draftables: Draftabl
             if rid in marker:
                 row = marker[rid]
                 cells[(e.entry_id, k)] = CellState(
-                    CellLock.LOCKED, f"{REASON_STARTED}: {row.team} game is in progress (DraftKings marker)", rid, row_start(row))
+                    CellLock.LOCKED, f"{REASON_STARTED}: {row.team} game is in progress (DraftKings marker)", rid, row_start(row),
+                    marked)
                 continue
             if rid not in pool.by_role_id:
-                cells[(e.entry_id, k)] = CellState(CellLock.LOCKED, f"{REASON_UNREADABLE}: ID {rid} is not in the salary pool", rid)
+                cells[(e.entry_id, k)] = CellState(CellLock.LOCKED, f"{REASON_UNREADABLE}: ID {rid} is not in the salary pool", rid,
+                                                   None, marked)
                 unreadable.add(e.entry_id)
                 continue
             t = starts.get(rid)
-            if rid in started:
-                cells[(e.entry_id, k)] = CellState(CellLock.LOCKED, f"{REASON_STARTED}: game started {t.isoformat()}", rid, t)
+            if marked:  # its own branch: DraftKings' lock stands whatever the clock or the start time says
+                cells[(e.entry_id, k)] = CellState(CellLock.LOCKED, f"{REASON_STARTED}: DraftKings marks the cell LOCKED", rid, t,
+                                                   True)
+            elif rid in started:
+                why = f"game started {t.isoformat()}" if t is not None else "DraftKings marks the game In Progress"
+                cells[(e.entry_id, k)] = CellState(CellLock.LOCKED, f"{REASON_STARTED}: {why}", rid, t)
             elif rid in unswappable:
                 cells[(e.entry_id, k)] = CellState(CellLock.LOCKED, f"{REASON_UNSWAPPABLE}: DK reports isSwappable false", rid, t)
             elif rid in edit_stop:

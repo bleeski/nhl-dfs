@@ -522,6 +522,10 @@ def swap_core(
         "started_games": sorted(ls.started_games), "edit_stop_games": sorted(ls.edit_stop_games),
         "start_sources": dict(Counter(ls.start_source.values())),
     }
+    n_dk = sum(1 for c in ls.cells.values() if c.dk_locked)
+    if n_dk:  # C53 (B118): DraftKings' post-lock export; those cells are pinned and written back byte for byte
+        m["locks"]["dk_locked_cells"] = n_dk
+        messages.append(f"{n_dk} cell(s) DraftKings marks LOCKED: pinned, kept byte for byte")
     if ls.edit_stop_games:
         messages.append("edit stop (not started): " + ", ".join(sorted(ls.edit_stop_games))
                         + f" start within {buffer_s}s; those cells are pinned and those players are not added")

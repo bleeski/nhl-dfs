@@ -21,7 +21,12 @@ from nhl_dfs.contracts.geometry import CLASSIC_SLOTS, SHOWDOWN_SLOTS, Mode
 BOM = b"\xef\xbb\xbf"
 LEAD_COLUMNS = ("Entry ID", "Contest Name", "Contest ID", "Entry Fee")
 _ROSTER_LABELS = set(CLASSIC_SLOTS) | set(SHOWDOWN_SLOTS)
-_NAME_ID_CELL = re.compile(r"^.*\((\d+)\)\s*$")
+# DraftKings' post-lock export writes a started cell as "Name (ID) (LOCKED)" (C53, B118); a bare ID may carry it too.
+DK_LOCKED_SUFFIX = "(LOCKED)"
+_NAME_ID_CELL = re.compile(r"^.*\((\d+)\)(\s*\(LOCKED\))?\s*$")
+_BARE_ID_CELL = re.compile(r"^(\d+)(\s*\(LOCKED\))?\s*$")
+_STARTED_GAME_INFO = re.compile(r"^in[ -]progress$", re.IGNORECASE)  # the embedded list says "In Progress" (B42)
+EMBEDDED_HEADER = ("Position", "Name + ID", "Name", "ID")
 
 
 @dataclass(frozen=True)
@@ -91,17 +96,49 @@ def template_to_canonical(values: Sequence, labels: Sequence[str], mode: Mode) -
     return tuple(out)
 
 
-def cell_role_id(cell: str) -> str | None:
-    """Role ID from a roster cell: "Name (ID)" or a bare ID. Blank -> None."""
+def parse_cell(cell: str) -> tuple[str | None, bool]:
+    """(role ID, DraftKings lock marker) from a roster cell: "Name (ID)", a bare ID, either followed by " (LOCKED)".
+    Blank -> (None, False). The marker is DraftKings' own lock: the cell is pinned and written back byte for byte."""
     text = cell.strip()
     if text == "":
-        return None
-    if text.isdigit():
-        return text
-    m = _NAME_ID_CELL.match(text)
+        return None, False
+    m = _BARE_ID_CELL.match(text) or _NAME_ID_CELL.match(text)
     if not m:
         raise ValueError(f"unrecognized roster cell: {cell!r}")
-    return m.group(1)
+    return m.group(1), m.group(2) is not None
+
+
+def cell_role_id(cell: str) -> str | None:
+    """Role ID from a roster cell: "Name (ID)" or a bare ID, with or without DraftKings' " (LOCKED)". Blank -> None."""
+    return parse_cell(cell)[0]
+
+
+def dk_locked(cell: str) -> bool:
+    """True when DraftKings marks the cell LOCKED (an unreadable cell is not marked)."""
+    try:
+        return parse_cell(cell)[1]
+    except ValueError:
+        return False
+
+
+def embedded_started_ids(entries: "EntriesFile") -> frozenset[str]:
+    """IDs of the embedded player list whose Game Info reads In Progress (DraftKings' started marker, B42). The list
+    starts at the Instructions column on any line, entry lines included (DraftKings writes it beside the entries)."""
+    if "Instructions" not in entries.header:
+        return frozenset()
+    base = entries.header.index("Instructions")
+    _bom, lines = physical_lines(entries.raw)
+    rows = [_parse_line(x) for x in lines]
+    for n, rec in enumerate(rows):
+        if tuple(rec[base : base + 4]) != EMBEDDED_HEADER:
+            continue
+        head = rec[base:]
+        if "Game Info" not in head:
+            return frozenset()
+        gi = base + head.index("Game Info")
+        return frozenset(r[base + 3].strip() for r in rows[n + 1 :]
+                         if len(r) > gi and r[base + 3].strip() and _STARTED_GAME_INFO.match(r[gi].strip()))
+    return frozenset()
 
 
 def existing_lineup(entry: EntryRow, entries: EntriesFile) -> tuple[str | None, ...]:

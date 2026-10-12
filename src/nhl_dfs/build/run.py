@@ -704,7 +704,8 @@ def _started_slate(pool: SalaryPool, entries: EntriesFile, n_marker: int, now: d
     ls = locks_mod.compute(entries, pool, None, now, buffer_s)
     pins: dict[str, dict[int, str]] = {}
     for e in entries.entries:
-        held = {k: rid for k, rid in ls.pinned(e.entry_id).items() if rid in started}
+        # C53 (flag 82): a cell DraftKings marks LOCKED is pinned too (and written back byte for byte by the writer)
+        held = {k: rid for k, rid in ls.pinned(e.entry_id).items() if rid in started or ls.cells[(e.entry_id, k)].dk_locked}
         if held:
             pins[e.entry_id] = held
     by_team: dict[str, list[str]] = {}
