@@ -115,8 +115,10 @@ def verify_run(runs_root: Path, run_id: str, now=None) -> tuple[bool, list[str]]
     elif current:
         delivery.append("DELIVERY_CURRENT=TRUE")
     else:
-        newer = (f"{public_dir} now holds delivery v{stamp.get('delivery_version')} from run {stamp.get('run_id')}"
-                 if stamp else "no delivery of this slate is recorded")
+        held = (f"delivery v{stamp['delivery_version']}" if stamp.get("delivery_version") is not None
+                else f"version v{stamp.get('version')}")
+        newer = (f"{public_dir} now holds {held} of run {stamp.get('run_id')}" if stamp
+                 else "no delivery of this slate is recorded")
         delivery.append(f"DELIVERY_CURRENT=FALSE ({newer}; do not send this run's file)")
     now = now or datetime.now(timezone.utc)
     try:
@@ -273,10 +275,13 @@ def _print_result(result) -> int:
         print(f"published: {result.public_path}")
     else:
         print("published: nothing (see RUN_NOTES.md)")
-    last = next((v for v in reversed((result.manifest or {}).get("versions") or []) if v.get("delivery_path")), None)
-    if last:  # C53: the file to hand over, named by its slate delivery number
+    versions = (result.manifest or {}).get("versions") or []
+    last = versions[-1] if versions else None
+    if last and last.get("delivery_path"):  # C53: the file to hand over, named by its slate delivery number
         tag = "; REHEARSAL: do not upload" if (result.manifest or {}).get("rehearsal_clock") else ""
         print(f"delivery: {last['delivery_path']} (v{last.get('delivery_version')}{tag})")
+    elif last:
+        print(f"delivery: none (v{last['version']} was not delivered: {last.get('public_detail') or 'see RUN_NOTES.md'})")
     for msg in result.messages:
         print(f"note: {msg}")
     print(f"notes: {result.notes_path}")
@@ -746,6 +751,18 @@ def cmd_overrides_apply(args: argparse.Namespace) -> int:
     as_of = _as_of(args.as_of)
     reply = Path(args.file) if args.file else None
     if ben:  # C53 (flag 83): Ben's report in session is a source; the built override is saved, then applied
+        from nhl_dfs.build.manifest import read_manifest
+
+        slate = read_manifest(run)["slate_id"]
+        try:  # C53 review: only the run whose current version is the slate's delivered file can deliver a repair
+            stamp = json.loads((outputs_root / slate / "published.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            stamp = {}
+        if stamp.get("run_id") != run.run_id or stamp.get("version") != run.current_version():
+            holder = f"run {stamp.get('run_id')} v{stamp.get('version')}" if stamp else "no run (nothing delivered)"
+            print(f"BEN_OVERRIDE=REFUSED: run {run.run_id} is not the slate's current delivery; "
+                  f"{outputs_root / slate / 'published.json'} names {holder}. Use --run <that run>.")
+            return 1
         try:
             change = controller.ben_change(packet.RunView(run, runs_root).pool, ben, how=args.how,
                                            now=as_of or datetime.now(timezone.utc))

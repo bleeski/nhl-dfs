@@ -206,8 +206,8 @@ def delivery_name(n: int, sha: str) -> str:
 
 def next_delivery_version(public_dir: Path) -> int:
     """1 + the slate's highest delivery number (flag 81): the numbered files in outputs/<slate_id>/, and published.json's
-    delivery_version, or its version when the slate was published before C53 (no delivery_version key). Read under the
-    slate lock."""
+    delivery_version, or its version when that is missing or null (a slate published before C53, or a numbered copy
+    that could not be written). Read under the slate lock."""
     ns = [int(m.group(1)) for p in public_dir.iterdir() if (m := DELIVERY_RE.match(p.name))] if public_dir.is_dir() else []
     stamp = public_dir / "published.json"
     if stamp.exists():
@@ -215,7 +215,9 @@ def next_delivery_version(public_dir: Path) -> int:
             s = json.loads(stamp.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             s = {}
-        n = s["delivery_version"] if "delivery_version" in s else s.get("version")
+        n = s.get("delivery_version")
+        if n is None:  # published before C53, or its numbered copy could not be written: the run's version is the floor
+            n = s.get("version")
         if isinstance(n, int):
             ns.append(n)
     return max(ns, default=0) + 1

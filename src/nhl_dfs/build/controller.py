@@ -147,12 +147,14 @@ def override_from(d: dict):
 
 BEN_STATES = {"OUT": ("participation", "OUT"), "QUESTIONABLE": ("participation", "QUESTIONABLE"),
               "PLAYING": ("participation", "PLAYING"), "STARTING": ("goalie_start", True)}
-_TEAM_SUFFIX = re.compile(r"^(.*?)\s*\(([A-Za-z]{2,4})\)$")
+_NAME_SUFFIX = re.compile(r"^(.*?)\s*\(([^()]*)\)$")
+_POSITIONS = {"C", "LW", "RW", "W", "D", "G"}
 
 
 def ben_change(pool, text: str, *, now: datetime, how: str) -> dict:
     """C53 (flag 83): Ben's in-session report "<player> OUT|QUESTIONABLE|PLAYING|STARTING" as a BEN override object
-    (the researcher's Override schema, source BEN, no URL). "(TEAM)" after the name tells two same-named players apart.
+    (the researcher's Override schema, source BEN, no URL). A team, a position and/or the DraftKings ID in parentheses
+    after the name, "(VAN D)" or "(44471322)", tells two same-named players apart.
     `old` is left out: apply_round reads it from the role state. Expiry: the game's start plus 4 hours, the
     researcher's rule. Raises ValueError naming the problem."""
     from nhl_dfs.contracts.ids import normalize_name
@@ -162,20 +164,36 @@ def ben_change(pool, text: str, *, now: datetime, how: str) -> dict:
     words = text.strip().split()
     if len(words) < 2 or words[-1].upper() not in BEN_STATES:
         raise ValueError(f"expected \"<player> <STATE>\" with STATE one of {', '.join(BEN_STATES)} (got {text!r})")
-    state, name, team = words[-1].upper(), " ".join(words[:-1]), None
-    m = _TEAM_SUFFIX.match(name)
+    state, name = words[-1].upper(), " ".join(words[:-1])
+    team = pos = rid = None
+    m = _NAME_SUFFIX.match(name)
     if m:
-        name, team = m.group(1).strip(), m.group(2).upper()
+        name = m.group(1).strip()
+        for tok in m.group(2).replace(",", " ").split():
+            if tok.isdigit():
+                rid = tok
+            elif tok.upper() in _POSITIONS:
+                pos = tok.upper()
+            elif re.fullmatch(r"[A-Za-z]{2,4}", tok):
+                team = tok.upper()
+            else:
+                raise ValueError(f"cannot read {tok!r} in ({m.group(2)}): give a team, a position or the DraftKings ID")
     key = normalize_name(name)
-    rows = [r for r in pool.rows if normalize_name(r.name) == key and team in (None, r.team)]
+
+    def named(r) -> bool:
+        return (normalize_name(r.name) == key and team in (None, r.team) and rid in (None, r.role_id)
+                and (pos is None or r.position == pos or (pos == "W" and r.position in ("LW", "RW"))))
+
+    started = pool.started_by_role_id  # RunView's pool carries the started rows for lookups; they are never a target
+    rows = [r for r in pool.rows if named(r) and r.role_id not in started]
     if not rows:
-        started = [r for r in pool.started_rows if normalize_name(r.name) == key and team in (None, r.team)]
-        if started:
-            raise ValueError(f"{started[0].name} ({started[0].team}): his game has started; his cells are locked")
+        gone = [r for r in list(pool.started_rows) + list(pool.rows) if named(r)]
+        if gone:
+            raise ValueError(f"{gone[0].name} ({gone[0].team}): his game has started; his cells are locked")
         raise ValueError(f"no player named {name!r}{' on ' + team if team else ''} in this run's salary file")
     if len({r.person_key for r in rows}) > 1:
-        raise ValueError("more than one player is named " + repr(name) + ": add the team, for example "
-                         + ", ".join(sorted({f'"{r.name} ({r.team}) {state}"' for r in rows})))
+        raise ValueError("more than one player is named " + repr(name) + ": add the team and position, for example "
+                         + ", ".join(sorted({f'"{r.name} ({r.team} {r.position}) {state}"' for r in rows})))
     row = sorted(rows, key=lambda r: ("FLEX" not in r.roster_positions, r.role_id))[0]  # Showdown: the FLEX row
     field_, new = BEN_STATES[state]
     game, info = parse_game_info(row.game_info)

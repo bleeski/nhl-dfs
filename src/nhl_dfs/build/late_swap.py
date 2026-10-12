@@ -51,7 +51,7 @@ from nhl_dfs.build.run import (
     pool_without,
     salary_statuses,
 )
-from nhl_dfs.build.state import LockTimeout, PublishRefused, RunDir, new_run, open_run, publish, sha256
+from nhl_dfs.build.state import PUBLIC_NAME, LockTimeout, PublishRefused, RunDir, new_run, open_run, publish, sha256
 from nhl_dfs.contracts.geometry import CLASSIC_SLOTS, SHOWDOWN_SLOTS, Mode, check_lineup, lineup_key, slot_accepts
 from nhl_dfs.contracts.statuses import (
     DeliveryStatus,
@@ -175,6 +175,29 @@ def fetch_draftables_bounded(entries: EntriesFile, cache, budget_s: float):
         return None, (f"draftables unavailable ({type(exc).__name__}: {str(exc)[:100]}); locks use Game Info only, "
                       "so early starts and unswappable players cannot be seen")
     return box["d"], f"draftables fetched ({len(box['d'].rows)} rows)"
+
+
+def carry_overrides(parent, run, now: datetime) -> int:
+    """Copy the parent's accepted overrides still valid at `now` to this run's news/accepted_overrides.json, so a child of
+    this run reads them too (C53 review: Ben's report, or a researcher's, stayed in force for one generation only).
+    Returns how many were carried."""
+    src = parent.path / "news" / "accepted_overrides.json"
+    if not src.exists():
+        return 0
+    from nhl_dfs.build.controller import override_from
+
+    keep = []
+    for d in json.loads(src.read_text(encoding="utf-8")):
+        try:
+            o = override_from(d)
+        except (KeyError, TypeError, ValueError):
+            continue
+        if o.effective_utc <= now < o.expiry_utc:
+            keep.append(d)
+    if keep:
+        (run.path / "news").mkdir(exist_ok=True)
+        (run.path / "news" / "accepted_overrides.json").write_text(json.dumps(keep, indent=1, default=str), encoding="utf-8")
+    return len(keep)
 
 
 def accepted_overrides(parent, pool, now: datetime) -> tuple[list, dict[str, str]]:
@@ -388,6 +411,10 @@ def swap_core(
     # and the exposure counts resolve them through spool, and ls.not_addable keeps them out of every free cell.
     spool = with_started_rows(pool)
     current = read_entries(current_path)
+    # C53 review (flag 81 (b)): publish only if the public file still holds what it held when this pass started, so a
+    # late swap or refresh that ends after a newer publish (Ben's report, another late swap) never takes its place
+    public0 = Path(outputs_root) / slate_id / PUBLIC_NAME
+    expect0 = sha256(public0.read_bytes()) if rehearsal is None and public0.exists() else None
     # A rehearsal clock drives locks only; the run id and created time are always real.
     real_clock = (lambda: datetime.now(timezone.utc)) if rehearsal is not None else clock
     run = new_run(runs_root, mode=pool.mode, clock=real_clock)
@@ -484,6 +511,9 @@ def swap_core(
                        if s.participation is Participation.OUT or s.eligibility is Eligibility.DISABLED}
     # C10: overrides accepted on the parent run (overrides-apply or a QA correctness repair) and still valid now
     overrides, ovr_out = accepted_overrides(parent, pool, clock())
+    carried = carry_overrides(parent, run, clock())  # C53 review: in force for the next child too
+    if carried:
+        m["news"]["overrides_carried"] = carried
     bens = [o for o in overrides if o.source == "BEN"]
     if bens:  # C53 (flag 83): Ben's report accepted on the parent is in force here too, and labeled
         from nhl_dfs.models.overrides import ben_label
@@ -755,7 +785,7 @@ def swap_core(
     # A rehearsal clock can call a started game open, so its file never reaches outputs/.
     target_root = run.path / "rehearsal_outputs" if rehearsal is not None else outputs_root
     try:
-        res = publish(run, data, report, slate_id, outputs_root=target_root)
+        res = publish(run, data, report, slate_id, outputs_root=target_root, expect_public_sha=expect0)
     except (PublishRefused, LockTimeout) as exc:
         return fail(f"publish failed: {exc}")
     m["versions"].append({"version": res.version, "phase": kind, "sha256": report.out_sha256,

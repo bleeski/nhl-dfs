@@ -390,9 +390,11 @@ def test_a_ben_override_needs_no_url_repairs_open_cells_and_is_labeled_ben(tmp_p
         encoding="utf-8")
     stored = json.loads((r.run.path / "news" / "accepted_overrides.json").read_text(encoding="utf-8"))[-1]
     assert stored["source"] == "BEN" and stored["old"] is not None
-    # a late swap child of that run carries the report and the label
+    # a late swap child of that run, and that child's own child (C53 review), carry the report and the label
     s = swap(tmp_path, r, r.run.version_file(r.run.current_version()))
     assert s.statuses["NEWS_STATE"].endswith("+BEN") and s.manifest["news"]["ben_reports"][0]["role_id"] == charlie
+    s2 = swap(tmp_path, s, s.run.version_file(1))
+    assert s2.statuses["NEWS_STATE"].endswith("+BEN") and s2.manifest["news"]["ben_reports"][0]["role_id"] == charlie
 
 
 def test_without_a_url_only_ben_passes_and_no_reply_can_claim_to_be_ben(tmp_path):
@@ -441,3 +443,45 @@ def test_a_research_request_names_any_player_ben_asks_about(tmp_path, capsys):
     assert req["players"][0]["name"] == "Delta D3" and req["players"][0]["why"] == "Ben asked about this player"
     assert req["ben_players"] == ["Delta D3"] and req["ben_players_not_found"] == ["Nobody Here"]
     assert "no player named 'Nobody Here'" in out
+
+
+def test_ben_command_refuses_a_run_that_is_not_the_current_delivery_and_reads_name_suffixes(tmp_path, capsys):
+    from nhl_dfs import cli
+    from nhl_dfs.build import controller, packet
+
+    b, r = _swapped(tmp_path)
+    base = ["--runs-root", str(tmp_path / "runs"), "--outputs-root", str(tmp_path / "outputs"), "--as-of",
+            "2026-10-15T23:10:00Z"]
+    assert cli.main(["overrides-apply", "--run", b.run.run_id, *base, "--ben", "Charlie C1 OUT", "--how", "x"]) == 1
+    out = capsys.readouterr().out
+    assert "BEN_OVERRIDE=REFUSED: run " + b.run.run_id + " is not the slate's current delivery" in out
+    assert f"names run {r.run.run_id} v1" in out
+    pool = packet.RunView(r.run, tmp_path / "runs").pool  # carries game 1's started rows for lookups
+    with pytest.raises(ValueError, match="his game has started"):
+        controller.ben_change(pool, "Alpha C1 OUT", now=AFTER_G1, how="x")
+    ids = {controller.ben_change(pool, f"Charlie C1 {s} OUT", now=AFTER_G1, how="x")["role_id"]
+           for s in ("(CCC)", "(CCC C)", "(C)", "(81000025)")}
+    assert ids == {"81000025"}
+    with pytest.raises(ValueError, match="no player named"):
+        controller.ben_change(pool, "Charlie C1 (DDD) OUT", now=AFTER_G1, how="x")
+
+
+def test_a_late_swap_that_ends_after_a_newer_publish_takes_no_number(tmp_path, monkeypatch):
+    """C53 review (flag 81 (b)): the public file changed while the late swap ran, so it is left as is."""
+    from nhl_dfs.build.state import DELIVERY_RE
+
+    b = parent(tmp_path)
+    public = tmp_path / "outputs" / b.slate_id / "DKEntries.csv"
+    real = late_swap.splice_cells
+
+    def newer_publish_meanwhile(*a, **k):
+        public.write_bytes(b"a newer publish")
+        return real(*a, **k)
+
+    monkeypatch.setattr(late_swap, "splice_cells", newer_publish_meanwhile)
+    r = swap(tmp_path, b, EXPORT)
+    v = r.manifest["versions"][-1]
+    assert r.statuses["FILE_VALID"] == "TRUE" and not v["public_replaced"] and v["delivery_path"] is None
+    assert r.statuses["DELIVERY_STATUS"] == "DEGRADED_REVIEW" and public.read_bytes() == b"a newer publish"
+    assert sorted(int(m.group(1)) for x in public.parent.iterdir() if (m := DELIVERY_RE.match(x.name))) == [1]
+
