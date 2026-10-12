@@ -76,7 +76,7 @@ def classic_rows():
     return rows
 
 
-def _salary_lines(rows):
+def _pool_lines(rows):
     return [SAL_HEADER] + [f"{p},{n} ({i}),{n},{i},{rp},{s},{g},{t},{a},{st}," for p, n, i, rp, s, g, t, a, st in rows]
 
 
@@ -125,7 +125,7 @@ def _check(pool, names_by_entry, ids):
 def make_classic():
     rows = classic_rows()
     out = HERE / "classic"
-    _write(out / "DKSalaries.csv", _salary_lines(rows))
+    _write(out / "DKSalaries.csv", _pool_lines(rows))
     ids = _ids(rows)
     pool = read_salary(out / "DKSalaries.csv")
     _check(pool, CLASSIC_LINEUPS, ids)
@@ -178,7 +178,7 @@ SHOWDOWN_ENTRY_IDS = ["7200000001", "7200000002", "7200000003"]
 def make_showdown():
     rows = showdown_rows()
     out = HERE / "showdown2"
-    _write(out / "DKSalaries.csv", _salary_lines(rows))
+    _write(out / "DKSalaries.csv", _pool_lines(rows))
     ids = {(r[1], r[3]): r[2] for r in rows}
     pool = read_salary(out / "DKSalaries.csv")
     cells = {}
@@ -218,7 +218,7 @@ def make_postlock():
     started = [r for r in rows if r[6] in POSTLOCK_STARTED]
     pool_rows = [r if r[6] not in POSTLOCK_STARTED else r[:5] + ("In-Progress",) + r[6:] for r in rows]
     out = HERE / "postlock"
-    _write(out / "DKSalaries.csv", _salary_lines(pool_rows))
+    _write(out / "DKSalaries.csv", _pool_lines(pool_rows))
     ids = _ids(rows)
     _check(read_salary(HERE / "classic" / "DKSalaries.csv"), POSTLOCK_LINEUPS, ids)
     team_of = {r[1]: r[6] for r in rows}
