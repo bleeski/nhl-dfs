@@ -944,6 +944,7 @@ def test_exit_check_a_refresh_on_the_recorded_page_prints_the_rotowire_source_on
     d = late_swap.run(b.run.run_id, C54_SLATE / "DKEntries.current.csv", offline=True, fast=True, runs_root=runs,
                       outputs_root=outs, clock=lambda: t0)
     assert d.statuses["DELIVERY_STATUS"] == "CHECKED"
+    assert "FLA G2 (" in d.run.version_file(1).read_text(encoding="utf-8-sig")  # delivered: the teammate's cell
     before = d.manifest["goalies"]
     # NJD and CAR are not on this slate; Markstrom's item was read at 15:05Z, after the 14:00Z clock
     assert before["rotowire"]["counts"] == {"items": 5, "skipped_other_teams": 4, "skipped_after_clock": 1}
@@ -956,5 +957,20 @@ def test_exit_check_a_refresh_on_the_recorded_page_prints_the_rotowire_source_on
     assert cells[2] == "CONFIRMED" and cells[4] == "Jacob Markstrom (CONFIRMED)", row
     assert cells[5].startswith("RotoWire (citing Rob Darragh of the Panthers' official site, dated item"), row
     assert "RotoWire news: stored" in out and "1 start(s)" in out
-    assert not any(x.startswith("  FLA G2 |") for x in out.splitlines())  # the teammate's open cell was repaired
+    assert not any(x.startswith("  FLA G2 |") for x in out.splitlines())
+    (ref,) = [p for p in runs.iterdir() if p not in (b.run.path, d.run.path)]  # the refresh's own run
+    refreshed = (ref / "versions" / "v1" / "DKEntries.csv").read_text(encoding="utf-8-sig")
+    assert "FLA G2 (" not in refreshed and "Jacob Markstrom (" in refreshed  # the open cell was repaired
     assert _attempts(raw) == seeded and len(t.calls) == 1  # the offline refresh sent nothing
+
+
+@pytest.mark.parametrize("href, text, name", [
+    ("https://x.com/darraghfla/status/1", "Rob Darragh of the Panthers' official site",
+     "Rob Darragh of the Panthers' official site"),
+    ("https://x.com/NJDevils/status/1", "placed", "@NJDevils on X"),
+    ("https://twitter.com/i/web/status/1", "said", "twitter.com"),
+    ("https://www.nhl.com:443/news/x?a=1#b", "reports", "nhl.com"),
+    ("https://", "reports", None),
+])
+def test_the_cited_outlet_name(href, text, name):  # CONSTRUCTED links
+    assert rw._cited_name(href, text) == name

@@ -444,16 +444,21 @@ def _clean(s: str | None) -> str:
     return " ".join((s or "").split())
 
 
-def _cited_name(href: str, text: str) -> str:
+_X_NOT_ACCOUNTS = {"i", "intent", "home", "search", "hashtag", "share", "explore"}
+
+
+def _cited_name(href: str, text: str) -> str | None:
     """The cited outlet (flag 90): the link text when it reads as a name ("Rob Darragh of the Panthers' official
-    site"), otherwise the account or the site the link points at (a link on the word "placed" reads @NJDevils on X)."""
+    site"), otherwise the account or the site the link points at (a link on the word "placed" reads @NJDevils on X);
+    None when the link has no host, so the row reads RotoWire (aggregator)."""
     t = _clean(text)
     if len(t.split()) >= 2 and t[:1].isupper():
         return t
     m = re.match(r"https?://(?:www\.)?(?:x|twitter)\.com/([A-Za-z0-9_]+)", href)
-    if m:
+    if m and m.group(1).lower() not in _X_NOT_ACCOUNTS:
         return f"@{m.group(1)} on X"
-    return re.sub(r"^www\.", "", re.match(r"https?://([^/]+)", href).group(1))
+    h = re.match(r"https?://([^/?#:]+)", href)
+    return re.sub(r"^www\.", "", h.group(1)) if h else None
 
 
 def parse_news_page(html: Any) -> list[NewsItem]:
@@ -481,7 +486,8 @@ def parse_news_page(html: Any) -> list[NewsItem]:
         url = SITE + href if href.startswith("/") else (href or None)
         nid = re.search(r"-(\d+)/?$", href)
         cited = next(((h, _cited_name(h, x)) for h, x in raw["links"]
-                      if re.match(r"https?://", h) and not re.match(r"https?://([\w-]+\.)*rotowire\.com(/|$)", h)), None)
+                      if re.match(r"https?://[^/?#:]", h)
+                      and not re.match(r"https?://([\w-]+\.)*rotowire\.com([/?#:]|$)", h)), None)
         out.append(NewsItem(
             player=player, team=_clean(raw["logo"]).upper() or None, position=_clean(t.get("pos")) or None,
             headline=_clean(t.get("headline")), news=_clean(t.get("news")), published_utc=when, url=url,

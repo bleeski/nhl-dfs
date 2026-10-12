@@ -130,11 +130,10 @@ probabilities (flag 92).
 **Citing (flag 90).** When an item's news paragraph links a post off rotowire.com, the row cites that post: its name is
 the link text when that reads as a name ("Rob Darragh of the Panthers' official site"), otherwise the linked account or
 site (a link on the word "placed" reads "@NJDevils on X"). Otherwise the row reads RotoWire (aggregator) with the item
-URL. The cited post is never fetched. On 2026-10-12 the morning recaps linked nothing and every item posted that day
-linked an X post.
+URL, as it does when a link has no host. The cited post is never fetched.
 
-**Observed 2026-10-12.** 12:58Z: 25 items, all Sunday recaps (no statement). 15:05Z: seven items dated Monday among the
-25; "Markstrom will defend the road net against the Sabres on Monday, Rob Darragh of the Panthers' official site
+**Observed 2026-10-12** (the raw bodies, listed in the C54 session; SOURCES.md has their sha256). 12:58Z: 25 items, all
+Sunday recaps (no statement). 15:05Z: seven items dated Monday among the 25, each linking an X post; "Markstrom will defend the road net against the Sabres on Monday, Rob Darragh of the Panthers' official site
 reports" (FLA @ BUF at 17:00Z) reads as a start; "Daws was the first goalie to leave the ice Monday, ..., indicating
 he'll be between the home pipes versus the Senators" stays an inference (flag 86 as amended); injured reserve
 placements and AHL recalls are not scratches.
@@ -161,8 +160,8 @@ application programming interfaces not authorized by RotoWire, or any other auto
 logged in to a RotoWire Account or otherwise." It also forbids using Automated Means to "copy, reproduce, republish, or
 accumulate all or any portion of the Content, whether or not such Content is otherwise publicly viewable or available to
 you as a User, into any archive, corpus, database, index, dataset, or other compilation", and lets RotoWire throttle,
-block an IP address or device, or end access without notice. That RotoWire sued a scraper (Swish Analytics) is from
-search results seen in the C54 part 1 session, not checked again. Ben's decisions (flags 91 and 93, 2026-10-12): read the one page automatically within the
+block an IP address or device, or end access without notice. Flag 91 also records, from search results seen in the C54
+part 1 session and not checked again, that RotoWire has sued a scraper. Ben's decisions (flags 91 and 93, 2026-10-12): read the one page automatically within the
 limits above, accepting that the terms forbid it in writing; the nhl-researcher keeps the feed in its request urls; the
 public repository keeps only the fewest recorded items the tests need. If RotoWire grants written consent, say so here.
 
