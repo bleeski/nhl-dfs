@@ -54,6 +54,9 @@ def render(m: dict[str, Any]) -> str:
         f"- DK status from the salary file: {news.get('csv_summary', 'not read')}",
         *([f"- History store: {_history_line(m)}"] if m.get("history") else []),
         f"- Material news changes: {news.get('phase_b_summary', 'none (offline or no network pass)')}",
+        *([f"- Ben's reports (source BEN): " + "; ".join(f"{x['name']} ({x.get('team', '?')}) {x['field']}={x['new']}, "
+                                                        f"{x['claim']}" for x in news["ben_reports"])]
+          if news.get("ben_reports") else []),
         "- QA changes: none (no QA round in the baseline run)",
         f"- Fallback / relaxation: route {m.get('search_route', '?')}; "
         + (", ".join(f"{k} x{n}" for k, n in sorted(kinds.items())) if kinds else "no relaxations"),

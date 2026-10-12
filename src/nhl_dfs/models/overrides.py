@@ -5,6 +5,8 @@ URL and claim, a confidence, and an expiry (plan section 11). `validate` is the 
 a whitelist of fields and values, `old` must equal the current state, capacity (3 forwards per line,
 2 defensemen per pair, 5 per PP unit, one starter per team), effective <= now < expiry, a source URL.
 DK status stays the authority for OUT: an override cannot lift it.
+Ben is a source (C53, B120, flag 83): an override with source BEN carries his statement, how he learned it and the
+UTC time in its claim instead of a URL, at confidence 0.9. Only `overrides-apply --ben` builds one (build.controller).
 
 `apply` returns a NEW ParamTable. A line or PP change moves that person's ice time to the role's
 expectation and rescales his teammates' ice time so the team's expected EV skater time per group
@@ -24,6 +26,8 @@ from nhl_dfs.models.rates import load_model_config
 
 FIELDS = ("ev_line", "pp_unit", "participation", "goalie_start")
 PARTICIPATION_VALUES = ("PLAYING", "QUESTIONABLE", "OUT")
+BEN = "BEN"  # the source of Ben's own report in session (C53)
+BEN_CONFIDENCE = 0.9
 
 
 @dataclass(frozen=True)
@@ -39,6 +43,7 @@ class Override:
     claim: str
     confidence: float
     expiry_utc: datetime
+    source: str = ""  # "BEN" for Ben's own report (no URL); "" for a researcher or adversary override
 
 
 def _current(o: Override, role, roles):
@@ -50,6 +55,19 @@ def _current(o: Override, role, roles):
         return role.participation.value
     gr = roles.goalies.get(role.team)
     return bool(gr and gr.confirmed == role.person_key)
+
+
+def current_value(o: Override, roles):
+    """The value `old` must equal for this override's field (None for an unknown role)."""
+    pk = roles.role_person.get(o.role_id)
+    if pk is None or pk not in roles.persons:
+        return None
+    return _current(o, roles.persons[pk], roles)
+
+
+def ben_label(news_state: str) -> str:
+    """NEWS_STATE with Ben's report in force (flag 83): NONE+BEN, FULL+BEN, ..."""
+    return news_state if news_state.endswith("+" + BEN) else f"{news_state}+{BEN}"
 
 
 def validate(o: Override, roles, now: datetime | None = None) -> list[str]:
@@ -64,10 +82,11 @@ def validate(o: Override, roles, now: datetime | None = None) -> list[str]:
     if pk is None or pk not in roles.persons:
         return [f"unknown role_id {o.role_id!r}"]
     role = roles.persons[pk]
-    if not (isinstance(o.source_url, str) and o.source_url.startswith(("http://", "https://"))):
+    ben = o.source == BEN
+    if not ben and not (isinstance(o.source_url, str) and o.source_url.startswith(("http://", "https://"))):
         errs.append("source_url must be an http(s) URL")
     if not (isinstance(o.claim, str) and o.claim.strip()):
-        errs.append("claim is empty")
+        errs.append("claim is empty" + (" (a BEN override carries Ben's statement)" if ben else ""))
     if not (isinstance(o.confidence, (int, float)) and 0.0 <= o.confidence <= 1.0):
         errs.append("confidence must be between 0 and 1")
     if not (o.effective_utc <= now):

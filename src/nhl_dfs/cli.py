@@ -715,11 +715,14 @@ def cmd_research_request(args: argparse.Namespace) -> int:
         print("research-request needs --run <id>")
         return 2
     run, runs_root, _ = _qa_run(args)
-    req = packet.research_request(run, now=_as_of(args.as_of) or datetime.now(timezone.utc), runs_root=runs_root)
+    req = packet.research_request(run, now=_as_of(args.as_of) or datetime.now(timezone.utc), runs_root=runs_root,
+                                  ben_players=tuple(args.player or ()))
     path = run.path / "news" / "research_request.json"
     path.parent.mkdir(exist_ok=True)
     path.write_text(json.dumps(req, indent=1, ensure_ascii=False), encoding="utf-8")
     print(f"RESEARCH_PLAYERS={len(req['players'])}")
+    for name in req.get("ben_players_not_found") or []:
+        print(f"note: no player named {name!r} in this run's salary file; not in the request")
     print(f"request: {path}")
     print("----- REQUEST JSON (pass inline, verbatim) -----")
     print(packet.serialize(req))
@@ -727,17 +730,34 @@ def cmd_research_request(args: argparse.Namespace) -> int:
 
 
 def cmd_overrides_apply(args: argparse.Namespace) -> int:
-    from nhl_dfs.build import controller
+    import json
+    from datetime import datetime, timezone
 
-    if not (args.run and args.file):
-        print("overrides-apply needs --run <id> --file <researcher reply saved verbatim>")
+    from nhl_dfs.build import controller, packet
+
+    ben = getattr(args, "ben", None)
+    if not args.run or bool(args.file) == bool(ben) or (ben and not getattr(args, "how", None)):
+        print("overrides-apply needs --run <id> and either --file <researcher reply saved verbatim> or "
+              '--ben "<player> OUT|QUESTIONABLE|PLAYING|STARTING" --how "<how Ben learned it>"')
         return 2
     run, runs_root, outputs_root = _qa_run(args)
     news = run.path / "news"
     k = 1 + max([int(p.stem.split("_")[1]) for p in news.glob("overrides_*_result.json")] or [0]) if news.exists() else 1
     as_of = _as_of(args.as_of)
-    res = controller.apply_round(run, k, Path(args.file), now=as_of, clock=(lambda: as_of) if as_of is not None else None,
-                                 runs_root=runs_root, outputs_root=outputs_root, source="overrides")
+    reply = Path(args.file) if args.file else None
+    if ben:  # C53 (flag 83): Ben's report in session is a source; the built override is saved, then applied
+        try:
+            change = controller.ben_change(packet.RunView(run, runs_root).pool, ben, how=args.how,
+                                           now=as_of or datetime.now(timezone.utc))
+        except ValueError as exc:
+            print(f"BEN_OVERRIDE=REFUSED: {exc}")
+            return 1
+        news.mkdir(exist_ok=True)
+        reply = news / f"ben_{k}.json"
+        reply.write_text(json.dumps({"overrides": [change]}, indent=1), encoding="utf-8")
+        print(f"BEN_OVERRIDE={change['claim']} (saved {reply})")
+    res = controller.apply_round(run, k, reply, now=as_of, clock=(lambda: as_of) if as_of is not None else None,
+                                 runs_root=runs_root, outputs_root=outputs_root, source="ben" if ben else "overrides")
     for line in res.lines()[:-1]:
         print(line.replace("QA round", "overrides file"))
     print(f"OVERRIDES_ACCEPTED={res.accepted_correctness}")
@@ -1018,6 +1038,10 @@ def build_parser() -> argparse.ArgumentParser:
             sp.add_argument("--proposals", type=str, default=None)
         if name == "overrides-apply":
             sp.add_argument("--file", type=str, default=None)
+            sp.add_argument("--ben", type=str, default=None, help="Ben's report: '<player> OUT' (C53; no URL needed)")
+            sp.add_argument("--how", type=str, default=None, help="how Ben learned it, e.g. 'DraftKings push notification'")
+        if name == "research-request":
+            sp.add_argument("--player", action="append", default=None, help="a player Ben asks about (repeatable)")
         sp.set_defaults(func=func)
 
     for name, func in (("late-swap", cmd_late_swap), ("refresh", cmd_refresh)):

@@ -21,6 +21,8 @@ The reply is saved verbatim by the skill; the controller records its sha256 in `
 
 A bare list of proposals is accepted; one surrounding ``` fence is tolerated; anything else is malformed.
 
+Ben's own report (C53, flag 83) is not a reply: `overrides-apply --ben "<player> <STATE>" --how "<how>"` builds an override with `"source": "BEN"`, no URL, confidence 0.9, and applies it in its own mode. Any reply, from the researcher or the adversary, that carries `"source": "BEN"` is rejected; every other override still needs an http(s) `source_url`.
+
 ## Rules (plan section 9)
 
 | Case | Result |

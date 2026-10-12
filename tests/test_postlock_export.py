@@ -346,3 +346,98 @@ def test_a_rehearsal_is_never_the_current_delivery(tmp_path):
     assert r.statuses["FILE_VALID"] == "TRUE" and str(r.run.path) in r.manifest["versions"][-1]["delivery_path"]
     _, lines = cli.verify_run(tmp_path / "runs", r.run.run_id, now=BEFORE)
     assert "DELIVERY_CURRENT=FALSE (rehearsal: do not upload)" in lines
+
+
+# -- Ben as a source (B120, flag 83) -----------------------------------------------------------------------------------
+
+def _apply(run, tmp_path, change: dict, source: str, now):
+    from nhl_dfs.build import controller
+
+    reply = tmp_path / f"reply_{source}.json"
+    reply.write_text(__import__("json").dumps({"overrides": [change]}), encoding="utf-8")
+    return controller.apply_round(run, 1, reply, now=now, clock=lambda: now, runs_root=tmp_path / "runs",
+                                  outputs_root=tmp_path / "outputs", source=source)
+
+
+def _swapped(tmp_path):
+    """A late-swap child on the post-lock export at 23:10Z (game 1 started); Echo C1 already repaired."""
+    b = parent(tmp_path)
+    r = swap(tmp_path, b, EXPORT)
+    assert r.ok
+    return b, r
+
+
+def test_a_ben_override_needs_no_url_repairs_open_cells_and_is_labeled_ben(tmp_path):
+    import json
+
+    from nhl_dfs.build import controller
+
+    _, r = _swapped(tmp_path)
+    pool = read_salary(SALARY)
+    change = controller.ben_change(pool, "Charlie C1 OUT", now=AFTER_G1, how="DraftKings push notification")
+    assert change["source"] == "BEN" and change["source_url"] == "" and change["confidence"] == 0.9 and "old" not in change
+    assert change["claim"] == "Ben in session (DraftKings push notification, 2026-10-15T23:10Z): Charlie C1 (CCC) OUT"
+    res = _apply(r.run, tmp_path, change, "ben", AFTER_G1)
+    assert res.accepted_correctness == 1 and res.published_version, res.decisions
+    charlie = change["role_id"]
+    now_cells = cells(r.run.version_file(r.run.current_version()))
+    assert all(cell_role_id(c) != charlie for row in now_cells.values() for c in row)
+    for eid, k, text in marked_cells(EXPORT):  # Ben's repair on a post-lock file keeps every LOCKED cell
+        assert now_cells[eid][k] == text
+    m = json.loads((r.run.path / "manifest.json").read_text(encoding="utf-8"))
+    assert m["statuses"]["NEWS_STATE"].endswith("+BEN") and m["news"]["ben_reports"][0]["name"] == "Charlie C1"
+    assert "Ben's reports (source BEN): Charlie C1 (CCC) participation=OUT" in (r.run.path / "RUN_NOTES.md").read_text(
+        encoding="utf-8")
+    stored = json.loads((r.run.path / "news" / "accepted_overrides.json").read_text(encoding="utf-8"))[-1]
+    assert stored["source"] == "BEN" and stored["old"] is not None
+    # a late swap child of that run carries the report and the label
+    s = swap(tmp_path, r, r.run.version_file(r.run.current_version()))
+    assert s.statuses["NEWS_STATE"].endswith("+BEN") and s.manifest["news"]["ben_reports"][0]["role_id"] == charlie
+
+
+def test_without_a_url_only_ben_passes_and_no_reply_can_claim_to_be_ben(tmp_path):
+    from nhl_dfs.build import controller
+
+    _, r = _swapped(tmp_path)
+    ben = controller.ben_change(read_salary(SALARY), "Charlie C1 OUT", now=AFTER_G1, how="text from a friend")
+    researcher = {k: v for k, v in ben.items() if k != "source"}
+    researcher["old"] = "PLAYING"
+    res = _apply(r.run, tmp_path, researcher, "overrides", AFTER_G1)
+    assert res.accepted_correctness == 0 and "source_url must be an http(s) URL" in res.decisions[0]["reason"]
+    forged = {**researcher, "source": "ben"}
+    (r.run.path / "news" / "overrides_1_result.json").unlink()
+    res = _apply(r.run, tmp_path, forged, "overrides", AFTER_G1)
+    assert res.accepted_correctness == 0 and "accepted only from overrides-apply --ben" in res.decisions[0]["reason"]
+
+
+def test_ben_report_deadline_is_his_players_game_not_the_earliest_open_game(tmp_path, capsys):
+    from nhl_dfs import cli
+
+    _, r = _swapped(tmp_path)
+    base = ["--run", r.run.run_id, "--runs-root", str(tmp_path / "runs"), "--outputs-root", str(tmp_path / "outputs"),
+            "--as-of", "2026-10-15T23:54:00Z"]  # CCC@DDD (00:00Z) is inside T-8; EEE@FFF (02:00Z) is not
+    assert cli.main(["overrides-apply", *base, "--ben", "Charlie D3 OUT", "--how", "DraftKings push notification"]) == 0
+    out = capsys.readouterr().out
+    assert "OVERRIDES_ACCEPTED=0" in out and "T-8 of CCC@DDD passed" in out
+    assert cli.main(["overrides-apply", *base, "--ben", "Foxtrot D3 OUT", "--how", "DraftKings push notification"]) == 0
+    out = capsys.readouterr().out
+    assert "BEN_OVERRIDE=Ben in session (DraftKings push notification, 2026-10-15T23:54Z): Foxtrot D3 (FFF) OUT" in out
+    assert "OVERRIDES_ACCEPTED=1" in out and "delivery: " in out
+    assert cli.main(["overrides-apply", *base, "--ben", "Nobody Here OUT", "--how", "x"]) == 1
+    assert "BEN_OVERRIDE=REFUSED: no player named 'Nobody Here'" in capsys.readouterr().out
+    assert cli.main(["overrides-apply", *base, "--ben", "Foxtrot D3 OUT"]) == 2  # --how is required
+
+
+def test_a_research_request_names_any_player_ben_asks_about(tmp_path, capsys):
+    import json
+
+    from nhl_dfs import cli
+
+    _, r = _swapped(tmp_path)
+    base = ["--run", r.run.run_id, "--runs-root", str(tmp_path / "runs"), "--as-of", "2026-10-15T23:10:00Z"]
+    assert cli.main(["research-request", *base, "--player", "Delta D3", "--player", "Nobody Here"]) == 0
+    out = capsys.readouterr().out
+    req = json.loads(out.split("-----\n", 1)[1])
+    assert req["players"][0]["name"] == "Delta D3" and req["players"][0]["why"] == "Ben asked about this player"
+    assert req["ben_players"] == ["Delta D3"] and req["ben_players_not_found"] == ["Nobody Here"]
+    assert "no player named 'Nobody Here'" in out

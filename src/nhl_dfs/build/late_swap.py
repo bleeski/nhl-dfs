@@ -484,6 +484,14 @@ def swap_core(
                        if s.participation is Participation.OUT or s.eligibility is Eligibility.DISABLED}
     # C10: overrides accepted on the parent run (overrides-apply or a QA correctness repair) and still valid now
     overrides, ovr_out = accepted_overrides(parent, pool, clock())
+    bens = [o for o in overrides if o.source == "BEN"]
+    if bens:  # C53 (flag 83): Ben's report accepted on the parent is in force here too, and labeled
+        from nhl_dfs.models.overrides import ben_label
+
+        m["news"]["ben_reports"] = [{"name": pool.by_role_id[o.role_id].name, "team": pool.by_role_id[o.role_id].team,
+                                     "role_id": o.role_id, "field": o.field, "new": o.new,
+                                     "effective_utc": _utc(o.effective_utc), "claim": o.claim} for o in bens]
+        m["statuses"]["NEWS_STATE"] = ben_label(m["statuses"]["NEWS_STATE"])
     # Goalie gate (B17): an open-cell goalie whose team has another CONFIRMED starter is a repair target. Cheap:
     # the starting-goalies page only, bounded; a team where an override and Daily Faceoff disagree is CONFLICTED
     # (the override's exclusion for that team is withdrawn: nothing is repaired automatically, Ben is told).
