@@ -115,9 +115,10 @@ unavailable (...): board from Daily Faceoff alone". An item without a player or 
 **Times (flag 94).** An item's day is its printed date, taken as the America/New_York date. It is not a UTC date: the
 recaps of CAR @ PHI (started 2026-10-11 23:00Z by the NHL schedule, so posted after 01:00Z on 10-12) print October 11.
 Which US zone is not known, so an item posted near midnight may carry the neighbouring date, which can only drop it. A
-dated item counts when the page was read in this pass, or at most 60 s after the run clock (a replay with an earlier
-clock sees nothing). Its time on the board is when the page was read, and each RotoWire row says so ("item dated only,
-time is when the page was read"): the card's "CONFIRMED with source ROTOWIRE and its time" means that read time, because
+dated item counts when the page was read at most 60 s after the run clock: a live read lands within seconds of it, and
+a rehearsal or replay with an earlier clock sees nothing, live or stored. A date after the read's own New York date is
+skipped and counted. Its time on the board is when the page was read, and each RotoWire row and conflict message says
+so ("dated item, time = page read", "page read time"): the card's "CONFIRMED with source ROTOWIRE and its time" means that read time, because
 the page does not say when RotoWire posted the item. Later between RotoWire items means the later time, then the higher
 news id. A time, if the page ever prints one, is read in its stated zone (New York when none is given).
 
