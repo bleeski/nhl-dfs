@@ -251,6 +251,8 @@ def publish(
     bytes and to the run's input copies. expect_public_sha: replace the public file only if it
     still has this hash (a later pass never clobbers a newer run's publish). A public file held
     open by another program (Excel on Windows) keeps the version and reports why.
+    expect_public_sha="" expects no public file yet (C53 review: a late swap that started before the slate's first
+    publish still never replaces a newer one).
     precheck: called once both locks are held (so after any wait for them) and before the first byte is
     written; a returned reason refuses the publish (LockCrossed). It must read the clock and the lock state
     itself: a value computed before the call can be a minute stale (lock_timeout_s).
@@ -279,7 +281,7 @@ def publish(
 
         detail = ""
         if expect_public_sha is not None:
-            have = sha256(public.read_bytes()) if public.exists() else None
+            have = sha256(public.read_bytes()) if public.exists() else ""
             if have != expect_public_sha:
                 detail = "public file changed since this run's last publish (a newer publish owns it); left as is"
         if not detail:

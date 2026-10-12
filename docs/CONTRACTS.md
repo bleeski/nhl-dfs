@@ -579,6 +579,8 @@ reads it to tune, select or book money (booking stays with settle, C29).
   (or its `version` for a slate begun before C53), under the slate lock. A publish that does not replace the public file writes
   none. The run's own `versions/v<n>` keep their numbers; `published.json` and each manifest version record carry
   `delivery_version` and the path. A late swap that changes no cell still publishes (the next N, "nothing new to upload").
+  Late swap and refresh publish with compare-and-swap against the public file as it was when the pass started (`""`:
+  expect none), so a pass that ends after a newer publish keeps its version and takes no number.
 - `verify --run` (flag 84) prints `delivery_file`, `DELIVERY_CURRENT` (FALSE when `published.json` names another file, and for a
   rehearsal) and `LOCK_SOON` lines for every game, from Game Info, that a changed cell (against the run's input entries file)
   touches and that starts within 30 minutes (`locks.locking_soon`), in America/Chicago.
@@ -586,4 +588,7 @@ reads it to tune, select or book money (booking stays with settle, C29).
   "ben")`): no URL, confidence 0.9, `old` read from the role state, expiry at the game start plus 4 hours, deadline T-8 of the
   reported player's own game. Any other reply claiming source BEN is rejected. The manifest's `news.ben_reports`, NEWS_STATE
   `+BEN` and RUN_NOTES name it, also in a late-swap child. `research-request --player` lists a named player first, outside the
-  cap, and the apply limit rises by their count.
+  cap, and the apply limit rises by their count. `--ben` runs only on the run whose current version is the slate's
+  delivered file. Accepted overrides are copied to every late-swap or refresh child while valid, the latest record
+  winning per person and field (per team for a goalie confirmation); a refresh started on the original build reads the
+  overrides of the run that delivered the slate's current file (`swap_core(overrides_run=)`).

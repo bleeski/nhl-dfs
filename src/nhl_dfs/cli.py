@@ -753,15 +753,21 @@ def cmd_overrides_apply(args: argparse.Namespace) -> int:
     if ben:  # C53 (flag 83): Ben's report in session is a source; the built override is saved, then applied
         from nhl_dfs.build.manifest import read_manifest
 
-        slate = read_manifest(run)["slate_id"]
+        mf = read_manifest(run)
+        pub = Path(mf.get("public_path") or outputs_root / mf["slate_id"] / "DKEntries.csv").parent / "published.json"
         try:  # C53 review: only the run whose current version is the slate's delivered file can deliver a repair
-            stamp = json.loads((outputs_root / slate / "published.json").read_text(encoding="utf-8"))
+            stamp = json.loads(pub.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             stamp = {}
-        if stamp.get("run_id") != run.run_id or stamp.get("version") != run.current_version():
+        if stamp.get("run_id") == run.run_id and stamp.get("version") != run.current_version():
+            print(f"BEN_OVERRIDE=REFUSED: this run's v{run.current_version()} was not delivered ({pub} still names its "
+                  f"v{stamp.get('version')}); see RUN_NOTES.md (close DKEntries.csv if it is open in another program and "
+                  "rerun the late swap), then use --ben on the run that delivers.")
+            return 1
+        if stamp.get("run_id") != run.run_id:
             holder = f"run {stamp.get('run_id')} v{stamp.get('version')}" if stamp else "no run (nothing delivered)"
-            print(f"BEN_OVERRIDE=REFUSED: run {run.run_id} is not the slate's current delivery; "
-                  f"{outputs_root / slate / 'published.json'} names {holder}. Use --run <that run>.")
+            print(f"BEN_OVERRIDE=REFUSED: run {run.run_id} is not the slate's current delivery; {pub} names {holder}. "
+                  "Use --run <that run>.")
             return 1
         try:
             change = controller.ben_change(packet.RunView(run, runs_root).pool, ben, how=args.how,

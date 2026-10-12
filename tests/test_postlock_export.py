@@ -485,3 +485,52 @@ def test_a_late_swap_that_ends_after_a_newer_publish_takes_no_number(tmp_path, m
     assert r.statuses["DELIVERY_STATUS"] == "DEGRADED_REVIEW" and public.read_bytes() == b"a newer publish"
     assert sorted(int(m.group(1)) for x in public.parent.iterdir() if (m := DELIVERY_RE.match(x.name))) == [1]
 
+
+
+def test_the_latest_report_wins_per_player_and_per_team_goalie(tmp_path):
+    """Fix-commit review: carried and appended records must not leave two contradicting reports in force."""
+    import json
+    from types import SimpleNamespace
+
+    pool = read_salary(CLASSIC_SALARY)
+    rid = {r.name: r.role_id for r in pool.rows}
+
+    def rec(name, field, new, minutes):
+        return {"role_id": rid[name], "field": field, "old": None, "new": new, "source": "BEN", "source_url": "",
+                "claim": "x", "confidence": 0.9, "effective_utc": (BEFORE + timedelta(minutes=minutes)).isoformat(),
+                "expiry_utc": (BEFORE + timedelta(hours=12)).isoformat()}
+
+    parent_dir = tmp_path / "p"
+    (parent_dir / "news").mkdir(parents=True)
+    (parent_dir / "news" / "accepted_overrides.json").write_text(json.dumps([
+        rec("Charlie G1", "goalie_start", True, 1), rec("Charlie G2", "goalie_start", True, 2),
+        rec("Delta C1", "participation", "OUT", 1), rec("Delta C1", "participation", "PLAYING", 2)]), encoding="utf-8")
+    objs, out = late_swap.accepted_overrides(SimpleNamespace(path=parent_dir), pool, BEFORE + timedelta(hours=1))
+    names = {pool.by_role_id[o.role_id].name for o in objs}
+    assert names == {"Charlie G2", "Delta C1"}
+    excluded = {pool.persons[k].classic.name for k in out}
+    assert excluded == {"Charlie G1"}  # the later confirmation stands; Delta C1 is PLAYING again
+    child = tmp_path / "c"
+    (child / "news").mkdir(parents=True)
+    assert late_swap.carry_overrides(SimpleNamespace(path=parent_dir), SimpleNamespace(path=child),
+                                     BEFORE + timedelta(hours=1)) == 3  # per role and field: Delta C1's OUT dropped
+
+
+def test_a_publish_expecting_no_public_file_never_replaces_one(tmp_path):
+    from nhl_dfs.build.state import publish
+
+    run, out = _bare_run(tmp_path), tmp_path / "outputs"
+    assert publish(run, b"one", _report(b"one"), SLATE, outputs_root=out, expect_public_sha="").public_replaced
+    later = publish(run, b"two", _report(b"two"), SLATE, outputs_root=out, expect_public_sha="")
+    assert not later.public_replaced and later.delivery_path is None and (out / SLATE / "DKEntries.csv").read_bytes() == b"one"
+
+
+def test_a_refresh_of_the_original_build_reads_bens_report_on_the_delivered_run(tmp_path):
+    from nhl_dfs.build import controller, refresh
+
+    b, r = _swapped(tmp_path)
+    change = controller.ben_change(read_salary(SALARY), "Charlie C1 OUT", now=AFTER_G1, how="DraftKings push notification")
+    assert _apply(r.run, tmp_path, change, "ben", AFTER_G1).accepted_correctness == 1
+    f = refresh.run(b.run.run_id, offline=True, runs_root=tmp_path / "runs", outputs_root=tmp_path / "outputs",
+                    clock=lambda: AFTER_G1 + timedelta(minutes=5), salary_path=SALARY, objective="baseline")
+    assert f.statuses["NEWS_STATE"].endswith("+BEN") and "Charlie C1" in f.manifest["news"]["override_exclusions"]

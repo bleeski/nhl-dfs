@@ -186,14 +186,16 @@ def carry_overrides(parent, run, now: datetime) -> int:
         return 0
     from nhl_dfs.build.controller import override_from
 
-    keep = []
+    latest: dict[tuple, dict] = {}  # a later record replaces an earlier one for the same role and field
     for d in json.loads(src.read_text(encoding="utf-8")):
         try:
             o = override_from(d)
         except (KeyError, TypeError, ValueError):
             continue
         if o.effective_utc <= now < o.expiry_utc:
-            keep.append(d)
+            latest.pop((o.role_id, o.field), None)
+            latest[(o.role_id, o.field)] = d
+    keep = list(latest.values())
     if keep:
         (run.path / "news").mkdir(exist_ok=True)
         (run.path / "news" / "accepted_overrides.json").write_text(json.dumps(keep, indent=1, default=str), encoding="utf-8")
@@ -203,13 +205,15 @@ def carry_overrides(parent, run, now: datetime) -> int:
 def accepted_overrides(parent, pool, now: datetime) -> tuple[list, dict[str, str]]:
     """(Override objects still valid at `now`, person_key -> exclusion reason) from the parent run's
     news/accepted_overrides.json. A participation OUT excludes the person; a goalie_start confirmation
-    excludes the team's other goalies (they will not start: backlog B17 on the override path)."""
+    excludes the team's other goalies (they will not start: backlog B17 on the override path). The latest record
+    wins (C53 review): per person and field, and per team for a goalie confirmation, so "X OUT" then "X PLAYING", or
+    one goalie confirmed then the other, leaves only the later report in force."""
     path = parent.path / "news" / "accepted_overrides.json"
     if not path.exists():
         return [], {}
     from nhl_dfs.build.controller import override_from
 
-    objs, out = [], {}
+    latest: dict[tuple, Any] = {}
     for d in json.loads(path.read_text(encoding="utf-8")):
         try:
             o = override_from(d)
@@ -217,7 +221,12 @@ def accepted_overrides(parent, pool, now: datetime) -> tuple[list, dict[str, str
             continue
         if not (o.effective_utc <= now < o.expiry_utc) or o.role_id not in pool.by_role_id:
             continue
-        objs.append(o)
+        row = pool.by_role_id[o.role_id]
+        key = (row.team, o.field) if o.field == "goalie_start" else (row.person_key, o.field)
+        latest.pop(key, None)
+        latest[key] = o
+    objs, out = list(latest.values()), {}
+    for o in objs:
         row = pool.by_role_id[o.role_id]
         if o.field == "participation" and o.new == "OUT":
             out[row.person_key] = "override OUT"
@@ -393,6 +402,7 @@ def swap_core(
     eager_objective: bool = False,
     apply_state: Callable | None = None,
     fetch_odds: bool = False,
+    overrides_run: RunDir | None = None,
 ) -> RunResult:
     """objective: "auto" | "scenario" | "provisional" | "baseline" (C9; stepped down in that order and
     reported). standings: an optional live.StandingsSnapshot. eager_objective: resolve (and, for a
@@ -414,7 +424,7 @@ def swap_core(
     # C53 review (flag 81 (b)): publish only if the public file still holds what it held when this pass started, so a
     # late swap or refresh that ends after a newer publish (Ben's report, another late swap) never takes its place
     public0 = Path(outputs_root) / slate_id / PUBLIC_NAME
-    expect0 = sha256(public0.read_bytes()) if rehearsal is None and public0.exists() else None
+    expect0 = None if rehearsal is not None else (sha256(public0.read_bytes()) if public0.exists() else "")
     # A rehearsal clock drives locks only; the run id and created time are always real.
     real_clock = (lambda: datetime.now(timezone.utc)) if rehearsal is not None else clock
     run = new_run(runs_root, mode=pool.mode, clock=real_clock)
@@ -510,8 +520,11 @@ def swap_core(
         out_people |= {pool.by_role_id[r].person_key for r, s in rec.rows.items()
                        if s.participation is Participation.OUT or s.eligibility is Eligibility.DISABLED}
     # C10: overrides accepted on the parent run (overrides-apply or a QA correctness repair) and still valid now
-    overrides, ovr_out = accepted_overrides(parent, pool, clock())
-    carried = carry_overrides(parent, run, clock())  # C53 review: in force for the next child too
+    # overrides_run: the run holding the slate's delivered file when it is not the parent (a refresh started on the
+    # original build after a late swap delivered; C53 review), so Ben's report on the delivered run is read
+    src_run = overrides_run or parent
+    overrides, ovr_out = accepted_overrides(src_run, pool, clock())
+    carried = carry_overrides(src_run, run, clock())  # C53 review: in force for the next child too
     if carried:
         m["news"]["overrides_carried"] = carried
     bens = [o for o in overrides if o.source == "BEN"]
