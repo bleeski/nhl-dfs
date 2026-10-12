@@ -92,6 +92,71 @@ news. (5) The goalie depth path keeps reading fresh pages only. (6) Field featur
 times) rather than the covered average. (7) A kept page inside the hour before the team's start is low confidence. (8) The label (age, stamp,
 weight) shows in RUN_NOTES, the research request and QA packet, and the `roles` printout of `cli.py`.
 
+## RotoWire: the hockey news page (C54, checked 2026-10-12)
+
+**Page.** `https://www.rotowire.com/hockey/news.php` (`config/sources.yaml` `urls.rotowire_news`), the default Latest
+view. The items are in the server HTML; no script loads them. A visitor without a subscription sees the latest 25 items,
+and the page's Get More News button leads to the subscription page. One item:
+
+| Element | Read as |
+|---|---|
+| `div.news-update` | one item; the page lists them newest first |
+| `img.news-update__logo`, its `alt` | the team code (`PHI`). The page's own team filter (`news.php?team=XXX`) lists the 32 NHL codes, so `config/teams.yaml` needs no `rotowire:` entry; a code not in the table is reported, not read |
+| `a.news-update__player-link` | the player |
+| `a.news-update__headline` | the headline; its `href` is the item URL, and the number that ends it is a news id that rises with each new item |
+| `b.news-update__pos` | the position (`G`, `D`, `C`, `LW`, `RW`); a start for a non-goalie is ignored |
+| `div.news-update__timestamp` | the date only (`October 11, 2026`); nothing on the page gives an item's time |
+| `div.news-update__news` | the news paragraph: with the headline, the only text the statement rules read |
+| `div.news-update__analysis` | dropped; for a visitor it is a subscription prompt |
+
+A page with no item, or no item with a player and a readable date, is SourceSchemaError: the board then reads "RotoWire
+unavailable (...): board from Daily Faceoff alone". An item without a player or a date is skipped and counted.
+
+**Times (flag 94).** An item's day is its printed date, taken as the America/New_York date. It is not a UTC date: the
+recaps of CAR @ PHI (started 2026-10-11 23:00Z by the NHL schedule, so posted after 01:00Z on 10-12) print October 11.
+Which US zone is not known, so an item posted near midnight may carry the neighbouring date, which can only drop it. A
+dated item counts when the page was read in this pass, or at most 60 s after the run clock (a replay with an earlier
+clock sees nothing). Its time on the board is when the page was read, and each RotoWire row says so ("item dated only,
+time is when the page was read"): the card's "CONFIRMED with source ROTOWIRE and its time" means that read time, because
+the page does not say when RotoWire posted the item. Later between RotoWire items means the later time, then the higher
+news id. A time, if the page ever prints one, is read in its stated zone (New York when none is given).
+
+**What counts (flags 86 to 89).** Only explicit starts and scratches in the news paragraph or headline, bound to the
+slate game by opponent, day or tonight, about the item's own player; the merge with Daily Faceoff, overrides and
+DraftKings is flag 89 (any disagreement is CONFLICTED, never a silent pick). RotoWire never changes goalie
+probabilities (flag 92).
+
+**Citing (flag 90).** When an item's news paragraph links a post off rotowire.com, the row cites that post and its link
+text; otherwise the row reads RotoWire (aggregator) with the item URL. The cited post is never fetched. No item on the
+2026-10-12 recordings linked a post.
+
+**Rate and attempts (flags 85, 91, 93).** 3.0 s between requests to www.rotowire.com, a 600 s TTL, cache first. Every
+attempt is written to `rotowire/attempts.json` under the cache root before the request goes out, and no request goes
+out within 600 s of any attempt (failed ones included); an attempt is one request, never retried; a failed request
+falls back to the stored copy, labeled with its age; an offline read never writes an attempt. Only run, late swap and
+refresh read the page, never the capture schedule; the scheduled refresh reads it about twice per slate.
+
+**robots.txt (read 2026-10-12T12:35Z).** The `User-agent: *` group disallows `/users/login.php?`, `/account/`,
+`/forum/`, `/partners/`, `/rotoboards/`, `/updates/` and old commissioner paths; `/hockey/news.php` is allowed for every
+agent, and there are no rules for AI agents. robots.txt points to `llms.txt` (Last Updated 2025-07-16), a reading
+guide for language models, not a license.
+
+**Terms (read 2026-10-12T12:36Z, `https://www.rotowire.com/termsandconditions.php`, "Effective as of September 19,
+2026").** Article V: "The Services are provided only for your own personal, non-commercial use." Article VI (Automated
+Access; No Scraping; Rate Limits and Access Controls): "Except with RotoWire's express prior written consent, you shall
+not, and shall not permit, authorize, or assist any third party to, access, collect, harvest, or extract the Services or
+any Content by any automated means, including, without limitation, web scraping, data mining, harvesting, crawling,
+spidering, indexing, screen scraping, robots, bots, crawlers, spiders, browser extensions, plug-ins, macros, scripts,
+application programming interfaces not authorized by RotoWire, or any other automated device, method, or process
+(collectively, "Automated Means"), regardless of whether such access, collection, or extraction occurs while you are
+logged in to a RotoWire Account or otherwise." It also forbids using Automated Means to "copy, reproduce, republish, or
+accumulate all or any portion of the Content, whether or not such Content is otherwise publicly viewable or available to
+you as a User, into any archive, corpus, database, index, dataset, or other compilation", and lets RotoWire throttle,
+block an IP address or device, or end access without notice. That RotoWire sued a scraper (Swish Analytics) is from
+search results seen in the C54 part 1 session, not checked again. Ben's decisions (flags 91 and 93, 2026-10-12): read the one page automatically within the
+limits above, accepting that the terms forbid it in writing; the nhl-researcher keeps the feed in its request urls; the
+public repository keeps only the fewest recorded items the tests need. If RotoWire grants written consent, say so here.
+
 ## Participation precedence (config/roles.yaml, models/roles.py)
 
 DK status (draftables when reachable, else the salary file's Status column) first: OUT wins over a Daily Faceoff line
