@@ -915,3 +915,46 @@ def test_the_pages_confirmation_does_not_count_for_the_next_day_or_from_late_las
 ])
 def test_home_or_road_before_the_net_word_and_the_new_hedges(text, expected):
     assert kind(text) == expected
+
+
+# -- the card's exit check: a refresh on the recorded page prints RotoWire on the GOALIES line ------------------------
+
+C54_SLATE = TESTS / "fixtures" / "c54_slate"  # make_fixtures.py: FLA @ BUF and VGK @ MIN of 2026-10-12
+
+
+def test_exit_check_a_refresh_on_the_recorded_page_prints_the_rotowire_source_on_the_goalies_line(
+        tmp_path, monkeypatch, capsys):
+    """No setting redirects data/raw, so the default cache root points at a scratch folder that the engine itself
+    seeds with the recorded page: one online read through a fake transport at the recorded time. The run and the
+    delivery happen at 14:00Z, before the page was read (so it cannot count); the refresh runs offline at 15:30Z."""
+    import nhl_dfs.data.http as http_mod
+    from nhl_dfs import cli
+
+    raw = tmp_path / "raw"
+    monkeypatch.setattr(http_mod, "DEFAULT_ROOT", raw)
+    c, t = _cache(tmp_path, [("rotowire.com", 200, NEWS.read_bytes())], clock=lambda: NEWS_READ)
+    assert rw.fetch_news({}, cache=c, now=NEWS_READ).source == "live" and len(t.calls) == 1
+    seeded = _attempts(raw)
+    t0 = datetime(2026, 10, 12, 14, 0, tzinfo=timezone.utc)
+    t1 = datetime(2026, 10, 12, 15, 30, tzinfo=timezone.utc)
+    runs, outs = tmp_path / "runs", tmp_path / "outputs"
+    b = run_slate(C54_SLATE / "DKSalaries.csv", C54_SLATE / "DKEntries.template.csv", offline=True, out_root=runs,
+                  clock=lambda: t0)
+    assert b.statuses["FILE_VALID"] == "TRUE"
+    d = late_swap.run(b.run.run_id, C54_SLATE / "DKEntries.current.csv", offline=True, fast=True, runs_root=runs,
+                      outputs_root=outs, clock=lambda: t0)
+    assert d.statuses["DELIVERY_STATUS"] == "CHECKED"
+    before = d.manifest["goalies"]
+    # NJD and CAR are not on this slate; Markstrom's item was read at 15:05Z, after the 14:00Z clock
+    assert before["rotowire"]["counts"] == {"items": 5, "skipped_other_teams": 4, "skipped_after_clock": 1}
+    capsys.readouterr()
+    assert cli.main(["refresh", "--run", b.run.run_id, "--offline", "--as-of", "2026-10-12T15:30:00Z",
+                     "--runs-root", str(runs), "--outputs-root", str(outs)]) == 0
+    out = capsys.readouterr().out
+    row = next(x for x in out.splitlines() if x.startswith("  Jacob Markstrom | FLA |"))
+    cells = [x.strip() for x in row.split("|")]
+    assert cells[2] == "CONFIRMED" and cells[4] == "Jacob Markstrom (CONFIRMED)", row
+    assert cells[5].startswith("RotoWire (citing Rob Darragh of the Panthers' official site, dated item"), row
+    assert "RotoWire news: stored" in out and "1 start(s)" in out
+    assert not any(x.startswith("  FLA G2 |") for x in out.splitlines())  # the teammate's open cell was repaired
+    assert _attempts(raw) == seeded and len(t.calls) == 1  # the offline refresh sent nothing
