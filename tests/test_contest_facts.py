@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 from datetime import date
 from pathlib import Path
 
@@ -59,6 +60,11 @@ def _distill(path: Path, since: date | None = ALL_DATES) -> cf.Distilled:
     ("NHL $1.25K Quarter Jukebox", "NHL $1.25K Quarter Jukebox"),
     ("NHL Showdown $500 Synthetic Late (TOY @ MOK)", "NHL Showdown $500 Synthetic Late"),  # a bare word Late stays
     ("NHL $20 Dime Time (late)", "NHL $20 Dime Time"),
+    # flag 80: the session tags Ben's export carries beside the bare name (Later, Afternoon, Main, Turbo)
+    ("NHL $1 Double Up (Later)", "NHL $1 Double Up"),
+    ("NHL $1 Double Up (Afternoon) (2/3)", "NHL $1 Double Up"),
+    ("NHL $1 Double Up (main)", "NHL $1 Double Up"),
+    ("NHL $20 Dime Time (Turbo) (ANA @ WPG)", "NHL $20 Dime Time"),
 ])
 def test_the_key_strips_each_suffix_form_and_keeps_the_rest(name, key):
     assert cf.name_key(name) == key
@@ -68,6 +74,8 @@ def test_the_key_keeps_case_and_every_bracketed_tag_that_is_not_a_suffix():
     assert cf.name_key("NHL $4K Hip Check [20 Entry Max]") != cf.name_key("NHL $4K Hip Check")
     assert cf.name_key("nhl $200 dime time") != cf.name_key("NHL $200 Dime Time")
     assert cf.name_key("NHL $20 Dime Time (Late Swap)") == "NHL $20 Dime Time (Late Swap)"
+    assert cf.name_key("NHL $1 Double Up (Main Event)") == "NHL $1 Double Up (Main Event)"  # only a whole tag is stripped
+    assert cf.name_key("NHL $20 Dime Time (Turbo Edition)") == "NHL $20 Dime Time (Turbo Edition)"
 
 
 def test_the_name_patterns_agree_with_c49_and_the_config():
@@ -188,15 +196,31 @@ def test_load_refuses_a_bad_header_a_duplicate_key_and_a_bad_value(tmp_path):
             cf.load(p)
 
 
+# The bracketed forms that state a contest's fixed shape and stay in a key (flag 80(e)): the complete list from the suffix
+# inventory of Ben's 2026-10-12 export. Anything else bracket-like left in a committed key is a suffix the key does not strip.
+FIXED_FORMS = re.compile(r"\s*(?:\[Single Entry\]|\[\d+ Entry Max\]|\[Top \d+ Win \$\d+\]|\[Just \$\d+(?:\.\d+)?!?\]"
+                         r"|\[Read Contest Description!\])")
+
+
 def test_the_committed_table_loads_holds_recurring_keys_and_no_entry_fields():
-    if not COMMITTED.is_file():
-        pytest.skip(f"SKIPPED LOUDLY: {COMMITTED} is not committed yet (it is distilled from Ben's export, flag 65)")
+    # Committed from Ben's export on 2026-10-12 (C50): a missing table is a failure, not a skip, so --done cannot pass without it
+    assert COMMITTED.is_file(), f"{COMMITTED} is not committed (it is distilled from Ben's export by results --facts, flag 65)"
     t = cf.load(COMMITTED)
     header = COMMITTED.read_text(encoding="utf-8").splitlines()[0].split(",")
     assert tuple(header) == cf.COLUMNS and not ENTRY_FIELDS & set(header)
     assert any(r.contests_seen >= 2 for r in t.rows.values())
     for r in t.rows.values():
         assert cf.left_out_reason(r.name_key) is None, r.label()
+        rest = FIXED_FORMS.sub("", r.name_key)
+        assert not re.search(r"[()\[\]]|\d+/\d+| @ ", rest), f"{r.label()}: a suffix the key does not strip ({rest!r})"
+
+
+def test_the_fixed_forms_are_the_bracketed_parts_a_key_keeps():
+    for name in ("NHL $1K Hip Check [20 Entry Max]", "NHL $100 Daily Dollar [Single Entry]", "NHL $200 Dime Time [Just $0.10!]",
+                 "NHL Showdown $1 Triple Up [Top 9 Win $3]", "NHL $3 Fun [Read Contest Description!]"):
+        assert cf.name_key(name) == name and not re.search(r"[()\[\]]", FIXED_FORMS.sub("", name)), name
+    for name in ("NHL $20 Dime Time (Late Swap)", "NHL $1 Double Up (4-20)", "NHL $5 Pond [Bonus]"):
+        assert re.search(r"[()\[\]]", FIXED_FORMS.sub("", cf.name_key(name))), name  # an unknown form would fail the table test
 
 
 # -- the command ------------------------------------------------------------------------------------------------------------

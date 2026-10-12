@@ -534,8 +534,8 @@ reads it to tune, select or book money (booking stays with settle, C29).
   header, a bad value or a duplicate key.
 - Distill: `results --facts [--history <csv>] [--since <date>] [--facts-out <path>]` (C49's command; writes only the table and
   prints a summary). Rows: settled, paid NHL Classic and Showdown rows dated from `--since` (default 2026-09-29, the engine era).
-  Key (flag 78): mode (C49's format), the name without its game suffix "(AAA @ BBB)", its "(k/n)" counter and its "(Early)" or
-  "(Late)" tag, spaces collapsed, case kept, and the fee in cents. Left out and only counted: satellites, Boosters (the words
+  Key (flag 78): mode (C49's format), the name without its game suffix "(AAA @ BBB)", its "(k/n)" counter and its session tag
+  ("(Early)", "(Late)", "(Later)", "(Afternoon)", "(Main)" or "(Turbo)", flag 80), spaces collapsed, case kept, and the fee in cents. Left out and only counted: satellites, Boosters (the words
   Top N Win after satellite and cash names, C49's kind order, flag 76; a Triple Up named "[Top 9 Win $3]" is cash and kept), freerolls, other game types, and names that do not start "NHL ", carry "vs" or carry no dollar amount (no other person's
   name is committed; the summary lists every key written). Refused with the reason printed (flag 79): a key whose prize pool or places paid changed between contests, a key
   with no pool or no places paid, a contest that lists two values, a key with a ticket prize (shown in the export only when Ben won it, so a partial guard).

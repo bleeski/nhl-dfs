@@ -1,0 +1,45 @@
+mode,name_key,fee,max_entrants,last_entrants,prize_pool,places_paid,contests_seen,first_date,last_date
+classic,NHL $1.25K Quarter Jukebox,0.25,5945,5945,1250.00,1286,3,2026-10-07,2026-10-09
+classic,NHL $1.5K Quarter Jukebox,0.25,7134,7134,1500.00,1706,2,2026-09-30,2026-10-02
+classic,NHL $100 Daily Dollar [Single Entry],1.00,118,118,100.00,27,3,2026-10-01,2026-10-10
+classic,NHL $100 Dime Time,0.10,1189,1189,100.00,277,1,2026-10-10,2026-10-10
+classic,NHL $150 Quarter Jukebox,0.25,713,713,150.00,171,2,2026-10-01,2026-10-08
+classic,NHL $1K Daily Dollar [Single Entry],1.00,1189,1145,1000.00,285,2,2026-09-29,2026-10-02
+classic,NHL $1K Hip Check [20 Entry Max],1.00,1189,1189,1000.00,285,2,2026-10-08,2026-10-10
+classic,NHL $1K Quarter Jukebox,0.25,4756,4756,1000.00,1104,2,2026-10-03,2026-10-10
+classic,NHL $2.1K mini-MAX [150 Entry Max],0.50,5112,5112,2150.00,1025,1,2026-10-07,2026-10-07
+classic,NHL $2.5K mini-MAX [150 Entry Max],0.50,5945,5945,2500.00,1190,2,2026-10-01,2026-10-02
+classic,NHL $20 Dime Time,0.10,204,152,20.00,55,3,2026-10-01,2026-10-08
+classic,NHL $20 Quarter Jukebox,0.25,95,77,20.00,21,2,2026-10-06,2026-10-06
+classic,NHL $200 Clapper [5 Entry Max],1.00,237,237,200.00,55,1,2026-10-06,2026-10-06
+classic,NHL $200 Dime Time,0.10,2378,1677,200.00,550,7,2026-10-01,2026-10-10
+classic,NHL $250 Quarter Jukebox,0.25,1189,1189,250.00,273,2,2026-10-01,2026-10-10
+classic,NHL $30 Daily Dollar,1.00,35,35,30.00,9,1,2026-10-06,2026-10-06
+classic,NHL $400 Daily Dollar [Single Entry],1.00,475,475,400.00,109,1,2026-10-10,2026-10-10
+classic,NHL $4K Hip Check [20 Entry Max],1.00,4756,4756,4000.00,1103,1,2026-10-03,2026-10-03
+classic,NHL $500 Daily Dollar [Single Entry],1.00,594,594,500.00,136,2,2026-10-03,2026-10-09
+classic,NHL $5K Hip Check [20 Entry Max],1.00,5945,5945,5000.00,1543,1,2026-10-08,2026-10-08
+classic,NHL $5K mini-MAX [150 Entry Max],0.50,11890,11890,5000.00,2732,3,2026-09-30,2026-10-08
+classic,NHL $6K Hip Check [20 Entry Max],1.00,7134,7134,6000.00,1815,2,2026-09-30,2026-10-09
+classic,NHL $6K mini-MAX [150 Entry Max],0.50,14268,14268,6000.00,3280,1,2026-10-09,2026-10-09
+classic,NHL $75 Hip Check,1.00,70,70,75.00,24,1,2026-10-06,2026-10-06
+classic,NHL $750 Daily Dollar [Single Entry],1.00,891,891,750.00,204,3,2026-09-30,2026-10-07
+classic,NHL Single Entry $1 Double Up,1.00,229,229,200.00,100,1,2026-09-29,2026-09-29
+showdown,NHL Showdown $1 Triple Up [Top 3 Win $3],1.00,9,9,9.00,3,1,2026-10-02,2026-10-02
+showdown,NHL Showdown $1 Triple Up [Top 9 Win $3],1.00,26,21,27.00,9,2,2026-10-03,2026-10-10
+showdown,NHL Showdown $100 Daily Dollar [Single Entry],1.00,109,99,100.00,27,6,2026-09-29,2026-10-10
+showdown,NHL Showdown $100 Dime Time,0.10,1164,1164,100.00,277,1,2026-09-29,2026-09-29
+showdown,NHL Showdown $100 Quarter Jukebox,0.25,475,475,100.00,110,4,2026-10-03,2026-10-10
+showdown,NHL Showdown $150 Hip Check,1.00,127,127,150.00,42,1,2026-10-08,2026-10-08
+showdown,NHL Showdown $150 Quarter Jukebox,0.25,713,713,150.00,171,4,2026-09-29,2026-10-09
+showdown,NHL Showdown $1K Hip Check [20 Entry Max],1.00,1168,1063,1000.00,285,2,2026-10-06,2026-10-09
+showdown,NHL Showdown $20 Dime Time,0.10,237,237,20.00,55,6,2026-10-02,2026-10-09
+showdown,NHL Showdown $20 Quarter Jukebox,0.25,53,53,20.00,21,1,2026-10-08,2026-10-08
+showdown,NHL Showdown $200 Quarter Jukebox,0.25,951,712,200.00,222,2,2026-10-06,2026-10-07
+showdown,NHL Showdown $250 Hip Check,1.00,297,297,250.00,68,1,2026-10-10,2026-10-10
+showdown,NHL Showdown $50 Daily Dollar [Single Entry],1.00,47,47,50.00,15,2,2026-10-08,2026-10-08
+showdown,NHL Showdown $50 Hip Check,1.00,37,37,50.00,15,1,2026-10-09,2026-10-09
+showdown,NHL Showdown $50 Quarter Jukebox,0.25,117,117,50.00,55,1,2026-10-06,2026-10-06
+showdown,NHL Showdown $600 Hip Check,1.00,621,621,600.00,168,1,2026-10-07,2026-10-07
+showdown,NHL Showdown $75 Daily Dollar [Single Entry],1.00,89,69,75.00,15,4,2026-10-03,2026-10-09
+showdown,NHL Showdown $750 Hip Check [20 Entry Max],1.00,880,803,750.00,204,2,2026-10-06,2026-10-08

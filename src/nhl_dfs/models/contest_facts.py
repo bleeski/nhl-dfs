@@ -8,8 +8,8 @@ and their first and last dates. Nothing about Ben's entries is kept (no entry id
 committed as data/contest_facts/nhl.csv (flag 65); `models/contests.resolve` uses a matching row after the page, a template,
 the lobby row and C47's Booster rule fail (FIELD_SIZE_SOURCE=HISTORY, PAYOUT_SOURCE stays PRIOR).
 
-The key (flag 78): the contest name without its game suffix "(AAA @ BBB)", its "(k/n)" counter and its "(Early)" or
-"(Late)" tag, spaces collapsed, case kept; with the mode (classic or showdown) and the fee in cents. A key whose prize pool or
+The key (flag 78): the contest name without its game suffix "(AAA @ BBB)", its "(k/n)" counter and its session tag
+("(Early)", "(Late)", "(Later)", "(Afternoon)", "(Main)" or "(Turbo)", flag 80), spaces collapsed, case kept; with the mode (classic or showdown) and the fee in cents. A key whose prize pool or
 places paid changed between contests, a contest that lists two values, or a key with a ticket prize is refused (flag 79).
 Satellites, Boosters ("Top N Win" names that are not cash, flag 76), freerolls, and names that do not start "NHL ", carry
 "vs" or carry no dollar amount (head-to-head and private leagues, so no other person's name is committed) are left out and only counted. Reads and writes local files
@@ -40,7 +40,9 @@ COLUMNS = ("mode", "name_key", "fee", "max_entrants", "last_entrants", "prize_po
 MODES = ("classic", "showdown")
 
 COUNTER = re.compile(r"\s*\(\d+/\d+\)")
-SESSION_TAG = re.compile(r"\s*\((?:Early|Late)\)", re.IGNORECASE)
+# The session tags a recurring name carries on some slates and not others (flag 80: Later, Afternoon, Main and Turbo seen in
+# Ben's export beside the bare name with the same pool and places paid); only a whole parenthesis matches
+SESSION_TAG = re.compile(r"\s*\((?:Early|Late|Later|Afternoon|Main|Turbo)\)", re.IGNORECASE)
 # C49's kind patterns (learn/entry_history.KIND_RULES, first match wins: satellite, cash, top_n) plus the config's satellite
 # pattern; tests check they agree
 SATELLITE = re.compile(r"satellite|qualifier|\bsat\b", re.IGNORECASE)
@@ -63,7 +65,8 @@ def is_booster_name(name: str) -> bool:
 
 
 def name_key(name: str) -> str:
-    """The contest name without "(AAA @ BBB)", "(k/n)" and "(Early)" or "(Late)", spaces collapsed, case kept (flag 78)."""
+    """The contest name without "(AAA @ BBB)", "(k/n)" and its session tag ("(Early)", "(Late)", "(Later)", "(Afternoon)",
+    "(Main)", "(Turbo)"), spaces collapsed, case kept (flags 78 and 80)."""
     s = SESSION_TAG.sub("", COUNTER.sub("", GAME_SUFFIX.sub("", str(name))))
     return " ".join(s.split())
 
