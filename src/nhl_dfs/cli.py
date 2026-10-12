@@ -58,10 +58,19 @@ def cmd_status(args: argparse.Namespace) -> int:
 MAX_REASONS_PRINTED = 20
 
 
-def verify_run(runs_root: Path, run_id: str) -> tuple[bool, list[str]]:
-    """Re-check a run's current version against its input copies and its manifest hashes."""
+def verify_run(runs_root: Path, run_id: str, now=None) -> tuple[bool, list[str]]:
+    """Re-check a run's current version against its input copies and its manifest hashes. C53 (flags 81, 84): name the
+    delivered file (delivery_file), whether it is still the slate's current file (DELIVERY_CURRENT; never for a
+    rehearsal), and every game its changed cells touch that starts within 30 minutes (LOCK_SOON)."""
+    import json
+    from datetime import datetime, timezone
+
+    from nhl_dfs.build import locks as locks_mod
     from nhl_dfs.build.manifest import read_manifest
+    from nhl_dfs.build.notes import chicago
     from nhl_dfs.build.state import open_run, sha256
+    from nhl_dfs.intake.entries import read_entries
+    from nhl_dfs.intake.salary import read_salary, with_started_rows
     from nhl_dfs.referee.check_file import check_file
 
     run = open_run(runs_root, run_id)
@@ -80,12 +89,58 @@ def verify_run(runs_root: Path, run_id: str) -> tuple[bool, list[str]]:
         why.append(f"v{n} bytes do not match the manifest hash")
     if m["salary_sha256"] != report.salary_sha256 or m["entries_sha256"] != report.entries_sha256:
         why.append("input copies do not match the manifest hashes")
+    delivery = []
+    dpath = Path(rec["delivery_path"]) if rec and rec.get("delivery_path") else None
+    if dpath is None:
+        cause = (rec or {}).get("public_detail") or ("the public file was not replaced" if rec and not rec.get("public_replaced")
+                                                    else "published before versioned delivery files (C53)")
+        delivery.append(f"delivery_file=NONE (v{n} has no delivered copy: {cause})")
+    elif not dpath.exists():
+        delivery.append(f"delivery_file=NONE ({dpath} is missing)")
+        dpath = None
+    elif sha256(dpath.read_bytes()) != report.out_sha256:
+        why.append(f"{dpath} bytes differ from v{n}")
+        dpath = None
+    else:
+        delivery.append(f"delivery_file={dpath} (v{rec.get('delivery_version')} sha256 {report.out_sha256[:8]})")
+    public_dir = dpath.parent if dpath is not None else Path(m.get("public_path") or "").parent
+    try:
+        stamp = json.loads((public_dir / "published.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        stamp = {}
+    current = (dpath is not None and not m.get("rehearsal_clock") and stamp.get("run_id") == run_id
+               and stamp.get("version") == n and stamp.get("sha256") == report.out_sha256)
+    if m.get("rehearsal_clock"):
+        delivery.append("DELIVERY_CURRENT=FALSE (rehearsal: do not upload)")
+    elif current:
+        delivery.append("DELIVERY_CURRENT=TRUE")
+    else:
+        held = (f"delivery v{stamp['delivery_version']}" if stamp.get("delivery_version") is not None
+                else f"version v{stamp.get('version')}")
+        newer = (f"{public_dir} now holds {held} of run {stamp.get('run_id')}" if stamp
+                 else "no delivery of this slate is recorded")
+        delivery.append(f"DELIVERY_CURRENT=FALSE ({newer}; do not send this run's file)")
+    now = now or datetime.now(timezone.utc)
+    try:
+        pool = with_started_rows(read_salary(run.inputs / "DKSalaries.csv"))
+        soon = locks_mod.locking_soon(read_entries(run.inputs / "DKEntries.csv"), read_entries(out), pool, now)
+    except (OSError, ValueError) as exc:
+        delivery.append(f"LOCK_SOON=UNKNOWN ({type(exc).__name__}: {str(exc)[:80]})")
+    else:
+        if not soon:
+            delivery.append(f"LOCK_SOON=NONE (no changed cell touches a game starting within "
+                            f"{locks_mod.LOCK_SOON_S // 60} minutes)")
+        for game, start in soon:
+            mins = max(0, int((start - now).total_seconds() // 60))
+            iso = start.isoformat().replace("+00:00", "Z")
+            delivery.append(f"LOCK_SOON={game} locks {chicago(iso)} (in {mins} min); changed cells touch it")
     lines = [
         f"FILE_VALID={'TRUE' if not why else 'FALSE'}",
         f"run={run_id} version=v{n} mode={report.mode} entries={report.entries_checked}",
         f"out_sha256={report.out_sha256}",
         f"salary_sha256={report.salary_sha256}",
         f"entries_sha256={report.entries_sha256}",
+        *delivery,
     ]
     lines += [f"note: {x}" for x in report.notes]
     lines += [f"reason: {x}" for x in why[:MAX_REASONS_PRINTED]]
@@ -220,6 +275,13 @@ def _print_result(result) -> int:
         print(f"published: {result.public_path}")
     else:
         print("published: nothing (see RUN_NOTES.md)")
+    versions = (result.manifest or {}).get("versions") or []
+    last = versions[-1] if versions else None
+    if last and last.get("delivery_path"):  # C53: the file to hand over, named by its slate delivery number
+        tag = "; REHEARSAL: do not upload" if (result.manifest or {}).get("rehearsal_clock") else ""
+        print(f"delivery: {last['delivery_path']} (v{last.get('delivery_version')}{tag})")
+    elif last:
+        print(f"delivery: none (v{last['version']} was not delivered: {last.get('public_detail') or 'see RUN_NOTES.md'})")
     for msg in result.messages:
         print(f"note: {msg}")
     print(f"notes: {result.notes_path}")
@@ -658,11 +720,14 @@ def cmd_research_request(args: argparse.Namespace) -> int:
         print("research-request needs --run <id>")
         return 2
     run, runs_root, _ = _qa_run(args)
-    req = packet.research_request(run, now=_as_of(args.as_of) or datetime.now(timezone.utc), runs_root=runs_root)
+    req = packet.research_request(run, now=_as_of(args.as_of) or datetime.now(timezone.utc), runs_root=runs_root,
+                                  ben_players=tuple(args.player or ()))
     path = run.path / "news" / "research_request.json"
     path.parent.mkdir(exist_ok=True)
     path.write_text(json.dumps(req, indent=1, ensure_ascii=False), encoding="utf-8")
     print(f"RESEARCH_PLAYERS={len(req['players'])}")
+    for name in req.get("ben_players_not_found") or []:
+        print(f"note: no player named {name!r} in this run's salary file; not in the request")
     print(f"request: {path}")
     print("----- REQUEST JSON (pass inline, verbatim) -----")
     print(packet.serialize(req))
@@ -670,17 +735,52 @@ def cmd_research_request(args: argparse.Namespace) -> int:
 
 
 def cmd_overrides_apply(args: argparse.Namespace) -> int:
-    from nhl_dfs.build import controller
+    import json
+    from datetime import datetime, timezone
 
-    if not (args.run and args.file):
-        print("overrides-apply needs --run <id> --file <researcher reply saved verbatim>")
+    from nhl_dfs.build import controller, packet
+
+    ben = getattr(args, "ben", None)
+    if not args.run or bool(args.file) == bool(ben) or (ben and not getattr(args, "how", None)):
+        print("overrides-apply needs --run <id> and either --file <researcher reply saved verbatim> or "
+              '--ben "<player> OUT|QUESTIONABLE|PLAYING|STARTING" --how "<how Ben learned it>"')
         return 2
     run, runs_root, outputs_root = _qa_run(args)
     news = run.path / "news"
     k = 1 + max([int(p.stem.split("_")[1]) for p in news.glob("overrides_*_result.json")] or [0]) if news.exists() else 1
     as_of = _as_of(args.as_of)
-    res = controller.apply_round(run, k, Path(args.file), now=as_of, clock=(lambda: as_of) if as_of is not None else None,
-                                 runs_root=runs_root, outputs_root=outputs_root, source="overrides")
+    reply = Path(args.file) if args.file else None
+    if ben:  # C53 (flag 83): Ben's report in session is a source; the built override is saved, then applied
+        from nhl_dfs.build.manifest import read_manifest
+
+        mf = read_manifest(run)
+        pub = Path(mf.get("public_path") or outputs_root / mf["slate_id"] / "DKEntries.csv").parent / "published.json"
+        try:  # C53 review: only the run whose current version is the slate's delivered file can deliver a repair
+            stamp = json.loads(pub.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            stamp = {}
+        if stamp.get("run_id") == run.run_id and stamp.get("version") != run.current_version():
+            print(f"BEN_OVERRIDE=REFUSED: this run's v{run.current_version()} was not delivered ({pub} still names its "
+                  f"v{stamp.get('version')}); see RUN_NOTES.md (close DKEntries.csv if it is open in another program and "
+                  "rerun the late swap), then use --ben on the run that delivers.")
+            return 1
+        if stamp.get("run_id") != run.run_id:
+            holder = f"run {stamp.get('run_id')} v{stamp.get('version')}" if stamp else "no run (nothing delivered)"
+            print(f"BEN_OVERRIDE=REFUSED: run {run.run_id} is not the slate's current delivery; {pub} names {holder}. "
+                  "Use --run <that run>.")
+            return 1
+        try:
+            change = controller.ben_change(packet.RunView(run, runs_root).pool, ben, how=args.how,
+                                           now=as_of or datetime.now(timezone.utc))
+        except ValueError as exc:
+            print(f"BEN_OVERRIDE=REFUSED: {exc}")
+            return 1
+        news.mkdir(exist_ok=True)
+        reply = news / f"ben_{k}.json"
+        reply.write_text(json.dumps({"overrides": [change]}, indent=1), encoding="utf-8")
+        print(f"BEN_OVERRIDE={change['claim']} (saved {reply})")
+    res = controller.apply_round(run, k, reply, now=as_of, clock=(lambda: as_of) if as_of is not None else None,
+                                 runs_root=runs_root, outputs_root=outputs_root, source="ben" if ben else "overrides")
     for line in res.lines()[:-1]:
         print(line.replace("QA round", "overrides file"))
     print(f"OVERRIDES_ACCEPTED={res.accepted_correctness}")
@@ -961,6 +1061,10 @@ def build_parser() -> argparse.ArgumentParser:
             sp.add_argument("--proposals", type=str, default=None)
         if name == "overrides-apply":
             sp.add_argument("--file", type=str, default=None)
+            sp.add_argument("--ben", type=str, default=None, help="Ben's report: '<player> OUT' (C53; no URL needed)")
+            sp.add_argument("--how", type=str, default=None, help="how Ben learned it, e.g. 'DraftKings push notification'")
+        if name == "research-request":
+            sp.add_argument("--player", action="append", default=None, help="a player Ben asks about (repeatable)")
         sp.set_defaults(func=func)
 
     for name, func in (("late-swap", cmd_late_swap), ("refresh", cmd_refresh)):

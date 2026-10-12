@@ -563,3 +563,32 @@ reads it to tune, select or book money (booking stays with settle, C29).
   baseline-only run stays the family-prior diagnostic.
 - Tests: `tests/conftest.py` points `contest_facts.DEFAULT_PATH` at a missing temporary file for every test and checks that none
   writes it, so a refresh of the committed table cannot move an unrelated test; C50's tests pass their own tables.
+
+## Post-lock exports, versioned delivery files, Ben as a source (C53, `intake/entries.py`, `build/locks.py`, `referee/check_file.py`, `build/state.py`, `cli.py`, `build/controller.py`; B118 to B120; flags 81 to 84)
+
+- Cells (flag 82): `intake.entries.parse_cell` reads `Name (ID)` or a bare ID, either followed by DraftKings' ` (LOCKED)`, as
+  (role id, lock flag); `cell_role_id` returns the id alone. The referee keeps its own parser. `locks.compute` makes a marked
+  cell LOCKED ("started: DraftKings marks the cell LOCKED", `CellState.dk_locked`) whatever the clock says, and starts the whole
+  game of every marked player and of every embedded-list row whose Game Info reads In Progress (`dk_lock_ids`; the list is found
+  on any line, entry lines included), so none of its rows can be added. The initial run takes those games out of the pool
+  (`salary.mark_started(..., games=)`), pins marked cells, and its writer keeps their bytes; late swap splices only changed cells.
+- Referee: wherever the input entries file or the output carries the marker, the two cells must be identical; a dropped,
+  changed or forged marker is FILE_VALID=FALSE. Comparison is on the parsed cell text (both writers keep the bytes).
+- Delivery (flag 81): when `publish` replaces `outputs/<slate>/DKEntries.csv` it also writes `DKEntries_v<N>_<first 8 of
+  sha256>.csv` from the same bytes; N = 1 + the highest of the numbered files there and `published.json` `delivery_version`
+  (or its `version` for a slate begun before C53), under the slate lock. A publish that does not replace the public file writes
+  none. The run's own `versions/v<n>` keep their numbers; `published.json` and each manifest version record carry
+  `delivery_version` and the path. A late swap that changes no cell still publishes (the next N, "nothing new to upload").
+  Late swap and refresh publish with compare-and-swap against the public file as it was when the pass started (`""`:
+  expect none), so a pass that ends after a newer publish keeps its version and takes no number.
+- `verify --run` (flag 84) prints `delivery_file`, `DELIVERY_CURRENT` (FALSE when `published.json` names another file, and for a
+  rehearsal) and `LOCK_SOON` lines for every game, from Game Info, that a changed cell (against the run's input entries file)
+  touches and that starts within 30 minutes (`locks.locking_soon`), in America/Chicago.
+- Ben (flag 83): `Override.source` is "BEN" only through `overrides-apply --ben` (`controller.ben_change`, `apply_round(source=
+  "ben")`): no URL, confidence 0.9, `old` read from the role state, expiry at the game start plus 4 hours, deadline T-8 of the
+  reported player's own game. Any other reply claiming source BEN is rejected. The manifest's `news.ben_reports`, NEWS_STATE
+  `+BEN` and RUN_NOTES name it, also in a late-swap child. `research-request --player` lists a named player first, outside the
+  cap, and the apply limit rises by their count. `--ben` runs only on the run whose current version is the slate's
+  delivered file. Accepted overrides are copied to every late-swap or refresh child while valid, the latest record
+  winning per person and field (per team for a goalie confirmation); a refresh started on the original build reads the
+  overrides of the run that delivered the slate's current file (`swap_core(overrides_run=)`).

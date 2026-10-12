@@ -9,6 +9,12 @@ Writes, with CRLF line endings and a UTF-8 BOM like DK exports:
   showdown2/DKSalaries.csv          2 games on 10/15/2026: AAA@BBB 7:00PM, CCC@DDD 10:00PM ET
   showdown2/DKEntries.template.csv  3 blank reservations
   showdown2/DKEntries.current.csv   2 filled entries, 1 blank
+  postlock/DKSalaries.csv           the classic rows after game 1 (AAA@BBB) started: its Game Info reads In-Progress
+  postlock/DKEntries.template.csv   8 blank reservations (the parent run's input)
+  postlock/DKEntries.postlock.csv   DraftKings' export after game 1 started, in the 2026-10-11 format (C53, B118): every
+                                    game-1 cell reads Name (ID) (LOCKED), the other cells Name (ID); entry 7300000001 holds
+                                    Echo C1 (OUT) in an open cell; the embedded player list starts beside entry 7, its
+                                    Name + ID carries the marker and its Game Info reads In Progress for game 1
 Synthetic names and IDs; no real DK data. Every filled lineup is checked legal here.
 """
 
@@ -63,14 +69,14 @@ def classic_rows():
                 n = seen[pos]
                 name = f"{TEAM_WORD[team]} {pos}{n}"
                 roster = {"C": "C/UTIL", "LW": "W/UTIL", "RW": "W/UTIL", "D": "D/UTIL", "G": "G"}[pos]
-                salary = sal + 100 * (ti % 2) - (100 if team == home else 0)
-                appg = round(salary / 650, 1)
+                price = sal + 100 * (ti % 2) - (100 if team == home else 0)  # DK salary: a synthetic player price
+                appg = round(price / 650, 1)
                 status = CLASSIC_STATUS.get((team, pos, n), "")
-                rows.append((pos, name, str(rid), roster, salary, _game(team, CLASSIC_GAMES), team, appg, status))
+                rows.append((pos, name, str(rid), roster, price, _game(team, CLASSIC_GAMES), team, appg, status))
     return rows
 
 
-def _salary_lines(rows):
+def _pool_lines(rows):
     return [SAL_HEADER] + [f"{p},{n} ({i}),{n},{i},{rp},{s},{g},{t},{a},{st}," for p, n, i, rp, s, g, t, a, st in rows]
 
 
@@ -119,7 +125,7 @@ def _check(pool, names_by_entry, ids):
 def make_classic():
     rows = classic_rows()
     out = HERE / "classic"
-    _write(out / "DKSalaries.csv", _salary_lines(rows))
+    _write(out / "DKSalaries.csv", _pool_lines(rows))
     ids = _ids(rows)
     pool = read_salary(out / "DKSalaries.csv")
     _check(pool, CLASSIC_LINEUPS, ids)
@@ -147,14 +153,14 @@ def showdown_rows():
                 seen[pos] = seen.get(pos, 0) + 1
                 n = seen[pos]
                 name = f"{TEAM_WORD[team]} {pos}{n}"
-                salary = sal - (200 if team == home else 0)
-                appg = round(salary / 700, 1)
+                price = sal - (200 if team == home else 0)  # DK salary: a synthetic player price
+                appg = round(price / 700, 1)
                 status = SHOWDOWN_STATUS.get((team, pos, n), "")
                 game = _game(team, SHOWDOWN_GAMES)
                 rid += 1
-                rows.append((pos, name, str(rid), "CPT", int(salary * 1.5), game, team, appg, status))
+                rows.append((pos, name, str(rid), "CPT", int(price * 1.5), game, team, appg, status))
                 rid += 1
-                rows.append((pos, name, str(rid), "FLEX", salary, game, team, appg, status))
+                rows.append((pos, name, str(rid), "FLEX", price, game, team, appg, status))
     return rows
 
 
@@ -172,7 +178,7 @@ SHOWDOWN_ENTRY_IDS = ["7200000001", "7200000002", "7200000003"]
 def make_showdown():
     rows = showdown_rows()
     out = HERE / "showdown2"
-    _write(out / "DKSalaries.csv", _salary_lines(rows))
+    _write(out / "DKSalaries.csv", _pool_lines(rows))
     ids = {(r[1], r[3]): r[2] for r in rows}
     pool = read_salary(out / "DKSalaries.csv")
     cells = {}
@@ -186,7 +192,60 @@ def make_showdown():
     _write(out / "DKEntries.current.csv", _entries_lines(*args, cells))
 
 
+# -- Classic after game 1 started: DraftKings' post-lock export (C53) -------------------------
+
+POSTLOCK_LINEUPS = {
+    # canonical C,C,W,W,W,D,D,UTIL,G; game-1 (AAA, BBB) players are the cells DraftKings marks LOCKED
+    "7300000001": CLASSIC_LINEUPS["7100000001"],  # Echo C1 (OUT, game 3) in an open cell: the one repair
+    "7300000002": CLASSIC_LINEUPS["7100000002"],
+    "7300000003": CLASSIC_LINEUPS["7100000003"],
+    "7300000004": CLASSIC_LINEUPS["7100000004"],
+    "7300000005": ["Charlie C1", "Delta C2", "Echo LW1", "Foxtrot RW1", "Charlie RW2", "Delta D1", "Echo D2", "Foxtrot C3", "Delta G1"],
+    "7300000006": ["Bravo C1", "Alpha C2", "Alpha LW1", "Bravo RW1", "Delta LW1", "Alpha D3", "Bravo D2", "Charlie C3", "Alpha G1"],
+    "7300000007": ["Delta C1", "Echo C2", "Foxtrot LW1", "Echo RW1", "Alpha RW2", "Foxtrot D2", "Charlie D2", "Bravo C3", "Foxtrot G1"],
+    "7300000008": ["Foxtrot C1", "Charlie C2", "Echo LW2", "Delta RW1", "Bravo LW2", "Echo D1", "Delta D3", "Alpha C3", "Echo G2"],
+}
+POSTLOCK_ENTRY_IDS = list(POSTLOCK_LINEUPS)
+POSTLOCK_STARTED = {"AAA", "BBB"}
+LOCKED = " (LOCKED)"  # DraftKings' suffix on a started cell, after "Name (ID)" (B118: "J.T. Miller (44471322) (LOCKED)")
+EMBEDDED_HEADER = ["Position", "Name + ID", "Name", "ID", "Roster Position", "Salary", "Game Info", "TeamAbbrev",
+                   "AvgPointsPerGame"]
+EMBEDDED_FROM_ENTRY = 7  # the list's header sits beside the 7th entry, so entry lines carry list fields too
+
+
+def make_postlock():
+    rows = classic_rows()
+    started = [r for r in rows if r[6] in POSTLOCK_STARTED]
+    pool_rows = [r if r[6] not in POSTLOCK_STARTED else r[:5] + ("In-Progress",) + r[6:] for r in rows]
+    out = HERE / "postlock"
+    _write(out / "DKSalaries.csv", _pool_lines(pool_rows))
+    ids = _ids(rows)
+    _check(read_salary(HERE / "classic" / "DKSalaries.csv"), POSTLOCK_LINEUPS, ids)
+    team_of = {r[1]: r[6] for r in rows}
+    cells = {eid: _to_template([f"{n} ({ids[n]})" + (LOCKED if team_of[n] in POSTLOCK_STARTED else "") for n in names],
+                               Mode.CLASSIC)
+             for eid, names in POSTLOCK_LINEUPS.items()}
+    args = (CLASSIC_LABELS, POSTLOCK_ENTRY_IDS, "NHL Synthetic Classic", "297000003", "$1")
+    _write(out / "DKEntries.template.csv", _entries_lines(*args, {}))
+    lines = _entries_lines(*args, cells)
+    embedded = [",".join(EMBEDDED_HEADER)]
+    for p, n, i, rp, s, g, t, a, _st in rows:
+        live = t in POSTLOCK_STARTED
+        embedded.append(f"{p},{n} ({i}){LOCKED if live else ''},{n},{i},{rp},{s},{'In Progress' if live else g},{t},{a}")
+    first = EMBEDDED_FROM_ENTRY  # lines[0] is the header; lines[k] is entry k
+    base = CLASSIC_LABELS.__len__() + 4 + 1  # the Instructions column
+    for j, text in enumerate(embedded):
+        k = first + j
+        if k < len(lines):
+            lines[k] = lines[k].rsplit(",", 1)[0] + "," + text  # replace the (blank) Instructions note
+        else:
+            lines.append("," * base + text)
+    assert len(started) == 24
+    _write(out / "DKEntries.postlock.csv", lines)
+
+
 if __name__ == "__main__":
     make_classic()
     make_showdown()
+    make_postlock()
     print("late_swap fixtures written")

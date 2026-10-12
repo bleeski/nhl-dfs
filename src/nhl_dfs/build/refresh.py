@@ -50,10 +50,28 @@ def run(
         clock = lambda: as_of  # noqa: E731
     clock = clock or (lambda: datetime.now(timezone.utc))
     parent = open_run(runs_root, run_id)
-    delivered = last_delivered(runs_root, outputs_root, read_manifest(parent)["slate_id"], parent)
+    slate_id = read_manifest(parent)["slate_id"]
+    delivered = last_delivered(runs_root, outputs_root, slate_id, parent)
     if delivered is None:
         raise NoDeliveredVersion(f"run {run_id} has no delivered version to refresh")
+    holder = _delivery_run(runs_root, outputs_root, slate_id, parent)
     return swap_core(parent, delivered, kind="refresh", offline=offline, fast=True, assumed_parent=True,
                      runs_root=runs_root, outputs_root=outputs_root, clock=clock, cache=cache,
                      salary_path=salary_path, runtime=runtime, caps=caps, rehearsal=as_of, objective=objective,
-                     standings=standings, eager_objective=True, apply_state=apply_state, fetch_odds=True)
+                     standings=standings, eager_objective=True, apply_state=apply_state, fetch_odds=True,
+                     overrides_run=holder)
+
+
+def _delivery_run(runs_root: Path, outputs_root: Path, slate_id: str, parent):
+    """The run that published the slate's current file when it is not `parent` (a late swap delivered after the run
+    being refreshed), else None: its accepted overrides, Ben's report included, are the ones in force (C53 review)."""
+    import json
+
+    try:
+        s = json.loads((outputs_root / slate_id / "published.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    rid = s.get("run_id")
+    if not rid or rid == parent.run_id or not (runs_root / rid).is_dir():
+        return None
+    return open_run(runs_root, rid)

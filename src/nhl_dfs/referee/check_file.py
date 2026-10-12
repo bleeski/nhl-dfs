@@ -11,6 +11,8 @@ from nhl_dfs.referee import rules
 from nhl_dfs.referee.reader import RefEntries, read_entries_min, read_salary_min
 
 _NAME_ID = re.compile(r"^(.*)\((\d+)\)\s*$")
+# DraftKings' post-lock export suffix on a started cell (C53, B118). Parsed here independently of intake.
+_DK_LOCKED = re.compile(r"\s*\(LOCKED\)\s*$")
 
 
 @dataclass
@@ -26,11 +28,18 @@ class RefereeReport:
     notes: list[str] = field(default_factory=list)
 
 
+def _has_dk_lock(cell: str) -> bool:
+    return bool(_DK_LOCKED.search(cell.strip())) and cell.strip() != "(LOCKED)"
+
+
 def _cell_id(cell: str) -> tuple[str | None, str | None]:
-    """(role_id, name_or_None). Blank -> (None, None). Raises on unreadable text."""
+    """(role_id, name_or_None). Blank -> (None, None). Raises on unreadable text. DraftKings' trailing " (LOCKED)" is
+    read past (the cell's id and name are checked as usual); whether it may be there is _marker_reasons' rule."""
     text = cell.strip()
     if not text:
         return None, None
+    if _has_dk_lock(text):
+        text = _DK_LOCKED.sub("", text).strip()
     if text.isdigit():
         return text, None
     m = _NAME_ID.match(text)
@@ -125,6 +134,8 @@ def check_file(
         for eid in out.entry_ids:
             reasons.extend(_entry_reasons(eid, out.cells[eid], out.labels, salary))
 
+    reasons.extend(_marker_reasons(out, entries))
+
     for (eid, k), expected in (locked or {}).items():
         actual = out.cells.get(eid, [None] * (k + 1))[k] if k < len(out.labels) else None
         if actual != expected:
@@ -141,6 +152,22 @@ def check_file(
         parent_sha256=parent.sha256 if parent is not None else None,
         notes=notes,
     )
+
+
+def _marker_reasons(out: RefEntries, entries: RefEntries) -> list[str]:
+    """C53 (flag 82): a cell DraftKings marks LOCKED is pinned, so wherever the input entries file or the output carries
+    the marker the two cells must be byte-identical. A dropped, changed or forged marker is a refusal."""
+    why: list[str] = []
+    for eid in out.entry_ids:
+        src = entries.cells.get(eid)
+        if src is None:
+            continue
+        for k, (a, b) in enumerate(zip(out.cells[eid], src)):
+            if (_has_dk_lock(a) or _has_dk_lock(b)) and a != b:
+                label = out.labels[k] if k < len(out.labels) else "?"
+                why.append(f"entry {eid}: cell {k} ({label}) differs from the entries file where DraftKings' LOCKED marker "
+                           f"is involved ({b!r} -> {a!r}); a locked cell is never changed")
+    return why
 
 
 def _entry_reasons(eid: str, cells: list[str], labels: list[str], salary) -> list[str]:

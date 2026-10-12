@@ -535,6 +535,11 @@ def run_slate(
     if entries.mode is not pool.mode:
         return fail(f"entries file is {entries.mode.value} but the salary file is {pool.mode.value}")
     now = clock().astimezone(timezone.utc)
+    # C53 (flag 82): a game the entries file shows as started (a LOCKED cell, an In Progress row) leaves the pool like
+    # one the salary file marks, whatever the clock says
+    dk_games = locks_mod.dk_started_games(entries, pool)
+    if dk_games:
+        pool = mark_started(pool, now, games=dk_games)
     n_marker = len(pool.started_rows)
     pool = mark_started(pool, now)  # flag 15: games past their Game Info start leave the pool as DK's marker does
     if pool.started_rows and not pool.rows:
@@ -704,7 +709,8 @@ def _started_slate(pool: SalaryPool, entries: EntriesFile, n_marker: int, now: d
     ls = locks_mod.compute(entries, pool, None, now, buffer_s)
     pins: dict[str, dict[int, str]] = {}
     for e in entries.entries:
-        held = {k: rid for k, rid in ls.pinned(e.entry_id).items() if rid in started}
+        # C53 (flag 82): a cell DraftKings marks LOCKED is pinned too (and written back byte for byte by the writer)
+        held = {k: rid for k, rid in ls.pinned(e.entry_id).items() if rid in started or ls.cells[(e.entry_id, k)].dk_locked}
         if held:
             pins[e.entry_id] = held
     by_team: dict[str, list[str]] = {}
@@ -848,6 +854,8 @@ def _export_and_publish(run: RunDir, entries: EntriesFile, pool: SalaryPool, a: 
         "path": str(res.version_path),
         "public_replaced": res.public_replaced,
         "public_detail": res.public_detail,
+        "delivery_version": res.delivery_version,
+        "delivery_path": str(res.delivery_path) if res.delivery_path else None,
     }
     m["versions"].append(rec)
     m["export_sha256"] = report.out_sha256

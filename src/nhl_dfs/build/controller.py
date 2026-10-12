@@ -18,7 +18,11 @@ accepts or rejects, and it alone decides whether another round may run:
   scenario cache: rejected ("no scenarios to compare on"). Under FIELD_CALIBRATION=PRIOR an accepted
   change is recorded as an unvalidated modeled improvement.
 - Rounds: 1 by default; 2 and 3 only after the previous round accepted a correctness repair; never inside
-  T-8 of the earliest open game. Every round is recorded in runs/<id>/qa/round_<k>.json with the sha256 of
+  T-8 of the earliest open game.
+- Ben's report (C53, B120, flag 83): source="ben", reached only through `overrides-apply --ben`, is the one mode that
+  accepts an override with source BEN (no URL: his statement, how he learned it and the UTC time are the claim). Its
+  old value is read from the role state, and its deadline is T-8 of the reported player's own game. A reply in any
+  other mode that says source BEN is rejected. Every round is recorded in runs/<id>/qa/round_<k>.json with the sha256 of
   the proposals file as saved.
 Changed lineups are spliced cell by cell, checked by the referee with the pinned cells declared, and
 published as the run's next version (compare-and-swap on the public file). Nothing here edits a CSV by hand.
@@ -29,9 +33,10 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 import time
-from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from dataclasses import asdict, dataclass, field, replace
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Literal
 
@@ -65,6 +70,8 @@ class RoundResult:
     accepted_correctness: int = 0
     accepted_strategic: int = 0
     published_version: int | None = None
+    delivery_version: int | None = None  # C53: the slate's delivery number of the published file
+    delivery_path: str | None = None
     another_round: bool = False
     stop_reason: str = ""
     record_path: str | None = None
@@ -75,7 +82,10 @@ class RoundResult:
                f"change(s) accepted, {sum(d['status'] == 'rejected' for d in self.decisions)} rejected"]
         for d in self.decisions:
             out.append(f"  #{d['index']} {d['kind']} {d.get('type', '?')}: {d['status'].upper()}: {d['reason']}")
-        out.append(f"published: v{self.published_version}" if self.published_version else "published: nothing (incumbent kept)")
+        if self.delivery_path:
+            out.append(f"published: v{self.published_version} (run version); delivery: {self.delivery_path} (v{self.delivery_version})")
+        else:
+            out.append(f"published: v{self.published_version}" if self.published_version else "published: nothing (incumbent kept)")
         out.append(f"ANOTHER_ROUND={'YES' if self.another_round else 'NO'}: {self.stop_reason}")
         return out
 
@@ -132,7 +142,67 @@ def override_from(d: dict):
     return Override(str(d["role_id"]), int(d["nhl_id"]) if d.get("nhl_id") not in (None, "") else None,
                     d.get("game_id"), str(d["field"]), d.get("old"), d.get("new"), _dt(d["effective_utc"]),
                     str(d.get("source_url") or ""), str(d.get("claim") or ""), float(d.get("confidence", -1)),
-                    _dt(d["expiry_utc"]))
+                    _dt(d["expiry_utc"]), str(d.get("source") or "").strip().upper())
+
+
+BEN_STATES = {"OUT": ("participation", "OUT"), "QUESTIONABLE": ("participation", "QUESTIONABLE"),
+              "PLAYING": ("participation", "PLAYING"), "STARTING": ("goalie_start", True)}
+_NAME_SUFFIX = re.compile(r"^(.*?)\s*\(([^()]*)\)$")
+_POSITIONS = {"C", "LW", "RW", "W", "D", "G"}
+
+
+def ben_change(pool, text: str, *, now: datetime, how: str) -> dict:
+    """C53 (flag 83): Ben's in-session report "<player> OUT|QUESTIONABLE|PLAYING|STARTING" as a BEN override object
+    (the researcher's Override schema, source BEN, no URL). A team, a position and/or the DraftKings ID in parentheses
+    after the name, "(VAN D)" or "(44471322)", tells two same-named players apart.
+    `old` is left out: apply_round reads it from the role state. Expiry: the game's start plus 4 hours, the
+    researcher's rule. Raises ValueError naming the problem."""
+    from nhl_dfs.contracts.ids import normalize_name
+    from nhl_dfs.intake.salary import parse_game_info
+    from nhl_dfs.models.overrides import BEN, BEN_CONFIDENCE
+
+    words = text.strip().split()
+    if len(words) < 2 or words[-1].upper() not in BEN_STATES:
+        raise ValueError(f"expected \"<player> <STATE>\" with STATE one of {', '.join(BEN_STATES)} (got {text!r})")
+    state, name = words[-1].upper(), " ".join(words[:-1])
+    team = pos = rid = None
+    m = _NAME_SUFFIX.match(name)
+    if m:
+        name = m.group(1).strip()
+        for tok in m.group(2).replace(",", " ").split():
+            if tok.isdigit():
+                rid = tok
+            elif tok.upper() in _POSITIONS:
+                pos = tok.upper()
+            elif re.fullmatch(r"[A-Za-z]{2,4}", tok):
+                team = tok.upper()
+            else:
+                raise ValueError(f"cannot read {tok!r} in ({m.group(2)}): give a team, a position or the DraftKings ID")
+    key = normalize_name(name)
+
+    def named(r) -> bool:
+        return (normalize_name(r.name) == key and team in (None, r.team) and rid in (None, r.role_id)
+                and (pos is None or r.position == pos or (pos == "W" and r.position in ("LW", "RW"))))
+
+    started = pool.started_by_role_id  # RunView's pool carries the started rows for lookups; they are never a target
+    rows = [r for r in pool.rows if named(r) and r.role_id not in started]
+    if not rows:
+        gone = [r for r in list(pool.started_rows) + list(pool.rows) if named(r)]
+        if gone:
+            raise ValueError(f"{gone[0].name} ({gone[0].team}): his game has started; his cells are locked")
+        raise ValueError(f"no player named {name!r}{' on ' + team if team else ''} in this run's salary file")
+    if len({r.person_key for r in rows}) > 1:
+        raise ValueError("more than one player is named " + repr(name) + ": add the team and position, for example "
+                         + ", ".join(sorted({f'"{r.name} ({r.team} {r.position}) {state}"' for r in rows})))
+    row = sorted(rows, key=lambda r: ("FLEX" not in r.roster_positions, r.role_id))[0]  # Showdown: the FLEX row
+    field_, new = BEN_STATES[state]
+    game, info = parse_game_info(row.game_info)
+    when = now.astimezone(timezone.utc)
+    return {"type": "override", "source": BEN, "role_id": row.role_id, "game_id": game, "field": field_, "new": new,
+            "effective_utc": when.isoformat().replace("+00:00", "Z"),
+            "expiry_utc": (info.start_utc + timedelta(hours=4)).isoformat().replace("+00:00", "Z"),
+            "source_url": "", "claim": f"Ben in session ({how}, {when:%Y-%m-%dT%H:%MZ}): {row.name} ({row.team}) {state}",
+            "confidence": BEN_CONFIDENCE}
 
 
 # -- round bookkeeping --------------------------------------------------------------------------------------
@@ -177,6 +247,32 @@ def _deadline_ok(run, cfg: dict, now: datetime, runs_root=None) -> tuple[bool, s
     if now >= dl:
         return False, f"T-{stop:g} deadline passed ({dl:%H:%MZ}): nothing applied, the checked file stands"
     return True, f"permitted until {dl:%H:%MZ}"
+
+
+def _ben_named(run) -> list[str]:
+    """The players Ben named in this run's research request (research-request --player), [] when none."""
+    try:
+        req = json.loads((run.path / "news" / "research_request.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    return [str(x) for x in req.get("ben_players") or []]
+
+
+def _ben_deadline(row, ls, cfg: dict, now: datetime) -> str | None:
+    """Why Ben's report on `row` comes too late (flag 83 (e)), or None: his player's game has started or is inside the
+    edit stop, or T-8 of that game has passed. The lock checks under the publish lock still apply after this."""
+    from nhl_dfs.intake.salary import parse_game_info
+
+    try:
+        game, info = parse_game_info(row.game_info)
+    except ValueError:
+        return f"{row.name}: no start time for his game"
+    if game in ls.started_games or game in ls.edit_stop_games:
+        return f"{game} has started or is inside the edit stop: nothing open to change for {row.name}"
+    stop = float(cfg["controller"]["llm_stop_min"])
+    if now >= info.start_utc - timedelta(minutes=stop):
+        return f"T-{stop:g} of {game} passed ({info.start_utc - timedelta(minutes=stop):%H:%MZ}): nothing applied"
+    return None
 
 
 def parse_overrides(text: str) -> tuple[list[Proposal], str | None]:
@@ -295,7 +391,9 @@ def apply_round(run, round_no: int, proposals, cfg: dict | None = None, *, now: 
                 clock: Callable[[], datetime] | None = None, source: str = "qa") -> RoundResult:
     """proposals: a path to the reply saved verbatim, or its text. source="overrides": a researcher reply
     (`overrides-apply`): every item is a correctness override, recorded as news/overrides_<k>_result.json,
-    with no round rules beyond the T-8 deadline.
+    with no round rules beyond the T-8 deadline. source="ben" (`overrides-apply --ben`, C53 flag 83): the same, for
+    the BEN override built from Ben's report; its old value comes from the role state and its deadline is T-8 of the
+    reported player's own game. Only this mode accepts source BEN.
 
     Two times (B52): `now` is the round-start timestamp (the deadline, the records, the scenario objective) and
     is read once; `clock` is the live clock, read again for the final lock recheck under the publish lock, and
@@ -329,7 +427,7 @@ def apply_round(run, round_no: int, proposals, cfg: dict | None = None, *, now: 
     def record() -> RoundResult:
         rec = {**asdict(res), "proposals_path": str(path) if path else None, "created_utc": now.isoformat(),
                "elapsed_s": round(time.perf_counter() - t0, 3)}
-        if source == "overrides":
+        if source in ("overrides", "ben"):
             (run.path / "news").mkdir(exist_ok=True)
             p = run.path / "news" / f"overrides_{round_no}_result.json"
         else:
@@ -338,8 +436,9 @@ def apply_round(run, round_no: int, proposals, cfg: dict | None = None, *, now: 
         res.record_path = str(p)
         return res
 
-    if source == "overrides":
-        ok, why = _deadline_ok(run, cfg, now, runs_root)
+    if source in ("overrides", "ben"):
+        ok, why = (_deadline_ok(run, cfg, now, runs_root) if source == "overrides"
+                   else (True, "Ben's report: the deadline is T-8 of his player's game"))
         if ok and (run.path / "news" / f"overrides_{round_no}_result.json").exists():
             ok, why = False, f"overrides file {round_no} was already applied"
     else:
@@ -350,11 +449,14 @@ def apply_round(run, round_no: int, proposals, cfg: dict | None = None, *, now: 
             return res  # never overwrite an earlier round's record
         return record()
     try:
-        props, res.packet_id = parse_overrides(text) if source == "overrides" else parse(text)
+        props, res.packet_id = parse_overrides(text) if source in ("overrides", "ben") else parse(text)
     except MalformedProposals as exc:
         res.stop_reason = f"malformed reply ({exc}): nothing applied, the incumbent is kept"
         return record()
-    limit = int(cfg["research"]["max_players"]) if source == "overrides" else int(cc["max_proposals"])
+    if source == "overrides":  # flag 83 (g): players Ben named in the research request ride outside the cap
+        limit = int(cfg["research"]["max_players"]) + len(_ben_named(run))
+    else:
+        limit = len(props) if source == "ben" else int(cc["max_proposals"])
 
     v = packet_mod.RunView(run, runs_root)
     pool, mode = v.pool, v.mode
@@ -413,6 +515,7 @@ def apply_round(run, round_no: int, proposals, cfg: dict | None = None, *, now: 
                               "target": p.target, "change": p.change, **extra})
 
     accepted_overrides = []
+    ben_reports: list[dict] = []
     for i, p in enumerate(props):
         typ = str(p.change.get("type", ""))
         if i >= limit:
@@ -428,9 +531,21 @@ def apply_round(run, round_no: int, proposals, cfg: dict | None = None, *, now: 
                 except (KeyError, TypeError, ValueError) as exc:
                     reject(i, p, typ, f"override fields missing or malformed ({type(exc).__name__}: {str(exc)[:80]})")
                     continue
+                claims_ben = o.source == overrides_mod.BEN
+                if claims_ben != (source == "ben"):  # flag 83 (a): no reply can skip the URL check by claiming Ben
+                    reject(i, p, typ, "source BEN is accepted only from overrides-apply --ben (Ben's own report in session)"
+                           if claims_ben else "overrides-apply --ben applies only the BEN override it built")
+                    continue
                 if o.role_id not in pool.by_role_id:
                     reject(i, p, typ, f"unknown role_id {o.role_id}")
                     continue
+                if claims_ben:
+                    if "old" not in p.change:
+                        o = replace(o, old=overrides_mod.current_value(o, role_state()))
+                    late = _ben_deadline(pool.by_role_id[o.role_id], ls, cfg, now)
+                    if late:
+                        reject(i, p, typ, late)
+                        continue
                 errs = overrides_mod.validate(o, role_state(), now)
                 if errs:
                     reject(i, p, typ, "; ".join(errs))
@@ -448,8 +563,13 @@ def apply_round(run, round_no: int, proposals, cfg: dict | None = None, *, now: 
                         if r.is_goalie and r.team == row.team and r.person_key != row.person_key:
                             excluded_people[r.person_key] = f"not the confirmed {row.team} starter ({row.name} confirmed)"
                     effect = f"{row.name} confirmed; open cells holding another {row.team} goalie are repaired"
-                accepted_overrides.append({**p.change, "role_id": o.role_id, "source_url": o.source_url})
-                accept(i, p, typ, f"verified override: {effect}")
+                accepted_overrides.append({**p.change, "role_id": o.role_id, "source_url": o.source_url, "old": o.old,
+                                           "source": o.source})
+                if claims_ben:
+                    ben_reports.append({"name": row.name, "team": row.team, "role_id": o.role_id, "field": o.field,
+                                        "new": o.new, "effective_utc": o.effective_utc.isoformat().replace("+00:00", "Z"),
+                                        "claim": o.claim})
+                accept(i, p, typ, f"verified override{' (source BEN)' if claims_ben else ''}: {effect}")
                 res.accepted_correctness += 1
                 continue
             # strategic
@@ -557,6 +677,12 @@ def apply_round(run, round_no: int, proposals, cfg: dict | None = None, *, now: 
         store.parent.mkdir(exist_ok=True)
         prior = json.loads(store.read_text(encoding="utf-8")) if store.exists() else []
         store.write_text(json.dumps(prior + accepted_overrides, indent=1, default=str), encoding="utf-8")
+    if ben_reports:  # flag 83 (f): NEWS_STATE and RUN_NOTES name Ben's report whether or not a cell changes
+        mb = read_manifest(run)
+        mb.setdefault("news", {}).setdefault("ben_reports", []).extend(ben_reports)
+        mb["statuses"]["NEWS_STATE"] = overrides_mod.ben_label(str(mb["statuses"].get("NEWS_STATE", "NONE")))
+        write_manifest(run, mb)
+        write_run_notes(run, mb)
 
     # publish the changed cells
     changes = {e: {k: r for k, r in enumerate(lu) if r != v.lineups[e][k]} for e, lu in cur.items()}
@@ -597,9 +723,13 @@ def apply_round(run, round_no: int, proposals, cfg: dict | None = None, *, now: 
             res.stop_reason = f"publish failed ({exc}): the checked file stands"
             return record()
         res.published_version = pub.version
+        res.delivery_version = pub.delivery_version
+        res.delivery_path = str(pub.delivery_path) if pub.delivery_path else None
         m["versions"].append({"version": pub.version, "phase": f"QA{round_no}", "sha256": report.out_sha256,
                               "created_utc": datetime.now(timezone.utc).isoformat(), "path": str(pub.version_path),
-                              "public_replaced": pub.public_replaced, "public_detail": pub.public_detail})
+                              "public_replaced": pub.public_replaced, "public_detail": pub.public_detail,
+                              "delivery_version": pub.delivery_version,
+                              "delivery_path": str(pub.delivery_path) if pub.delivery_path else None})
         m.setdefault("qa", []).append({"round": round_no, "accepted_correctness": res.accepted_correctness,
                                        "accepted_strategic": res.accepted_strategic, "version": pub.version,
                                        "changed_entries": sorted(changes), "notes": repair_notes})

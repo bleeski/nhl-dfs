@@ -9,6 +9,11 @@ The public file outputs/<slate_id>/DKEntries.csv is replaced the same way (temp 
 directory, then os.replace) under two OS file locks: the slate lock outputs/<slate_id>/.lock
 and the run lock runs/<id>/.lock. OS locks are released by the OS if the process dies.
 publish refuses unless the referee report passed and is bound to these exact bytes and inputs.
+
+Each time the public file is replaced, the same bytes are also written as outputs/<slate_id>/DKEntries_v<N>_<first 8
+of sha256>.csv (C53, B119, flag 81): N counts the slate's deliveries (not the run's versions, which restart at v1 in
+every late-swap or refresh child run), so a version is named by what it is and an older file never carries a higher
+number. published.json records delivery_version and delivery_name.
 """
 
 from __future__ import annotations
@@ -16,6 +21,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -27,6 +33,7 @@ from nhl_dfs.referee.check_file import RefereeReport
 
 RUN_SUBDIRS = ("inputs", "versions", "sim", "qa", "news")
 PUBLIC_NAME = "DKEntries.csv"
+DELIVERY_RE = re.compile(r"^DKEntries_v(\d+)_[0-9a-f]{8}\.csv$")
 
 
 class PublishRefused(Exception):
@@ -192,6 +199,30 @@ def latest_run(root) -> RunDir | None:
     return open_run(root, ids[-1]) if ids else None
 
 
+def delivery_name(n: int, sha: str) -> str:
+    """The delivered file's name (C53): the slate's delivery number and the first 8 hex of the bytes' sha256."""
+    return f"DKEntries_v{n}_{sha[:8]}.csv"
+
+
+def next_delivery_version(public_dir: Path) -> int:
+    """1 + the slate's highest delivery number (flag 81): the numbered files in outputs/<slate_id>/, and published.json's
+    delivery_version, or its version when that is missing or null (a slate published before C53, or a numbered copy
+    that could not be written). Read under the slate lock."""
+    ns = [int(m.group(1)) for p in public_dir.iterdir() if (m := DELIVERY_RE.match(p.name))] if public_dir.is_dir() else []
+    stamp = public_dir / "published.json"
+    if stamp.exists():
+        try:
+            s = json.loads(stamp.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            s = {}
+        n = s.get("delivery_version")
+        if n is None:  # published before C53, or its numbered copy could not be written: the run's version is the floor
+            n = s.get("version")
+        if isinstance(n, int):
+            ns.append(n)
+    return max(ns, default=0) + 1
+
+
 @dataclass
 class PublishResult:
     version: int
@@ -199,6 +230,8 @@ class PublishResult:
     public_path: Path
     public_replaced: bool
     public_detail: str  # why the public file was not replaced, else ""
+    delivery_version: int | None = None  # C53: the slate's delivery number, None when nothing was delivered
+    delivery_path: Path | None = None  # outputs/<slate_id>/DKEntries_v<N>_<sha8>.csv, the same bytes as the public file
 
 
 def publish(
@@ -218,6 +251,8 @@ def publish(
     bytes and to the run's input copies. expect_public_sha: replace the public file only if it
     still has this hash (a later pass never clobbers a newer run's publish). A public file held
     open by another program (Excel on Windows) keeps the version and reports why.
+    expect_public_sha="" expects no public file yet (C53 review: a late swap that started before the slate's first
+    publish still never replaces a newer one).
     precheck: called once both locks are held (so after any wait for them) and before the first byte is
     written; a returned reason refuses the publish (LockCrossed). It must read the clock and the lock state
     itself: a value computed before the call can be a minute stale (lock_timeout_s).
@@ -246,7 +281,7 @@ def publish(
 
         detail = ""
         if expect_public_sha is not None:
-            have = sha256(public.read_bytes()) if public.exists() else None
+            have = sha256(public.read_bytes()) if public.exists() else ""
             if have != expect_public_sha:
                 detail = "public file changed since this run's last publish (a newer publish owns it); left as is"
         if not detail:
@@ -256,12 +291,27 @@ def publish(
                 detail = f"could not replace {public}: the file is open in another program (close it in Excel, then rerun)"
             except OSError as exc:
                 detail = f"could not replace {public}: {exc}"
+        dv: int | None = None
+        dpath: Path | None = None
         if not detail:
+            # C53 (flag 81): the numbered copy is written only with the public file, after it, from the same bytes
+            dv = next_delivery_version(public_dir)
+            dpath = public_dir / delivery_name(dv, sha256(export_bytes))
+            try:
+                atomic_write(dpath, export_bytes)
+            except OSError as exc:
+                detail_d = f"could not write {dpath}: {exc}; the public file was replaced, no numbered copy exists"
+                dv, dpath = None, None
+            else:
+                detail_d = ""
             stamp = {
                 "run_id": run.run_id,
                 "version": n,
                 "sha256": sha256(export_bytes),
                 "published_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                "delivery_version": dv,
+                "delivery_name": dpath.name if dpath is not None else None,
             }
             atomic_write(public_dir / "published.json", json.dumps(stamp, indent=2).encode("utf-8"))
+            return PublishResult(n, vfile, public, True, detail_d, dv, dpath)
     return PublishResult(n, vfile, public, not detail, detail)

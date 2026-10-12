@@ -8,7 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from nhl_dfs.contracts.geometry import CLASSIC_SLOTS, SHOWDOWN_SLOTS, Mode, PoolRow
-from nhl_dfs.intake.entries import BOM, EntriesFile, canonical_to_template, physical_lines
+from nhl_dfs.intake.entries import BOM, EntriesFile, canonical_to_template, dk_locked, parse_cell, physical_lines
 from nhl_dfs.intake.salary import SalaryPool
 
 _NEEDS_QUOTES = (",", '"', "\r", "\n")
@@ -82,6 +82,7 @@ def write_entries(
                 raise ValueError(f"entry {entry.entry_id}: role ID {rid} is not selectable in the pool")
             rows.append(pool.by_role_id[rid])
         cells = canonical_to_template([format_cell(r) for r in rows], labels, pool.mode)
+        new_ids = canonical_to_template(list(role_ids), labels, pool.mode)
 
         body, ending = _split_ending(lines[entry.line_no])
         spans = field_spans(body)
@@ -89,10 +90,13 @@ def write_entries(
             raise ValueError(f"entry {entry.entry_id}: line has {len(spans)} fields")
         pieces: list[bytes] = []
         cursor = 0
-        for col, cell in zip(entries.roster_cols, cells):
+        for j, (col, cell) in enumerate(zip(entries.roster_cols, cells)):
             start, end = spans[col]
             pieces.append(body[cursor:start])
-            pieces.append(cell.encode("utf-8"))
+            old = entry.cells[j]
+            # C53 (flag 82): a cell DraftKings marks LOCKED keeps its exact bytes when its player stays
+            keep = dk_locked(old) and parse_cell(old)[0] == new_ids[j]
+            pieces.append(body[start:end] if keep else cell.encode("utf-8"))
             cursor = end
         pieces.append(body[cursor:])
         lines[entry.line_no] = b"".join(pieces) + ending

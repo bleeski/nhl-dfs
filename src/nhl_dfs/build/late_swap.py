@@ -51,7 +51,7 @@ from nhl_dfs.build.run import (
     pool_without,
     salary_statuses,
 )
-from nhl_dfs.build.state import LockTimeout, PublishRefused, RunDir, new_run, open_run, publish, sha256
+from nhl_dfs.build.state import PUBLIC_NAME, LockTimeout, PublishRefused, RunDir, new_run, open_run, publish, sha256
 from nhl_dfs.contracts.geometry import CLASSIC_SLOTS, SHOWDOWN_SLOTS, Mode, check_lineup, lineup_key, slot_accepts
 from nhl_dfs.contracts.statuses import (
     DeliveryStatus,
@@ -177,16 +177,43 @@ def fetch_draftables_bounded(entries: EntriesFile, cache, budget_s: float):
     return box["d"], f"draftables fetched ({len(box['d'].rows)} rows)"
 
 
+def carry_overrides(parent, run, now: datetime) -> int:
+    """Copy the parent's accepted overrides still valid at `now` to this run's news/accepted_overrides.json, so a child of
+    this run reads them too (C53 review: Ben's report, or a researcher's, stayed in force for one generation only).
+    Returns how many were carried."""
+    src = parent.path / "news" / "accepted_overrides.json"
+    if not src.exists():
+        return 0
+    from nhl_dfs.build.controller import override_from
+
+    latest: dict[tuple, dict] = {}  # a later record replaces an earlier one for the same role and field
+    for d in json.loads(src.read_text(encoding="utf-8")):
+        try:
+            o = override_from(d)
+        except (KeyError, TypeError, ValueError):
+            continue
+        if o.effective_utc <= now < o.expiry_utc:
+            latest.pop((o.role_id, o.field), None)
+            latest[(o.role_id, o.field)] = d
+    keep = list(latest.values())
+    if keep:
+        (run.path / "news").mkdir(exist_ok=True)
+        (run.path / "news" / "accepted_overrides.json").write_text(json.dumps(keep, indent=1, default=str), encoding="utf-8")
+    return len(keep)
+
+
 def accepted_overrides(parent, pool, now: datetime) -> tuple[list, dict[str, str]]:
     """(Override objects still valid at `now`, person_key -> exclusion reason) from the parent run's
     news/accepted_overrides.json. A participation OUT excludes the person; a goalie_start confirmation
-    excludes the team's other goalies (they will not start: backlog B17 on the override path)."""
+    excludes the team's other goalies (they will not start: backlog B17 on the override path). The latest record
+    wins (C53 review): per person and field, and per team for a goalie confirmation, so "X OUT" then "X PLAYING", or
+    one goalie confirmed then the other, leaves only the later report in force."""
     path = parent.path / "news" / "accepted_overrides.json"
     if not path.exists():
         return [], {}
     from nhl_dfs.build.controller import override_from
 
-    objs, out = [], {}
+    latest: dict[tuple, Any] = {}
     for d in json.loads(path.read_text(encoding="utf-8")):
         try:
             o = override_from(d)
@@ -194,7 +221,12 @@ def accepted_overrides(parent, pool, now: datetime) -> tuple[list, dict[str, str
             continue
         if not (o.effective_utc <= now < o.expiry_utc) or o.role_id not in pool.by_role_id:
             continue
-        objs.append(o)
+        row = pool.by_role_id[o.role_id]
+        key = (row.team, o.field) if o.field == "goalie_start" else (row.person_key, o.field)
+        latest.pop(key, None)
+        latest[key] = o
+    objs, out = list(latest.values()), {}
+    for o in objs:
         row = pool.by_role_id[o.role_id]
         if o.field == "participation" and o.new == "OUT":
             out[row.person_key] = "override OUT"
@@ -370,6 +402,7 @@ def swap_core(
     eager_objective: bool = False,
     apply_state: Callable | None = None,
     fetch_odds: bool = False,
+    overrides_run: RunDir | None = None,
 ) -> RunResult:
     """objective: "auto" | "scenario" | "provisional" | "baseline" (C9; stepped down in that order and
     reported). standings: an optional live.StandingsSnapshot. eager_objective: resolve (and, for a
@@ -388,6 +421,10 @@ def swap_core(
     # and the exposure counts resolve them through spool, and ls.not_addable keeps them out of every free cell.
     spool = with_started_rows(pool)
     current = read_entries(current_path)
+    # C53 review (flag 81 (b)): publish only if the public file still holds what it held when this pass started, so a
+    # late swap or refresh that ends after a newer publish (Ben's report, another late swap) never takes its place
+    public0 = Path(outputs_root) / slate_id / PUBLIC_NAME
+    expect0 = None if rehearsal is not None else (sha256(public0.read_bytes()) if public0.exists() else "")
     # A rehearsal clock drives locks only; the run id and created time are always real.
     real_clock = (lambda: datetime.now(timezone.utc)) if rehearsal is not None else clock
     run = new_run(runs_root, mode=pool.mode, clock=real_clock)
@@ -483,7 +520,21 @@ def swap_core(
         out_people |= {pool.by_role_id[r].person_key for r, s in rec.rows.items()
                        if s.participation is Participation.OUT or s.eligibility is Eligibility.DISABLED}
     # C10: overrides accepted on the parent run (overrides-apply or a QA correctness repair) and still valid now
-    overrides, ovr_out = accepted_overrides(parent, pool, clock())
+    # overrides_run: the run holding the slate's delivered file when it is not the parent (a refresh started on the
+    # original build after a late swap delivered; C53 review), so Ben's report on the delivered run is read
+    src_run = overrides_run or parent
+    overrides, ovr_out = accepted_overrides(src_run, pool, clock())
+    carried = carry_overrides(src_run, run, clock())  # C53 review: in force for the next child too
+    if carried:
+        m["news"]["overrides_carried"] = carried
+    bens = [o for o in overrides if o.source == "BEN"]
+    if bens:  # C53 (flag 83): Ben's report accepted on the parent is in force here too, and labeled
+        from nhl_dfs.models.overrides import ben_label
+
+        m["news"]["ben_reports"] = [{"name": pool.by_role_id[o.role_id].name, "team": pool.by_role_id[o.role_id].team,
+                                     "role_id": o.role_id, "field": o.field, "new": o.new,
+                                     "effective_utc": _utc(o.effective_utc), "claim": o.claim} for o in bens]
+        m["statuses"]["NEWS_STATE"] = ben_label(m["statuses"]["NEWS_STATE"])
     # Goalie gate (B17): an open-cell goalie whose team has another CONFIRMED starter is a repair target. Cheap:
     # the starting-goalies page only, bounded; a team where an override and Daily Faceoff disagree is CONFLICTED
     # (the override's exclusion for that team is withdrawn: nothing is repaired automatically, Ben is told).
@@ -522,6 +573,10 @@ def swap_core(
         "started_games": sorted(ls.started_games), "edit_stop_games": sorted(ls.edit_stop_games),
         "start_sources": dict(Counter(ls.start_source.values())),
     }
+    n_dk = sum(1 for c in ls.cells.values() if c.dk_locked)
+    if n_dk:  # C53 (B118): DraftKings' post-lock export; those cells are pinned and written back byte for byte
+        m["locks"]["dk_locked_cells"] = n_dk
+        messages.append(f"{n_dk} cell(s) DraftKings marks LOCKED: pinned, kept byte for byte")
     if ls.edit_stop_games:
         messages.append("edit stop (not started): " + ", ".join(sorted(ls.edit_stop_games))
                         + f" start within {buffer_s}s; those cells are pinned and those players are not added")
@@ -743,12 +798,14 @@ def swap_core(
     # A rehearsal clock can call a started game open, so its file never reaches outputs/.
     target_root = run.path / "rehearsal_outputs" if rehearsal is not None else outputs_root
     try:
-        res = publish(run, data, report, slate_id, outputs_root=target_root)
+        res = publish(run, data, report, slate_id, outputs_root=target_root, expect_public_sha=expect0)
     except (PublishRefused, LockTimeout) as exc:
         return fail(f"publish failed: {exc}")
     m["versions"].append({"version": res.version, "phase": kind, "sha256": report.out_sha256,
                           "created_utc": _utc(datetime.now(timezone.utc)), "path": str(res.version_path),
-                          "public_replaced": res.public_replaced, "public_detail": res.public_detail})
+                          "public_replaced": res.public_replaced, "public_detail": res.public_detail,
+                          "delivery_version": res.delivery_version,
+                          "delivery_path": str(res.delivery_path) if res.delivery_path else None})
     if res.public_detail:
         messages.append(res.public_detail)
     m["export_sha256"] = report.out_sha256

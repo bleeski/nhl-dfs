@@ -201,7 +201,7 @@ def build(pool, *, dk_rec=None, csv_status=None, now: datetime, cache=None, offl
                             "no automatic repair")
             else:
                 starter, s_state, s_time = k, "CONFIRMED", _iso(o.effective_utc)
-                s_source = f"accepted override ({o.source_url})"
+                s_source = f"accepted override ({_override_source(o)})"
         if not conflict and starter is None and gr is not None:
             if gr.state is GoalieState.CONFLICTED:
                 conflict = "; ".join(gr.notes[-1:]) or "Daily Faceoff sources disagree"
@@ -224,7 +224,7 @@ def build(pool, *, dk_rec=None, csv_status=None, now: datetime, cache=None, offl
             part = rs.persons[k].participation if rs is not None and k in rs.persons else Participation.PLAYING
             gl = GoalieLine(k, name[k], team, UNKNOWN, name.get(starter) if starter else None, s_state)
             if k in ovr_out:
-                gl.status, gl.source, gl.report_utc = NOT_STARTING, f"accepted override OUT ({ovr_out[k].source_url})", \
+                gl.status, gl.source, gl.report_utc = NOT_STARTING, f"accepted override OUT ({_override_source(ovr_out[k])})", \
                     _iso(ovr_out[k].effective_utc)
             elif part is Participation.OUT:
                 gl.status, gl.source = NOT_STARTING, f"DK status OUT ({rs.persons[k].dk_status or 'OUT'})"
@@ -383,3 +383,8 @@ def refresh_run_record(run, *, now: datetime, offline: bool = True, cache=None) 
     write_manifest(run, m)
     write_run_notes(run, m)
     return rec
+
+
+def _override_source(o) -> str:
+    """The label of an override's source: its URL, or Ben's report (C53, flag 83: a BEN override has no URL)."""
+    return f"Ben in session: {o.claim}" if getattr(o, "source", "") == "BEN" else o.source_url
