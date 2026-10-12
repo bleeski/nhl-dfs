@@ -172,7 +172,7 @@ def test_the_new_york_day_decides_not_the_utc_date():
     # 2026-10-10T03:30Z is 23:30 on Friday 2026-10-09 in New York: yesterday's item for a Saturday game
     out = rw.read_items([_item(datetime(2026, 10, 10, 3, 30, tzinfo=timezone.utc))], {"CAR": SAT},
                         datetime(2026, 10, 10, 20, 0, tzinfo=timezone.utc), rw.NewsFetch())
-    assert out.reports == [] and out.counts.get("ignored_other_day") == 1
+    assert out.reports == [] and out.counts.get("skipped_other_day") == 1
     out = rw.read_items([_item(datetime(2026, 10, 10, 15, 0, tzinfo=timezone.utc))], {"CAR": SAT},
                         datetime(2026, 10, 10, 20, 0, tzinfo=timezone.utc), rw.NewsFetch())
     (r,) = out.reports
@@ -183,7 +183,7 @@ def test_the_new_york_day_decides_not_the_utc_date():
 def test_an_item_published_after_the_clock_is_ignored():
     out = rw.read_items([_item(datetime(2026, 10, 10, 21, 0, tzinfo=timezone.utc))], {"CAR": SAT},
                         datetime(2026, 10, 10, 20, 0, tzinfo=timezone.utc), rw.NewsFetch())
-    assert out.reports == [] and out.counts.get("ignored_after_clock") == 1
+    assert out.reports == [] and out.counts.get("skipped_after_clock") == 1
 
 
 def test_a_cited_post_is_the_rows_source():
@@ -346,8 +346,8 @@ def test_a_rotowire_scratch_keeps_the_player_out_of_free_cells(tmp_path, monkeyp
     assert r.statuses["FILE_VALID"] == "TRUE"
     after = goalies.lineups_of(r.run.version_file(1), p)
     assert all(sk.name not in {p.by_role_id[x].name for x in lu if x} for lu in after.values())
-    assert sk.name in r.manifest["news"]["rotowire_scratches"]
-    assert r.manifest["news"]["rotowire_scratches"][sk.name].startswith("RotoWire scratch")
+    assert f"{sk.name} ({sk.team})" in r.manifest["news"]["rotowire_scratches"]
+    assert r.manifest["news"]["rotowire_scratches"][f"{sk.name} ({sk.team})"].startswith("RotoWire scratch")
 
 
 def test_a_later_will_play_item_cancels_the_scratch(tmp_path, monkeypatch, fake_codes):
@@ -432,3 +432,180 @@ def test_the_research_requests_urls_include_the_feed(tmp_path):
     assert "https://www.rotowire.com/hockey/news.php" in req["urls"]
     assert req["urls"][0] == "https://www.dailyfaceoff.com/starting-goalies"
     json.dumps(req)
+
+
+# -- C54 review: negations, hedges, subjects, attempts, timeouts ------------------------------------------------------
+
+@pytest.mark.parametrize("text", [  # CONSTRUCTED: each was read as a start, scratch or cancel before the review fix
+    "Kochetkov hasn't been confirmed as the starter for Saturday.",
+    "Kochetkov is not confirmed as the starter Saturday.",
+    "It's unclear whether Kochetkov will start Saturday.",
+    "Kochetkov will start Saturday if Andersen is unable to go.",
+    "Kochetkov will start skating Saturday.",
+    "Kochetkov will start practicing tonight.",
+    "Kochetkov is expected to be confirmed as the starter Saturday.",
+    "Kochetkov has not been ruled out for Saturday.",
+    "Kochetkov hasn't been ruled out for Saturday.",
+    "Kochetkov could be scratched Saturday.",
+    "Kochetkov is not expected to be scratched Saturday.",
+    "Kochetkov will not be scratched Saturday.",
+    "Kochetkov will miss Saturday's practice.",
+    "Kochetkov hasn't been cleared to play Saturday.",
+    "Kochetkov might not start Saturday.",
+    "Kochetkov may not start Saturday.",
+])
+def test_a_negated_hedged_or_conditional_statement_never_counts(text):
+    assert kind(text) == "ignored_statement"
+
+
+def test_the_subject_is_the_items_player_never_another_name_or_a_namesake():  # CONSTRUCTED
+    t = "Andersen will sit, so the Hurricanes will start Kochetkov tonight."
+    assert kind(t, player="Frederik Andersen") == "ignored_subject" and kind(t) == "start"
+    t = "Andersen will back up tonight. Kochetkov was sharp Thursday, and he will start against the Lightning."
+    assert kind(t, player="Frederik Andersen") == "ignored_subject" and kind(t) == "start"
+    t = "Jack Hughes will not play tonight against the Lightning."
+    assert kind(t, player="Luke Hughes") == "ignored_subject" and kind(t, player="Jack Hughes") == "scratch"
+    assert kind("Kochetkov will start vs. Tampa Bay.") == "start"  # "vs." does not end the sentence
+
+
+def test_a_start_for_a_skater_is_counted_as_ignored_not_as_a_start():
+    it = rw.NewsItem("Sebastian Aho", "CAR", "C", "", "Aho will start tonight against the Lightning.",
+                     datetime(2026, 10, 10, 15, 0, tzinfo=timezone.utc), None)
+    out = rw.read_items([it], {"CAR": SAT}, datetime(2026, 10, 10, 20, 0, tzinfo=timezone.utc), rw.NewsFetch())
+    assert out.reports == [] and out.counts.get("ignored_not_goalie") == 1 and "start" not in out.counts
+
+
+def test_a_naive_time_is_skipped_never_raised():
+    it = rw.NewsItem("Pyotr Kochetkov", "CAR", "G", "", "Kochetkov will start tonight.", datetime(2026, 10, 10, 15, 0), None)
+    out = rw.read_items([it], {"CAR": SAT}, datetime(2026, 10, 10, 20, 0, tzinfo=timezone.utc), rw.NewsFetch())
+    assert out.counts.get("skipped_no_time") == 1
+
+
+def test_an_offline_read_never_writes_an_attempt(tmp_path):
+    c, t = _cache(tmp_path, [("rotowire.com", 200, b"")], offline=True)
+    rw.fetch_news({}, cache=c, now=BEFORE)
+    assert not (tmp_path / "raw" / "rotowire" / "attempts.json").exists() and t.calls == []
+
+
+def test_the_attempt_is_written_before_the_request_so_a_crashed_read_sends_no_second_one(tmp_path):
+    clock = {"t": BEFORE}
+    c, t = _cache(tmp_path, [("rotowire.com", 200, RuntimeError("connection dropped mid-read"))], clock=lambda: clock["t"])
+    got = rw.fetch_news({}, cache=c, now=BEFORE)
+    assert got.source == "none" and len(t.calls) == 1
+    clock["t"] = BEFORE + timedelta(seconds=300)
+    rw.fetch_news({}, cache=c, now=clock["t"])
+    assert len(t.calls) == 1
+
+
+def test_a_server_error_is_one_request_not_a_retry(tmp_path):
+    c, t = _cache(tmp_path, [("rotowire.com", 503, b"Service Unavailable")])
+    rw.fetch_news({}, cache=c, now=BEFORE)
+    assert len(t.calls) == 1
+
+
+@pytest.fixture
+def fake_parser(monkeypatch):
+    """A stand-in parser for the cache tests only (the bodies below are not pages): a body parses when it starts
+    with 'TESTBODY'."""
+    def parse(html):
+        if not isinstance(html, str) or not html.startswith("TESTBODY"):
+            raise rw.SourceSchemaError("rotowire: not a test body")
+        return []
+    monkeypatch.setattr(rw, "parse_news_page", parse)
+
+
+def test_a_second_call_inside_the_ttl_reads_the_cache(tmp_path, fake_parser):
+    clock = {"t": BEFORE}
+    c, t = _cache(tmp_path, [("rotowire.com", 200, b"TESTBODY 1")], clock=lambda: clock["t"])
+    assert rw.fetch_news({}, cache=c, now=BEFORE).source == "live"
+    clock["t"] = BEFORE + timedelta(seconds=599)
+    again = rw.fetch_news({}, cache=c, now=clock["t"])
+    assert again.source == "stored" and len(t.calls) == 1
+
+
+def test_a_failed_request_falls_back_to_the_stored_copy(tmp_path, fake_parser):
+    clock = {"t": BEFORE}
+    routes = [("rotowire.com", 200, b"TESTBODY 1")]
+    c, t = _cache(tmp_path, routes, clock=lambda: clock["t"])
+    rw.fetch_news({}, cache=c, now=BEFORE)
+    routes[0] = ("rotowire.com", 403, b"Access Denied")
+    clock["t"] = BEFORE + timedelta(minutes=15)
+    got = rw.fetch_news({}, cache=c, now=clock["t"])
+    assert len(t.calls) == 2 and got.source == "stored" and got.fetched_utc == BEFORE
+    assert any("request failed" in n for n in got.notes)
+
+
+def test_a_rotowire_timeout_uses_the_stored_copy_and_says_so(monkeypatch, fake_codes):
+    import time as time_mod
+
+    calls = []
+
+    def slow(games, *, cache, now):
+        calls.append(cache.offline)
+        if not cache.offline:
+            time_mod.sleep(1.0)
+        return rw.NewsFetch(source="stored", fetched_utc=now)
+    monkeypatch.setattr(rw, "fetch_news", slow)
+    got = goalies.gather_rotowire(pool(), HttpCache(offline=False, transport=lambda *a: (500, b"", {})),
+                                  offline=False, budget_s=0.2, now=BEFORE)
+    assert calls[-1] is True and got.notes[0].startswith("RotoWire page not fetched (TimeoutError")
+
+
+def test_a_rotowire_read_that_never_returns_leaves_the_board_as_daily_faceoff_alone(monkeypatch, fake_codes):
+    import time as time_mod
+
+    monkeypatch.setattr(goalies, "gather_rotowire", lambda *a, **k: time_mod.sleep(3.0))
+    p = pool()
+    inject_df(monkeypatch, [df_report("DDD", "Delta G1", created=BEFORE - timedelta(hours=1))])
+    b = goalies.build(p, now=BEFORE, offline=True, budget_s=0.1)
+    assert b.rotowire["line"].startswith("RotoWire unavailable (RotoWire read did not finish")
+    assert b.persons[person(p, "Delta G2")].repair  # Daily Faceoff's confirmation still acts
+
+
+def test_a_rotowire_scratched_goalie_with_no_other_source_is_repaired(tmp_path, monkeypatch, fake_codes):
+    b = base(tmp_path)
+    cur = clean_current(tmp_path)
+    p = pool()
+    inject_df(monkeypatch, [])
+    inject_rw(monkeypatch, news(scratches=[rw.Scratch("Delta G2", "DDD", "Delta G2 will not play Thursday", rw.AGGREGATOR,
+                                                      None, BEFORE - timedelta(hours=1))]))
+    r = swap(tmp_path, b, cur)
+    g = r.manifest["goalies"]["persons"][person(p, "Delta G2")]
+    assert g["status"] == "NOT STARTING" and g["source"].startswith("RotoWire scratch")
+    assert "Delta G2" not in names_in(r.run.version_file(1), p, "7100000002")
+    assert "Delta G2 (DDD)" in r.manifest["news"]["rotowire_scratches"]
+
+
+def test_two_agreeing_confirmations_beat_the_draftkings_flag(tmp_path, monkeypatch, fake_codes):
+    import csv
+    import io
+
+    b = base(tmp_path)
+    cur = clean_current(tmp_path)
+    p = pool()
+    rows = list(csv.reader(io.StringIO((LS / "classic" / "DKSalaries.csv").read_bytes().decode("utf-8-sig"), newline="")))
+    for rec in rows[1:]:
+        if rec and rec[2] == "Delta G2":
+            rec[10] = "P"
+    buf = io.StringIO(newline="")
+    csv.writer(buf, lineterminator="\r\n").writerows(rows)
+    fresh = tmp_path / "DKSalaries (1).csv"
+    fresh.write_bytes(b"\xef\xbb\xbf" + buf.getvalue().encode("utf-8"))
+    inject_df(monkeypatch, [df_report("DDD", "Delta G1", created=BEFORE - timedelta(hours=2))])
+    inject_rw(monkeypatch, news([rw_report("DDD", "Delta G1", at=BEFORE - timedelta(hours=1))]))
+    r = late_swap.run(b.run.run_id, cur, runs_root=tmp_path / "runs", as_of=BEFORE, offline=True, salary_path=fresh)
+    d1 = r.manifest["goalies"]["persons"][person(p, "Delta G1")]
+    assert d1["status"] == "CONFIRMED" and "Daily Faceoff" in d1["source"] and d1["source"].startswith("RotoWire")
+    assert "Delta G2" not in names_in(r.run.version_file(1), p, "7100000002")
+
+
+def test_a_later_rotowire_expectation_for_another_goalie_is_conflicted(tmp_path, monkeypatch, fake_codes):
+    b = base(tmp_path)
+    cur = clean_current(tmp_path)
+    p = pool()
+    inject_df(monkeypatch, [])
+    inject_rw(monkeypatch, news([rw_report("DDD", "Delta G1", at=BEFORE - timedelta(hours=3)),
+                                 rw_report("DDD", "Delta G2", at=BEFORE - timedelta(hours=1), state=GoalieState.EXPECTED)]))
+    r = swap(tmp_path, b, cur)
+    assert r.run.version_file(1).read_bytes() == cur.read_bytes()
+    assert r.manifest["goalies"]["persons"][person(p, "Delta G1")]["status"] == "CONFLICTED"

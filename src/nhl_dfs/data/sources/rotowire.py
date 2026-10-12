@@ -94,9 +94,10 @@ class NewsFetch:
 
 # -- statements --------------------------------------------------------------------------------------------
 
-_CONTRACTIONS = ((r"\bwon't\b", "will not"), (r"\bwon’t\b", "will not"), (r"\bcan't\b", "cannot"), (r"\bcan’t\b", "cannot"),
-                 (r"\b([A-Za-z]+)'ll\b", r"\1 will"), (r"\b([A-Za-z]+)’ll\b", r"\1 will"),
-                 (r"\bisn't\b", "is not"), (r"\bisn’t\b", "is not"))
+_CONTRACTIONS = ((r"\bwon['’]t\b", "will not"), (r"\bcan['’]t\b", "cannot"), (r"\b([A-Za-z]+)['’]ll\b", r"\1 will"),
+                 (r"\b(is|has|was|does|did|are|should|would|could|were|have|had|must|might)n['’]t\b", r"\1 not"))
+_ABBREV = re.compile(r"\b(vs|St|Jr|Sr|Dr|Mr|No|Mt|Ft|a\.m|p\.m)\.(?=\s)")
+_DOT = "\u2024"  # one-dot leader: an abbreviation's period while sentences are split, restored after
 _GOALIE_JOB = r"(?:start|be in goal|be between the pipes|tend (?:the )?twine|guard (?:the )?(?:goal|cage|net|crease|blue paint)|" \
               r"patrol (?:the )?(?:crease|cage|blue paint)|man (?:the )?(?:crease|cage|net)|defend (?:the )?(?:cage|net|goal)|" \
               r"get the (?:start|nod)|draw the start|be in net|start in goal|start in net)"
@@ -130,9 +131,39 @@ def last_name(player: str) -> str:
     return parts[-1] if parts else ""
 
 
+_NEG_WORDS = re.compile(r"\b(?:not|never|no longer|yet to|whether|if|unless|nor|cannot|instead of|rather than)\b", re.I)
+_HEDGE_WORDS = re.compile(r"\b(?:could|may|might|likely|expected|expects|expecting|probably|possibly|potentially|perhaps|unclear|"
+                          r"uncertain|doubtful|hope|hopes|hoping|hopeful|aims?|plans?|planning|slated|projected|probable|"
+                          r"tentatively|questionable|should)\b", re.I)
+_CONDITIONAL_AFTER = re.compile(r"\b(?:if|unless|provided|assuming|in case|pending|depending)\b", re.I)
+_START_NOT_A_GAME = re.compile(r"^\s+(?:[a-z]+ing\b|a\b|an\b|the season\b|his rehab|the year\b|in the AHL\b|for the AHL\b|"
+                               r"(?:the |his )?(?:practice|skate|skating|conditioning|rehab|stint|assignment)\b)", re.I)
+_MISS_NOT_A_GAME = re.compile(r"^\s+(?:\S+\s+){0,2}?(?:practice|skate|skating|morning skate|session|meeting|workout|"
+                              r"optional|team meeting|media)\b", re.I)
+
+
+def _context_ok(kind: str, clause: str, m: re.Match) -> bool:
+    """Flag 86: a statement counts only when nothing in the four words before it or in its own text negates or
+    hedges it ('has not been ruled out', 'unclear whether he will start', 'might not start'), and nothing after it
+    makes it conditional or about something other than the game ('will start skating', 'will miss practice')."""
+    pre = " ".join(clause[: m.start()].split()[-4:])
+    if _NEG_WORDS.search(pre) or (kind != "scratch" and _NEG_WORDS.search(m.group(0))):  # 'will not play' is the scratch
+        return False
+    if kind != "expected" and _HEDGE_WORDS.search(pre):
+        return False
+    after = clause[m.end():]
+    if kind in ("start", "scratch", "cancel") and _CONDITIONAL_AFTER.search(after):
+        return False
+    if kind == "start" and _START_NOT_A_GAME.search(after):
+        return False
+    if kind == "scratch" and m.group(0).lower().startswith("will miss") and _MISS_NOT_A_GAME.search(after):
+        return False
+    return True
+
+
 def statements(clause: str) -> list[tuple[str, re.Match]]:
-    """Every ('start' | 'expected' | 'scratch' | 'cancel', match) in one clause. A start or expectation inside a
-    negation ("will not start") is dropped, and so is a start inside an expectation ("expected to start")."""
+    """Every ('start' | 'expected' | 'scratch' | 'cancel', match) in one clause that survives its context. A start or
+    expectation inside a negation ("will not start") is dropped, and so is a start inside an expectation."""
     neg = [m.span() for m in NEGATED.finditer(clause)]
     exp = [m.span() for m in EXPECTED.finditer(clause)]
 
@@ -146,14 +177,16 @@ def statements(clause: str) -> list[tuple[str, re.Match]]:
                 continue
             if kind == "start" and inside(m, exp):
                 continue
+            if not _context_ok(kind, clause, m):
+                continue
             out.append((kind, m))
     return sorted(out, key=lambda km: km[1].start())
 
 
 def clauses(text: str) -> list[str]:
     out = []
-    for s in _SENT.split(_expand(text or "")):
-        out += [c for c in _CLAUSE.split(s) if c and c.strip()]
+    for s in _SENT.split(_ABBREV.sub(lambda m: m.group(1) + _DOT, _expand(text or ""))):
+        out += [c.replace(_DOT, ".") for c in _CLAUSE.split(s) if c and c.strip()]
     return out
 
 
@@ -205,37 +238,80 @@ def bind(region: str, game: SlateGame, names: dict[str, list[str]]) -> str:
     return "bound" if (other or m["days"] or m["dates"] or m["tonight"]) else "none"
 
 
-def _subject_ok(before: str, last: str, names: dict[str, list[str]]) -> bool:
-    """The statement's subject is the item's player: his last name before it with no other capitalized name in
-    between (days, months and team words aside), or a pronoun ('He will start ...')."""
-    f = _fold(before)
+_COMMON_CAPS = {"The", "He", "His", "Him", "With", "After", "Before", "In", "On", "At", "For", "If", "Despite", "Although",
+                "While", "Since", "Through", "Over", "During", "This", "That", "It", "Its", "Both", "Neither", "Either", "A",
+                "An", "And", "But", "So", "Per", "According", "Coach", "Head", "Game", "Games", "AHL", "NHL", "ECHL", "KHL",
+                "GAA", "SV", "Stanley", "Cup", "Calder", "Vezina", "All-Star", "Olympic", "Olympics", "Team", "General",
+                "Manager", "GM", "Assistant", "Hockey", "League", "Western", "Eastern", "Conference", "Division", "American"}
+_MONTH_NAMES = ("January", "February", "March", "April", "May", "June", "July", "August", "September", "October",
+                "November", "December")
+
+
+def _allowed_caps(names: dict[str, list[str]]) -> set[str]:
+    out = {w for ws in names.values() for n in ws for w in n.split()} | {d.title() for d in WEEKDAYS} | _COMMON_CAPS
+    out |= {m.title() for m in MONTHS} | set(_MONTH_NAMES)
+    return out | {w.rstrip(".") for w in out}
+
+
+def _caps(text: str) -> list[str]:
+    return [re.sub(r"['’]s$", "", c).rstrip(".,'’") for c in re.findall(r"\b[A-Z][A-Za-z.'’-]*", _fold(text))]
+
+
+def _person_tokens(text: str, allowed: set[str]) -> list[str]:
+    """Capitalized words that may name a person (team, day, month and common words aside), in order."""
+    return [c for c in _caps(text) if c and c not in allowed]
+
+
+def _hit_is_player(text: str, end: int, last: str, first: str, allowed: set[str]) -> bool:
+    """The last-name hit ending at `end` is the item's player, not a namesake ('Jack Hughes' on Luke Hughes's item):
+    the word right before it is his first name, or not a capitalized name at all."""
+    words = text[: end - len(last)].split()
+    word = re.sub(r"['’]s$", "", words[-1]).rstrip(".,'’") if words else ""
+    return not (word[:1].isupper() and word not in allowed and word.lower() != first)
+
+
+def _subject_ok(before: str, after: str, last: str, first: str, names: dict[str, list[str]], *, pronoun_ok: bool) -> bool:
+    """The statement's subject is the item's player: his last name before it (not a namesake's) with no other
+    capitalized name in between, or a pronoun when no other person was named since he was; and a start whose object
+    is a name ('the Hurricanes will start Kochetkov') counts only for that name."""
+    allowed = _allowed_caps(names)
+    f, fa = _fold(before), _fold(after)
+    obj = re.match(r"\s+([A-Z][A-Za-z.'’-]+)(?:\s+([A-Z][A-Za-z.'’-]+))?", fa)
+    if obj:
+        toks = [re.sub(r"['’]s$", "", t).rstrip(".,'’") for t in obj.groups() if t]
+        people = [t for t in toks if t not in allowed]
+        if people:  # 'will start <Name>': the name is the starter
+            return last.lower() in {t.lower() for t in people}
     hits = [m.end() for m in re.finditer(r"(?<![A-Za-z])" + re.escape(last) + r"(?![A-Za-z])", f, re.I)] if last else []
     if hits:
+        if not _hit_is_player(f, hits[-1], last, first, allowed):
+            return False
         between = f[hits[-1]:]
-    elif _PRONOUN.search(f):
+    elif pronoun_ok and _PRONOUN.search(f):
         between = f[_PRONOUN.search(f).end():]
     else:
         return False
-    allowed = {w for ws in names.values() for n in ws for w in n.split()} | {d.title() for d in WEEKDAYS} | {
-        "AHL", "NHL", "He", "The", "Per", "According", "Coach", "Head"}
-    allowed |= {m.title() for m in MONTHS} | {_fold(m).title() + "." for m in MONTHS}
-    caps = [re.sub(r"['’]s$", "", c).rstrip(".,'’") for c in re.findall(r"\b[A-Z][A-Za-z.'’-]*", between)]
-    return all(c in allowed or c + "." in allowed for c in caps)
+    return not _person_tokens(between, allowed)
 
 
 def read_item(item: NewsItem, game: SlateGame, names: dict[str, list[str]]) -> tuple[str, str, str]:
     """(kind or an 'ignored_*' reason, the statement clause, the matched phrase) for one item about a slate team."""
     last = last_name(item.player)
+    first = (normalize_name(item.player).split() or [""])[0]
+    allowed = _allowed_caps(names)
     found: list[tuple[str, str, str]] = []
     reasons: list[str] = []
     head_bind = bind(item.headline or "", game, names)
     for source, text in (("news", item.news), ("headline", item.headline)):
+        player_last = True  # a pronoun refers to the player until another person is named after him
         for cl in clauses(text):
-            for kind, m in statements(cl):
+            stmts = statements(cl)
+            for kind, m in stmts:
                 if re.search(r"\bAHL\b|\bminor[- ]league\b|\bAmerican Hockey League\b", _fold(cl)):
                     reasons.append("ignored_ahl")
                     continue
-                if source == "news" and not _subject_ok(cl[: m.start()], last, names):
+                if source == "news" and not _subject_ok(cl[: m.start()], cl[m.end():], last, first, names,
+                                                        pronoun_ok=player_last):
                     reasons.append("ignored_subject")
                     continue
                 b = bind(cl[m.start():], game, names)  # the statement's own object region first
@@ -247,6 +323,10 @@ def read_item(item: NewsItem, game: SlateGame, names: dict[str, list[str]]) -> t
                     reasons.append("ignored_other_game" if b == "mismatch" else "ignored_unbound")
                     continue
                 found.append((kind, cl.strip(), m.group(0)))
+            if source == "news":
+                f = _fold(cl)
+                for tok in _person_tokens(f, allowed):
+                    player_last = tok.lower() == last
     kinds = {k for k, _, _ in found}
     if not found:
         return (reasons[0] if reasons else "ignored_statement"), "", ""
@@ -299,30 +379,53 @@ def _stored(cache: HttpCache) -> HttpCache:
     return HttpCache(root=cache.root, config=cache.config, offline=True, clock=cache.clock)
 
 
+def _no_retry(cache: HttpCache) -> HttpCache:
+    """The live view for this one page: no retry, so an attempt is one request (flag 91)."""
+    cfg = dict(cache.config)
+    cfg["http"] = {**cfg["http"], "retries": 0}
+    return HttpCache(root=cache.root, config=cfg, transport=cache.transport, offline=False, clock=cache.clock,
+                     sleep=cache.sleep)
+
+
 def fetch_news(games: dict[str, SlateGame], *, cache: HttpCache, now: datetime) -> NewsFetch:
     """Rows for the slate's games from the news page at `now`. Never raises for a missing or unreadable page: the
-    fetch comes back with source 'none' and the reason in its notes."""
+    fetch comes back with source 'none' and the reason in its notes. Online, a request goes out only when the stored
+    copy is older than the TTL and no attempt was made within the TTL; the attempt is written before the request
+    (an abandoned, overlapping or killed read cannot send a second one), and a failed request falls back to the
+    stored copy. Offline reads never write an attempt."""
     cfg = cache.config
     url, ttl = cfg["urls"]["rotowire_news"], float(cfg["ttl_s"]["rotowire"])
     out = NewsFetch()
-    use = cache
+    stored = cache if cache.offline else _stored(cache)
+    go_live = False
     if not cache.offline:
-        last = last_attempt(cache)
         wall = cache.clock()
-        if last is not None and 0 <= (wall - last).total_seconds() < ttl:
-            use = _stored(cache)
+        entry = cache._load_index(SOURCE).get(url)
+        age = (wall - datetime.fromisoformat(entry["fetched_at"].replace("Z", "+00:00"))).total_seconds() if entry else None
+        last = last_attempt(cache)
+        if age is not None and age <= ttl:
+            pass  # the stored copy is current: no request
+        elif last is not None and (wall - last).total_seconds() < ttl:  # a clock behind the record counts as inside
             out.notes.append(f"a RotoWire request went out {int((wall - last).total_seconds())} s ago (limit {int(ttl)} s): "
                              "stored copy only")
-    try:
-        f = use.get_text(url, source=SOURCE, ttl_s=ttl, schema=parse_news_page)
-    except (SourceUnavailable, SourceSchemaError) as exc:
-        if use is cache:
-            _record_attempt(cache, cache.clock(), f"{type(exc).__name__}: {exc}")
-        out.notes.append(f"RotoWire unavailable ({type(exc).__name__}: {str(exc)[:100]})")
-        return out
-    if use is cache and not f.from_cache:
-        _record_attempt(cache, f.fetched_at_utc, "ok")
-    out.source = "stored" if f.from_cache else "live"
+        else:
+            go_live = True
+    f = None
+    if go_live:
+        _record_attempt(cache, wall, "pending")
+        try:
+            f = _no_retry(cache).get_text(url, source=SOURCE, ttl_s=ttl, schema=parse_news_page)
+            _record_attempt(cache, wall, "ok")
+        except Exception as exc:  # any failure: one attempt spent, the stored copy if there is one
+            _record_attempt(cache, wall, f"{type(exc).__name__}: {exc}")
+            out.notes.append(f"RotoWire request failed ({type(exc).__name__}: {str(exc)[:100]}); stored copy used if any")
+    if f is None:
+        try:
+            f = stored.get_text(url, source=SOURCE, ttl_s=ttl, schema=parse_news_page)
+        except (SourceUnavailable, SourceSchemaError) as exc:
+            out.notes.append(f"RotoWire unavailable ({type(exc).__name__}: {str(exc)[:100]})")
+            return out
+    out.source = "live" if (go_live and not f.from_cache) else "stored"
     out.fetched_utc = f.fetched_at_utc
     read_items(parse_news_page(f.data), games, now, out, page_url=url)
     log.info("rotowire: %s, %s", out.source, out.counts)
@@ -333,33 +436,32 @@ def read_items(items: list[NewsItem], games: dict[str, SlateGame], now: datetime
                page_url: str | None = None) -> NewsFetch:
     names, codes = team_names(), team_map()
     out.count("items", len(items))
-    for it in sorted(items, key=lambda i: i.published_utc or datetime.min.replace(tzinfo=timezone.utc)):
+    aware = [i for i in items if i.published_utc is not None and i.published_utc.tzinfo is not None]
+    for it in sorted(aware, key=lambda i: i.published_utc) + [i for i in items if i not in aware]:
         nhl = codes.get(it.team or "")
         game = games.get(nhl or "")
         if game is None:
-            out.count("other_teams")
+            out.count("skipped_other_teams")
             continue
-        if it.published_utc is None:
-            out.count("ignored_time")
+        if it.published_utc is None or it.published_utc.tzinfo is None:
+            out.count("skipped_no_time")
             continue
         if it.published_utc > now:
-            out.count("ignored_after_clock")
+            out.count("skipped_after_clock")
             continue
         if it.published_utc.astimezone(ET).date() != game.day:
-            out.count("ignored_other_day")
+            out.count("skipped_other_day")
             continue
         out.count("today")
         kind, clause, phrase = read_item(it, game, names)
-        if kind.startswith("ignored"):
-            out.count(kind)
-            continue
+        if kind in ("start", "expected") and it.position and it.position.upper() != "G":
+            kind = "ignored_not_goalie"
         out.count(kind)
-        src_name = it.cited_name if it.cited_url else AGGREGATOR
+        if kind.startswith("ignored"):
+            continue
+        src_name = (it.cited_name or "cited post") if it.cited_url else AGGREGATOR
         src_url = it.cited_url or it.url or page_url
         if kind in ("start", "expected"):
-            if it.position and it.position.upper() != "G":
-                out.count("ignored_not_goalie")
-                continue
             state = GoalieState.CONFIRMED if kind == "start" else GoalieState.EXPECTED
             out.reports.append(GoalieReport(
                 team=nhl, team_slug=None, goalie_name=it.player, goalie_id=None, state=state, strength_raw=phrase,

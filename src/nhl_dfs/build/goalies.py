@@ -276,7 +276,12 @@ def build(pool, *, dk_rec=None, csv_status=None, now: datetime, cache=None, offl
             rotowire = NewsFetch(notes=[f"RotoWire {why}"])
         else:
             rotowire = rw_box.get("v")  # None: RotoWire not read (the test stub)
-    rw_starts, rw_exp, rw_scr, rw_unmatched, rw_notes = ({}, {}, {}, [], []) if rotowire is None else _match_rotowire(rotowire, pool)
+    rw_starts, rw_exp, rw_scr, rw_unmatched, rw_notes = {}, {}, {}, [], []
+    if rotowire is not None:
+        try:
+            rw_starts, rw_exp, rw_scr, rw_unmatched, rw_notes = _match_rotowire(rotowire, pool)
+        except Exception as exc:  # the board never raises: RotoWire's rows are dropped and said so
+            rotowire.notes.insert(0, f"RotoWire rows not matched to the pool ({type(exc).__name__}: {str(exc)[:80]})")
     try:
         rs = roles_mod.merge(dk_rec, lines, reps, {}, now, pool=pool,
                              csv_status=csv_status if csv_status is not None else salary_statuses(pool), goalie_path=path)
@@ -356,8 +361,11 @@ def build(pool, *, dk_rec=None, csv_status=None, now: datetime, cache=None, offl
                 others.append((f"{page_label}, {rep_utc or 'no time'}", df_conf))
             elif gr is not None and gr.named and board.available and gr.state is not GoalieState.CONFLICTED:
                 others.append(("Daily Faceoff expected" + ("" if gr.report is not None else " (team page depth order)"), gr.named))
-            if team in dk_p:
+            confirmed_agree = df_conf == k_rw or (team in ovr_start and ovr_start[team][0] == k_rw)
+            if team in dk_p and not confirmed_agree:  # a confirmation already beats Starting=P (the line above says so)
                 others.append(("DraftKings salary file Starting=P", dk_p[team]))
+            if team in rw_exp and rw_exp[team][0] != k_rw and rw_exp[team][1].news_created_utc > rep.news_created_utc:
+                others.append((f"a later RotoWire item (expected, {_iso(rw_exp[team][1].news_created_utc)})", rw_exp[team][0]))
             diff = [(lab, k) for lab, k in others if k != k_rw]
             if conflict:
                 conflict += f"; RotoWire confirms {name[k_rw]} ({rw_time})"
@@ -419,11 +427,18 @@ def build(pool, *, dk_rec=None, csv_status=None, now: datetime, cache=None, offl
         board.rotowire = {"source": rotowire.source, "fetched_utc": _iso(fetched),
                           "age_min": round((now - fetched).total_seconds() / 60.0, 1) if fetched else None,
                           "counts": dict(sorted(rotowire.counts.items())), "notes": (rotowire.notes + rw_notes)[:8],
-                          "unmatched": rw_unmatched[:10], "scratches": {name.get(k, k): v for k, v in sorted(board.scratches.items())},
+                          "unmatched": rw_unmatched[:10],
+                          "scratches": {_who(pool, k): v for k, v in sorted(board.scratches.items())},
                           "line": _rw_line(rotowire, {"unmatched": len(rw_unmatched)}, now)}
     if not board.available:
         board.problems.insert(0, f"goalie news unavailable (page source {page.get('source')}, fetched {when or 'never'})")
     return board
+
+
+def _who(pool, k: str) -> str:
+    """'Name (TEAM)': two players can share a name (C54 review)."""
+    row = next((r for r in pool.rows if r.person_key == k), None)
+    return f"{row.name} ({row.team})" if row is not None else k
 
 
 def _scratch_label(sc) -> str:
@@ -563,8 +578,7 @@ def for_run(run, m: dict, *, now: datetime, offline: bool, cache=None, budget_s:
     rec = record(board, table(board, pool, lineups))
     if board.scratches:  # C54: who RotoWire reports out is still in the file (the run applies no scratch; refresh does)
         held = {pool.by_role_id[rid].person_key for lu in lineups.values() for rid in lu if rid in pool.by_role_id}
-        names = {r.person_key: r.name for r in pool.rows}
-        rec["rotowire"]["in_file"] = sorted(names[k] for k in board.scratches if k in held)
+        rec["rotowire"]["in_file"] = sorted(_who(pool, k) for k in board.scratches if k in held)
     return rec
 
 

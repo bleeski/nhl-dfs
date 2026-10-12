@@ -558,8 +558,7 @@ def swap_core(
               and not (k in board.persons and team_of.get(k) in board.conflicted_teams)}
     if rw_out:
         out_people |= set(rw_out)
-        m["news"]["rotowire_scratches"] = {pool.persons[k].classic.name if pool.persons[k].classic else k: why
-                                           for k, why in sorted(rw_out.items())}
+        m["news"]["rotowire_scratches"] = {goalies._who(pool, k): why for k, why in sorted(rw_out.items())}
         messages.append(f"RotoWire: {len(rw_out)} player(s) reported out excluded from free cells (open cells holding them "
                         "are repaired, pinned ones are reported)")
     if board.rotowire:
@@ -573,7 +572,8 @@ def swap_core(
         messages.append(f"{len(ovr_out)} person(s) excluded from free cells by accepted overrides (OUT, or not the "
                         "confirmed starting goalie)")
     excluded_rows = frozenset(r.role_id for r in pool.rows if r.person_key in out_people)
-    m["news"]["csv_summary"] = (f"{len(out_people - set(rw_out))} OUT/IR/DISABLED person(s) excluded from free cells, "
+    rw_only = set(rw_out) - set(ovr_out)  # C54: counted on their own line; the summary keeps its pre-C54 count
+    m["news"]["csv_summary"] = (f"{len(out_people - rw_only)} OUT/IR/DISABLED person(s) excluded from free cells, "
                                 f"{len(unknown)} unrecognized status(es) kept as UNKNOWN")
     if unknown:
         messages.append("unrecognized DK status treated as UNKNOWN (not OUT): " + ", ".join(f"{k}={v!r}" for k, v in sorted(unknown.items())))
