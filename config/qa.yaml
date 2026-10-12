@@ -18,6 +18,7 @@ research:
   urls:                  # candidate pages handed to the researcher (it may also search the web)
     starting_goalies: https://www.dailyfaceoff.com/starting-goalies
     team_lines: https://www.dailyfaceoff.com/teams/{slug}/line-combinations
+    rotowire_news: https://www.rotowire.com/hockey/news.php   # C54 (B121): goalie starts and scratches, often before Daily Faceoff
 
 controller:
   max_proposals: 5              # per round; the rest are rejected as over the limit

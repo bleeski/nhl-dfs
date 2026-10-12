@@ -63,6 +63,17 @@ def _no_facts_table_written():
 
 
 @pytest.fixture(autouse=True)
+def _no_rotowire_before_c54(request, monkeypatch):
+    """C54: tests written before RotoWire joined the goalie board see exactly what they saw (RotoWire not read);
+    tests marked c54 read it through their own injected cache or rows."""
+    if request.node.get_closest_marker("c54") is not None:
+        return
+    import nhl_dfs.build.goalies as goalies_mod
+
+    monkeypatch.setattr(goalies_mod, "gather_rotowire", lambda *a, **k: None)
+
+
+@pytest.fixture(autouse=True)
 def _no_real_network(monkeypatch):
     """Any test that forgets to inject a transport fails instead of going online."""
     def refuse(*args, **kwargs):

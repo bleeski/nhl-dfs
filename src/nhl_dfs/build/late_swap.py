@@ -552,6 +552,17 @@ def swap_core(
         m["news"]["goalie_gate_exclusions"] = {board.persons[k].name: why for k, why in sorted(gate_out.items())}
         messages.append(f"goalie gate: {len(gate_out)} goalie(s) not starting (another goalie CONFIRMED): open cells "
                         "holding them are repaired, pinned ones are reported")
+    # C54 (flag 89): players RotoWire reports out join the exclusion path as a DK OUT status does, labeled with the
+    # source; never a goalie of a CONFLICTED team (nothing is repaired automatically there)
+    rw_out = {k: why for k, why in board.scratches.items() if k not in out_people
+              and not (k in board.persons and team_of.get(k) in board.conflicted_teams)}
+    if rw_out:
+        out_people |= set(rw_out)
+        m["news"]["rotowire_scratches"] = {goalies._who(pool, k): why for k, why in sorted(rw_out.items())}
+        messages.append(f"RotoWire: {len(rw_out)} player(s) reported out excluded from free cells (open cells holding them "
+                        "are repaired, pinned ones are reported)")
+    if board.rotowire:
+        messages.append(board.rotowire["line"])
     for p_ in board.problems[:3]:
         messages.append(f"goalie gate: {p_}")
     if ovr_out:
@@ -561,7 +572,8 @@ def swap_core(
         messages.append(f"{len(ovr_out)} person(s) excluded from free cells by accepted overrides (OUT, or not the "
                         "confirmed starting goalie)")
     excluded_rows = frozenset(r.role_id for r in pool.rows if r.person_key in out_people)
-    m["news"]["csv_summary"] = (f"{len(out_people)} OUT/IR/DISABLED person(s) excluded from free cells, "
+    rw_only = set(rw_out) - set(ovr_out)  # C54: counted on their own line; the summary keeps its pre-C54 count
+    m["news"]["csv_summary"] = (f"{len(out_people - rw_only)} OUT/IR/DISABLED person(s) excluded from free cells, "
                                 f"{len(unknown)} unrecognized status(es) kept as UNKNOWN")
     if unknown:
         messages.append("unrecognized DK status treated as UNKNOWN (not OUT): " + ", ".join(f"{k}={v!r}" for k, v in sorted(unknown.items())))
@@ -594,6 +606,15 @@ def swap_core(
     size = len(CLASSIC_SLOTS if mode is Mode.CLASSIC else SHOWDOWN_SLOTS)
     befores = {e.entry_id: _canonical(current, e) for e in current.entries}
     pins = {e.entry_id: ls.pinned(e.entry_id) for e in current.entries}
+    if rw_out:  # C54: a skater RotoWire reports out in a pinned or LOCKED cell is kept and named (goalies: the goalie table)
+        slots_ = CLASSIC_SLOTS if mode is Mode.CLASSIC else SHOWDOWN_SLOTS
+        for e in current.entries:
+            for k_ in sorted(pins[e.entry_id]):
+                rid = befores[e.entry_id][k_]
+                row = spool.by_role_id.get(rid) if rid else None
+                if row is not None and row.person_key in rw_out and not row.is_goalie:
+                    messages.append(f"entry {e.entry_id} {slots_[k_]} {row.name}: RotoWire reports him out, but the cell is "
+                                    "pinned (locked or inside the edit stop): kept, cannot change")
 
     def needs_repair(eid: str) -> bool:
         before, pin = befores[eid], pins[eid]

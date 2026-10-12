@@ -592,3 +592,36 @@ reads it to tune, select or book money (booking stays with settle, C29).
   delivered file. Accepted overrides are copied to every late-swap or refresh child while valid, the latest record
   winning per person and field (per team for a goalie confirmation); a refresh started on the original build reads the
   overrides of the run that delivered the slate's current file (`swap_core(overrides_run=)`).
+
+## RotoWire news on the goalie board (C54, `data/sources/rotowire.py`, `build/goalies.py`, `build/late_swap.py`, `build/run.py`; B121; flags 85 to 92)
+
+- Fetch (flags 85, 91): `rotowire.fetch_news(games, cache=, now=)` reads `config/sources.yaml` `urls.rotowire_news` through
+  `HttpCache.get_text` (source `rotowire`, TTL `ttl_s.rotowire` 600 s, 3.0 s per-host spacing). Online, a request goes out
+  only when the stored copy is older than the TTL and `<cache root>/rotowire/attempts.json` records no attempt within the
+  TTL; the attempt is written before the request, the request has no retry, and a failure falls back to the stored copy.
+  Offline reads the cache only and writes no attempt. Never raises for a missing or unreadable page: `NewsFetch.source`
+  is `none` and the reason is in `notes`. Read only inside run (the goalie table), late swap and refresh (the scheduled
+  refresh included), never by the capture schedule.
+- Reading (flags 86, 87, 90): an item counts only when published (America/New_York) on its team's slate game date, not
+  after the run clock, and its statement clause binds to that game (a named opponent is the slate opponent, a named day
+  or date is the game's, at least one of them or "tonight"), survives the negation, hedge and condition checks, and has
+  the item's player as its subject. Kinds: start (CONFIRMED), expected (EXPECTED), scratch, cancel (a later "will play"
+  withdraws a scratch); an item holding a scratch and a start or cancel is ignored. Rows are `GoalieReport` with
+  `path="rotowire"`, the slate game's date, start and opponent, `source_name` the cited outlet when the item links the
+  post (else "RotoWire (aggregator)"); scratches are `Scratch`. Every ignored item is counted by reason.
+- Board (flags 88, 89, 92): `goalies.build(..., rotowire=None)` reads RotoWire in a thread beside Daily Faceoff under
+  the same budget (`gather_rotowire`; on timeout the stored copy). Rows match the pool by normalized name plus team; a
+  start must match exactly one goalie, else it is reported as unmatched. A RotoWire confirmation acts only when no other
+  source (Daily Faceoff confirmed or expected, an accepted override, DraftKings Starting=P unless a confirmation agrees,
+  a later RotoWire expectation) names a different goalie: agreement is CONFIRMED with RotoWire named first, disagreement
+  CONFLICTED with no automatic repair. `Board.scratches` (person key to "RotoWire scratch ..." label) holds skaters and
+  goalies RotoWire reports out, except the goalie a source names as the starter (his team becomes CONFLICTED).
+  `Board.available` still means the Daily Faceoff page was read (GOALIE_GATE=NO_NEWS otherwise). `Board.rotowire` and the
+  record's `rotowire` key carry the source, age, counts, notes, unmatched names, scratches and one printed line ("RotoWire
+  news: ..." or "RotoWire unavailable (...): board from Daily Faceoff alone"); the key is absent when RotoWire was not
+  read. Roles, the board's `inputs` and the swap objective's role model stay Daily Faceoff only (flag 92).
+- Late swap and refresh: `Board.scratches` join the exclusion set as a DK OUT status does (not a goalie of a CONFLICTED
+  team), recorded in `news.rotowire_scratches` keyed "Name (TEAM)"; a scratched skater in a pinned cell is kept and named.
+  The initial run applies no scratch and lists scratched players still in its file (`goalies.rotowire.in_file`).
+- Research request: `urls` are Daily Faceoff's starting goalies, then `research.urls.rotowire_news`, then team pages.
+- Tests: `tests/conftest.py` stubs `gather_rotowire` to return None (RotoWire not read) for every test not marked c54.
