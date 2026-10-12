@@ -230,26 +230,38 @@ def with_started_rows(pool: SalaryPool) -> SalaryPool:
                    teams=frozenset(r.team for r in rows))
 
 
-def mark_started(pool: SalaryPool, now_utc: datetime) -> SalaryPool:
+def mark_started(pool: SalaryPool, now_utc: datetime, games: frozenset[str] = frozenset()) -> SalaryPool:
     """Rows whose Game Info start time has passed at `now_utc` become started rows, exactly as DK's In-Progress marker
     does at intake (C15, flag 15): out of rows, by_role_id, persons and games, an excluded STARTED_GAME conflict, and
     the game's rows kept in started_rows. Decided once, by the clock the run reads at its start; a started game stays
-    started. The input is unchanged; a pool with no game past its start is returned as is."""
+    started. Given `games` (AWAY@HOME keys), exactly those games' rows become started instead, whatever the clock says:
+    DraftKings marks them started in the entries file (C53, flag 82). The input is unchanged; a pool with no such row
+    is returned as is."""
     now = now_utc.astimezone(timezone.utc)
-    late = [r for r in pool.rows if row_start(r) is not None and row_start(r) <= now]
+
+    def gone(r: PoolRow) -> bool:
+        if not games:
+            return row_start(r) is not None and row_start(r) <= now
+        try:
+            return parse_game_info(r.game_info)[0] in games
+        except ValueError:
+            return False
+
+    late = [r for r in pool.rows if gone(r)]
     if not late:
         return pool
     drop = {r.role_id for r in late}
     rows = [r for r in pool.rows if r.role_id not in drop]
     teams = ", ".join(sorted({r.team for r in late}))
+    why = ("DraftKings marks the game started in the entries file" if games else "Game Info start time passed at the "
+           "run's clock")
     conflicts = list(pool.conflicts) + [Conflict(
         "STARTED_GAME", tuple(r.role_id for r in late),
-        f"{len(late)} row(s) from started game(s) ({teams}): Game Info start time passed at the run's clock; "
-        "excluded, never added to a lineup", True)]
+        f"{len(late)} row(s) from started game(s) ({teams}): {why}; excluded, never added to a lineup", True)]
     return replace(pool, rows=rows, by_role_id={r.role_id: r for r in rows}, persons=_persons_of(rows, pool.mode),
                    teams=frozenset(r.team for r in rows),
-                   games={k: g for k, g in pool.games.items() if g.start_utc > now}, conflicts=conflicts,
-                   started_rows=list(pool.started_rows) + late)
+                   games={k: g for k, g in pool.games.items() if (k not in games if games else g.start_utc > now)},
+                   conflicts=conflicts, started_rows=list(pool.started_rows) + late)
 
 
 def row_start(r: PoolRow) -> datetime | None:

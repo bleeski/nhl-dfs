@@ -48,6 +48,7 @@ def render(m: dict[str, Any]) -> str:
         f"- First export: {chicago(first['created_utc']) if first else 'none (nothing published)'}",
         f"- Final: v{final['version']} sha256 `{final['sha256'][:16]}` "
         f"{'published to ' + m.get('public_path', '') if final and final.get('public_replaced') else '(public file not replaced)'}"
+        + (f"; delivery file `{_base(final['delivery_path'])}` (v{final.get('delivery_version')})" if final.get("delivery_path") else "")
         if final else "- Final: nothing published",
         "- Status: " + " ".join(f"{k}={v}" for k, v in s.items()),
         f"- DK status from the salary file: {news.get('csv_summary', 'not read')}",
@@ -77,6 +78,11 @@ def render(m: dict[str, Any]) -> str:
     if m.get("messages"):
         lines += ["", "## Messages", ""] + [f"- {x}" for x in m["messages"]]
     return "\n".join(lines) + "\n"
+
+
+def _base(path: str) -> str:
+    """The file name of a recorded path (Windows or POSIX separators)."""
+    return str(path).replace("\\", "/").rsplit("/", 1)[-1]
 
 
 def _history_line(m: dict[str, Any]) -> str:

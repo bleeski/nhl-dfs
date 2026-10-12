@@ -752,7 +752,9 @@ def swap_core(
         return fail(f"publish failed: {exc}")
     m["versions"].append({"version": res.version, "phase": kind, "sha256": report.out_sha256,
                           "created_utc": _utc(datetime.now(timezone.utc)), "path": str(res.version_path),
-                          "public_replaced": res.public_replaced, "public_detail": res.public_detail})
+                          "public_replaced": res.public_replaced, "public_detail": res.public_detail,
+                          "delivery_version": res.delivery_version,
+                          "delivery_path": str(res.delivery_path) if res.delivery_path else None})
     if res.public_detail:
         messages.append(res.public_detail)
     m["export_sha256"] = report.out_sha256

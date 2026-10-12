@@ -65,6 +65,8 @@ class RoundResult:
     accepted_correctness: int = 0
     accepted_strategic: int = 0
     published_version: int | None = None
+    delivery_version: int | None = None  # C53: the slate's delivery number of the published file
+    delivery_path: str | None = None
     another_round: bool = False
     stop_reason: str = ""
     record_path: str | None = None
@@ -75,7 +77,10 @@ class RoundResult:
                f"change(s) accepted, {sum(d['status'] == 'rejected' for d in self.decisions)} rejected"]
         for d in self.decisions:
             out.append(f"  #{d['index']} {d['kind']} {d.get('type', '?')}: {d['status'].upper()}: {d['reason']}")
-        out.append(f"published: v{self.published_version}" if self.published_version else "published: nothing (incumbent kept)")
+        if self.delivery_path:
+            out.append(f"published: v{self.published_version} (run version); delivery: {self.delivery_path} (v{self.delivery_version})")
+        else:
+            out.append(f"published: v{self.published_version}" if self.published_version else "published: nothing (incumbent kept)")
         out.append(f"ANOTHER_ROUND={'YES' if self.another_round else 'NO'}: {self.stop_reason}")
         return out
 
@@ -597,9 +602,13 @@ def apply_round(run, round_no: int, proposals, cfg: dict | None = None, *, now: 
             res.stop_reason = f"publish failed ({exc}): the checked file stands"
             return record()
         res.published_version = pub.version
+        res.delivery_version = pub.delivery_version
+        res.delivery_path = str(pub.delivery_path) if pub.delivery_path else None
         m["versions"].append({"version": pub.version, "phase": f"QA{round_no}", "sha256": report.out_sha256,
                               "created_utc": datetime.now(timezone.utc).isoformat(), "path": str(pub.version_path),
-                              "public_replaced": pub.public_replaced, "public_detail": pub.public_detail})
+                              "public_replaced": pub.public_replaced, "public_detail": pub.public_detail,
+                              "delivery_version": pub.delivery_version,
+                              "delivery_path": str(pub.delivery_path) if pub.delivery_path else None})
         m.setdefault("qa", []).append({"round": round_no, "accepted_correctness": res.accepted_correctness,
                                        "accepted_strategic": res.accepted_strategic, "version": pub.version,
                                        "changed_entries": sorted(changes), "notes": repair_notes})

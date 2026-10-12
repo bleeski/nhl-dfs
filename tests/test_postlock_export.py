@@ -176,6 +176,31 @@ def test_an_initial_run_on_the_post_lock_export_keeps_the_marked_bytes(tmp_path)
         assert after[eid][k] == text
 
 
+def test_an_initial_run_with_the_pre_lock_salary_file_takes_the_started_game_from_the_export(tmp_path):
+    """Review of commit 1: the salary file and the clock both call game 1 open; only the export says it started."""
+    r = run_slate(CLASSIC_SALARY, EXPORT, offline=True, out_root=tmp_path / "runs", outputs_root=tmp_path / "outputs",
+                  clock=lambda: BEFORE)
+    assert r.statuses["FILE_VALID"] == "TRUE", r.messages[:5]
+    before, after = cells(EXPORT), cells(r.public_path)
+    for eid, k, text in marked_cells(EXPORT):
+        assert after[eid][k] == text
+    pool = read_salary(CLASSIC_SALARY)
+    added = {cell_role_id(a) for eid in after for a, b in zip(after[eid], before[eid]) if a != b}
+    assert added and not {pool.by_role_id[x].team for x in added} & G1_TEAMS
+
+
+def test_the_embedded_in_progress_rows_alone_start_their_game(tmp_path):
+    """No cell marked LOCKED: the embedded list's In Progress rows still start AAA@BBB whatever the clock says."""
+    plain = tmp_path / "plain.csv"
+    plain.write_bytes(EXPORT.read_bytes().replace(b" (LOCKED)", b""))
+    cur, pool = read_entries(plain), read_salary(CLASSIC_SALARY)
+    assert not marked_cells(plain) and len(embedded_started_ids(cur)) == 24
+    ls = locks_mod.compute(cur, pool, None, BEFORE, 300)
+    assert "AAA@BBB" in ls.started_games and "CCC@DDD" not in ls.started_games
+    assert ls.not_addable >= {x.role_id for x in pool.rows if x.team in G1_TEAMS}
+    assert not any(c.dk_locked for c in ls.cells.values())
+
+
 def test_real_post_lock_export_reads_and_passes_the_referee_cell_checks():
     """Ben's 2026-10-11 export (gitignored). Skips loudly until it is saved next to that slate's DKSalaries.csv."""
     hits = [p for p in sorted(REAL.glob("*/classic/DKEntries.postlock.csv")) if (p.parent / "DKSalaries.csv").exists()]
@@ -192,3 +217,132 @@ def test_real_post_lock_export_reads_and_passes_the_referee_cell_checks():
     assert not ls.unreadable_entries
     rep = check_file(path, path.parent / "DKSalaries.csv", path)
     assert not [x for x in rep.reasons if "unreadable" in x or "LOCKED marker" in x], rep.reasons[:5]
+
+
+# -- versioned delivery files (B119, flags 81, 84) ---------------------------------------------------------------------
+
+SLATE = "classic-20261015-test"
+
+
+def _bare_run(tmp_path, name="runs"):
+    from nhl_dfs.build.state import new_run
+    from nhl_dfs.contracts.geometry import Mode
+
+    run = new_run(tmp_path / name, mode=Mode.CLASSIC, clock=lambda: BEFORE)
+    (run.inputs / "DKSalaries.csv").write_bytes(b"salary")
+    (run.inputs / "DKEntries.csv").write_bytes(b"entries")
+    return run
+
+
+def _report(data: bytes):
+    from nhl_dfs.build.state import sha256
+    from nhl_dfs.referee.check_file import RefereeReport
+
+    return RefereeReport(ok=True, reasons=[], mode="classic", entries_checked=1, out_sha256=sha256(data),
+                         salary_sha256=sha256(b"salary"), entries_sha256=sha256(b"entries"), parent_sha256=None)
+
+
+def _numbered(out_dir) -> dict[int, str]:
+    from nhl_dfs.build.state import DELIVERY_RE
+
+    return {int(m.group(1)): p.name for p in out_dir.iterdir() if (m := DELIVERY_RE.match(p.name))}
+
+
+def test_two_publishes_of_one_run_leave_two_numbered_files_and_the_plain_file_is_the_newest(tmp_path):
+    import json
+
+    from nhl_dfs.build.state import publish, sha256
+
+    run, out = _bare_run(tmp_path), tmp_path / "outputs"
+    r1 = publish(run, b"one", _report(b"one"), SLATE, outputs_root=out)
+    r2 = publish(run, b"two", _report(b"two"), SLATE, outputs_root=out)
+    d = out / SLATE
+    assert _numbered(d) == {1: f"DKEntries_v1_{sha256(b'one')[:8]}.csv", 2: f"DKEntries_v2_{sha256(b'two')[:8]}.csv"}
+    assert (r1.delivery_version, r2.delivery_version) == (1, 2) and r2.delivery_path == d / _numbered(d)[2]
+    assert (d / _numbered(d)[1]).read_bytes() == b"one" and (d / _numbered(d)[2]).read_bytes() == b"two"
+    assert (d / "DKEntries.csv").read_bytes() == b"two"  # the plain file equals the newest numbered file
+    stamp = json.loads((d / "published.json").read_text())
+    assert stamp["delivery_version"] == 2 and stamp["delivery_name"] == _numbered(d)[2] and stamp["version"] == 2
+
+
+def test_a_second_run_of_the_slate_continues_the_count_while_its_own_folder_starts_at_v1(tmp_path):
+    from nhl_dfs.build.state import publish
+
+    a, b, out = _bare_run(tmp_path, "a"), _bare_run(tmp_path, "b"), tmp_path / "outputs"
+    publish(a, b"one", _report(b"one"), SLATE, outputs_root=out)
+    publish(a, b"two", _report(b"two"), SLATE, outputs_root=out)
+    r = publish(b, b"three", _report(b"three"), SLATE, outputs_root=out)
+    assert r.version == 1 and b.version_file(1).read_bytes() == b"three"
+    assert r.delivery_version == 3 and sorted(_numbered(out / SLATE)) == [1, 2, 3]
+
+
+def test_a_stale_publish_writes_no_numbered_file(tmp_path):
+    from nhl_dfs.build.state import publish, sha256
+
+    a, b, out = _bare_run(tmp_path, "a"), _bare_run(tmp_path, "b"), tmp_path / "outputs"
+    publish(a, b"one", _report(b"one"), SLATE, outputs_root=out)
+    publish(b, b"newer", _report(b"newer"), SLATE, outputs_root=out)
+    r = publish(a, b"stale", _report(b"stale"), SLATE, outputs_root=out, expect_public_sha=sha256(b"one"))
+    assert not r.public_replaced and r.delivery_version is None and r.delivery_path is None
+    d = out / SLATE
+    assert sorted(_numbered(d)) == [1, 2] and (d / "DKEntries.csv").read_bytes() == b"newer" == (d / _numbered(d)[2]).read_bytes()
+
+
+def test_a_slate_published_before_c53_continues_from_its_version(tmp_path):
+    import json
+
+    from nhl_dfs.build.state import publish
+
+    d = tmp_path / "outputs" / SLATE
+    d.mkdir(parents=True)
+    (d / "published.json").write_text(json.dumps({"run_id": "x", "version": 5, "sha256": "0" * 64}))
+    r = publish(_bare_run(tmp_path), b"six", _report(b"six"), SLATE, outputs_root=tmp_path / "outputs")
+    assert r.delivery_version == 6
+
+
+def test_late_swap_delivers_the_next_number_and_verify_names_it(tmp_path, capsys):
+    from nhl_dfs import cli
+
+    b = parent(tmp_path)
+    r = swap(tmp_path, b, EXPORT)
+    v = r.manifest["versions"][-1]
+    n_parent = b.manifest["versions"][-1]["delivery_version"]
+    assert v["delivery_version"] == n_parent + 1 and v["version"] == 1
+    dpath = tmp_path / "outputs" / r.slate_id / f"DKEntries_v{v['delivery_version']}_{v['sha256'][:8]}.csv"
+    assert v["delivery_path"] == str(dpath) and dpath.read_bytes() == r.run.version_file(1).read_bytes()
+    assert (dpath.parent / "DKEntries.csv").read_bytes() == dpath.read_bytes()
+    assert dpath.name in (r.run.path / "RUN_NOTES.md").read_text(encoding="utf-8")
+    ok, lines = cli.verify_run(tmp_path / "runs", r.run.run_id, now=BEFORE)
+    assert ok and f"delivery_file={dpath} (v{v['delivery_version']} sha256 {v['sha256'][:8]})" in lines
+    assert "DELIVERY_CURRENT=TRUE" in lines and any(x.startswith("LOCK_SOON=NONE") for x in lines)
+    # the repaired cell removed Echo C1, whose game (EEE@FFF, 10:00 PM ET) is 20 minutes away
+    g3 = datetime(2026, 10, 16, 2, 0, tzinfo=timezone.utc)
+    _, soon = cli.verify_run(tmp_path / "runs", r.run.run_id, now=g3 - timedelta(minutes=20))
+    assert any(x.startswith("LOCK_SOON=EEE@FFF locks 2026-10-15 09:00:00 PM CDT (in 20 min)") for x in soon), soon
+    _, older = cli.verify_run(tmp_path / "runs", b.run.run_id, now=BEFORE)  # the parent's file is no longer current
+    assert any(x.startswith("DELIVERY_CURRENT=FALSE") for x in older)
+    assert cli.main(["verify", "--run", r.run.run_id, "--runs-root", str(tmp_path / "runs")]) == 0
+    assert f"delivery_file={dpath}" in capsys.readouterr().out
+
+
+def test_a_zero_change_late_swap_still_publishes_the_next_number(tmp_path):
+    """Flag 81 (c), a deviation from the card's wording: the file equals DraftKings' export and the output says
+    there is nothing new to upload, but it is published, so a later QA round or Ben override on this run delivers."""
+    b = parent(tmp_path)
+    cur = without_entry(EXPORT, tmp_path / "cur.csv", OUT_ENTRY)
+    r = swap(tmp_path, b, cur)
+    v = r.manifest["versions"][-1]
+    assert r.manifest["changed_cells"] == [] and any("nothing new to upload" in m for m in r.messages)
+    assert v["delivery_version"] == b.manifest["versions"][-1]["delivery_version"] + 1
+    assert open(v["delivery_path"], "rb").read() == cur.read_bytes()
+
+
+def test_a_rehearsal_is_never_the_current_delivery(tmp_path):
+    from nhl_dfs import cli
+
+    b = parent(tmp_path)
+    r = late_swap.run(b.run.run_id, EXPORT, offline=True, fast=True, runs_root=tmp_path / "runs",
+                      outputs_root=tmp_path / "outputs", salary_path=SALARY, as_of=AFTER_G1)
+    assert r.statuses["FILE_VALID"] == "TRUE" and str(r.run.path) in r.manifest["versions"][-1]["delivery_path"]
+    _, lines = cli.verify_run(tmp_path / "runs", r.run.run_id, now=BEFORE)
+    assert "DELIVERY_CURRENT=FALSE (rehearsal: do not upload)" in lines

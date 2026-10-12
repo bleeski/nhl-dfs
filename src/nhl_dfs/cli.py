@@ -58,10 +58,19 @@ def cmd_status(args: argparse.Namespace) -> int:
 MAX_REASONS_PRINTED = 20
 
 
-def verify_run(runs_root: Path, run_id: str) -> tuple[bool, list[str]]:
-    """Re-check a run's current version against its input copies and its manifest hashes."""
+def verify_run(runs_root: Path, run_id: str, now=None) -> tuple[bool, list[str]]:
+    """Re-check a run's current version against its input copies and its manifest hashes. C53 (flags 81, 84): name the
+    delivered file (delivery_file), whether it is still the slate's current file (DELIVERY_CURRENT; never for a
+    rehearsal), and every game its changed cells touch that starts within 30 minutes (LOCK_SOON)."""
+    import json
+    from datetime import datetime, timezone
+
+    from nhl_dfs.build import locks as locks_mod
     from nhl_dfs.build.manifest import read_manifest
+    from nhl_dfs.build.notes import chicago
     from nhl_dfs.build.state import open_run, sha256
+    from nhl_dfs.intake.entries import read_entries
+    from nhl_dfs.intake.salary import read_salary, with_started_rows
     from nhl_dfs.referee.check_file import check_file
 
     run = open_run(runs_root, run_id)
@@ -80,12 +89,56 @@ def verify_run(runs_root: Path, run_id: str) -> tuple[bool, list[str]]:
         why.append(f"v{n} bytes do not match the manifest hash")
     if m["salary_sha256"] != report.salary_sha256 or m["entries_sha256"] != report.entries_sha256:
         why.append("input copies do not match the manifest hashes")
+    delivery = []
+    dpath = Path(rec["delivery_path"]) if rec and rec.get("delivery_path") else None
+    if dpath is None:
+        cause = (rec or {}).get("public_detail") or ("the public file was not replaced" if rec and not rec.get("public_replaced")
+                                                    else "published before versioned delivery files (C53)")
+        delivery.append(f"delivery_file=NONE (v{n} has no delivered copy: {cause})")
+    elif not dpath.exists():
+        delivery.append(f"delivery_file=NONE ({dpath} is missing)")
+        dpath = None
+    elif sha256(dpath.read_bytes()) != report.out_sha256:
+        why.append(f"{dpath} bytes differ from v{n}")
+        dpath = None
+    else:
+        delivery.append(f"delivery_file={dpath} (v{rec.get('delivery_version')} sha256 {report.out_sha256[:8]})")
+    public_dir = dpath.parent if dpath is not None else Path(m.get("public_path") or "").parent
+    try:
+        stamp = json.loads((public_dir / "published.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        stamp = {}
+    current = (dpath is not None and not m.get("rehearsal_clock") and stamp.get("run_id") == run_id
+               and stamp.get("version") == n and stamp.get("sha256") == report.out_sha256)
+    if m.get("rehearsal_clock"):
+        delivery.append("DELIVERY_CURRENT=FALSE (rehearsal: do not upload)")
+    elif current:
+        delivery.append("DELIVERY_CURRENT=TRUE")
+    else:
+        newer = (f"{public_dir} now holds delivery v{stamp.get('delivery_version')} from run {stamp.get('run_id')}"
+                 if stamp else "no delivery of this slate is recorded")
+        delivery.append(f"DELIVERY_CURRENT=FALSE ({newer}; do not send this run's file)")
+    now = now or datetime.now(timezone.utc)
+    try:
+        pool = with_started_rows(read_salary(run.inputs / "DKSalaries.csv"))
+        soon = locks_mod.locking_soon(read_entries(run.inputs / "DKEntries.csv"), read_entries(out), pool, now)
+    except (OSError, ValueError) as exc:
+        delivery.append(f"LOCK_SOON=UNKNOWN ({type(exc).__name__}: {str(exc)[:80]})")
+    else:
+        if not soon:
+            delivery.append(f"LOCK_SOON=NONE (no changed cell touches a game starting within "
+                            f"{locks_mod.LOCK_SOON_S // 60} minutes)")
+        for game, start in soon:
+            mins = max(0, int((start - now).total_seconds() // 60))
+            iso = start.isoformat().replace("+00:00", "Z")
+            delivery.append(f"LOCK_SOON={game} locks {chicago(iso)} (in {mins} min); changed cells touch it")
     lines = [
         f"FILE_VALID={'TRUE' if not why else 'FALSE'}",
         f"run={run_id} version=v{n} mode={report.mode} entries={report.entries_checked}",
         f"out_sha256={report.out_sha256}",
         f"salary_sha256={report.salary_sha256}",
         f"entries_sha256={report.entries_sha256}",
+        *delivery,
     ]
     lines += [f"note: {x}" for x in report.notes]
     lines += [f"reason: {x}" for x in why[:MAX_REASONS_PRINTED]]
@@ -220,6 +273,10 @@ def _print_result(result) -> int:
         print(f"published: {result.public_path}")
     else:
         print("published: nothing (see RUN_NOTES.md)")
+    last = next((v for v in reversed((result.manifest or {}).get("versions") or []) if v.get("delivery_path")), None)
+    if last:  # C53: the file to hand over, named by its slate delivery number
+        tag = "; REHEARSAL: do not upload" if (result.manifest or {}).get("rehearsal_clock") else ""
+        print(f"delivery: {last['delivery_path']} (v{last.get('delivery_version')}{tag})")
     for msg in result.messages:
         print(f"note: {msg}")
     print(f"notes: {result.notes_path}")
