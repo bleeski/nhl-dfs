@@ -7,6 +7,7 @@ captured byte stays inside data/raw/.
 from __future__ import annotations
 
 import json
+import threading
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -31,13 +32,15 @@ class Observation:
     detail: str | None = None
 
 
+_APPEND_LOCK = threading.Lock()
+
 def append(obs: Observation, root: Path) -> Path:
     """Append to <root>/observations/<fetched date>.jsonl; returns the file path."""
     path = Path(root) / "observations" / f"{obs.fetched_at[:10]}.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
     record = asdict(obs)
     record["status"] = obs.status.value
-    with open(path, "a", encoding="utf-8", newline="\n") as f:
+    with _APPEND_LOCK, open(path, "a", encoding="utf-8", newline="\n") as f:  # C54: two goalie-news reads append at once
         f.write(json.dumps(record, sort_keys=True) + "\n")
     return path
 

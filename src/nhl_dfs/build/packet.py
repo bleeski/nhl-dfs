@@ -514,7 +514,8 @@ def research_request(run, cfg: dict | None = None, *, now: datetime | None = Non
         "unresolved_goalie_teams": listed,
         "unresolved_goalie_teams_not_listed": not_listed,
         "state_note": state_note,
-        "urls": [rc["urls"]["starting_goalies"]] + [rc["urls"]["team_lines"].format(slug=slugs[t]) for t in teams if t in slugs],
+        "urls": [rc["urls"]["starting_goalies"]] + [u for u in [rc["urls"].get("rotowire_news")] if u]  # C54
+                + [rc["urls"]["team_lines"].format(slug=slugs[t]) for t in teams if t in slugs],
         "override_fields": {"participation": ["PLAYING", "QUESTIONABLE", "OUT"], "goalie_start": [True],
                             "ev_line": "1..4 (F) or 1..3 (D)", "pp_unit": [0, 1, 2]},
     }

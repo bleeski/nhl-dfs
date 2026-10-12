@@ -491,6 +491,10 @@ def run_slate(
             except Exception as exc:
                 messages.append(f"goalie table unavailable ({type(exc).__name__}: {str(exc)[:100]})")
             timings["goalie_table_s"] = round(time.perf_counter() - t_g, 3)
+            in_file = ((m.get("goalies") or {}).get("rotowire") or {}).get("in_file")
+            if in_file:  # C54: the run applies no scratch (local inputs only); refresh or late swap repairs open cells
+                messages.append("RotoWire reports out, still in this file: " + ", ".join(in_file) + "; a refresh repairs "
+                                "their open cells")
             if (m.get("goalies") or {}).get("GOALIE_GATE") == "NOT_STARTING":
                 m["statuses"]["DELIVERY_STATUS"] = DeliveryStatus.DEGRADED_REVIEW.value
                 messages.append("GOALIE_GATE=NOT_STARTING: the current file holds a goalie known not to start; run "

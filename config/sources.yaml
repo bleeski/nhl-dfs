@@ -9,6 +9,7 @@ http:
     default: 0.5
     www.dailyfaceoff.com: 3.0
     www.covers.com: 2.0
+    www.rotowire.com: 3.0   # C54 (flag 85): as Daily Faceoff; data/sources/rotowire.py also allows one attempt per TTL
 
 ttl_s:
   dk_lobby: 900
@@ -23,6 +24,7 @@ ttl_s:
   nhl_partner_odds: 600
   covers: 600
   dailyfaceoff: 600
+  rotowire: 600           # C54 (flags 85, 91): the news page; failed attempts count (rotowire/attempts.json)
   nhl_standings: 86400
 
 urls:
@@ -39,6 +41,7 @@ urls:
   covers: "https://www.covers.com/sport/hockey/nhl/odds"
   df_goalies: "https://www.dailyfaceoff.com/starting-goalies"
   df_lines: "https://www.dailyfaceoff.com/teams/{slug}/line-combinations"
+  rotowire_news: "https://www.rotowire.com/hockey/news.php"   # C54; terms and Ben's decision: docs/sources.md, flag 91
 
 report_page_limit: 100
 covers_preferred_books: ["DraftKings", "FanDuel", "BetMGM"]

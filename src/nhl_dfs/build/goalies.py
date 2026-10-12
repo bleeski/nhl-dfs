@@ -22,10 +22,18 @@ the input bytes): the starting-goalies page only (one request, bounded by late_s
 first with the 10-minute Daily Faceoff TTL); on failure the stored copy, labeled with its age; team pages from
 stored copies only; roles.merge without a ParamTable and never apply_state (B11). A report created after `now`
 is ignored, so a rehearsal clock cannot see later news.
+
+C54 (B121, flags 85 to 92): RotoWire's news page is read beside Daily Faceoff, in parallel and under the same budget.
+Its confirmation acts only when no other source names a different goalie (the same goalie: CONFIRMED with both named,
+RotoWire first); otherwise the team is CONFLICTED and nothing is repaired for it. Its scratches (`Board.scratches`)
+enter late swap's exclusion path as a DK OUT status does; a scratch of the goalie another source names as the starter
+makes his team CONFLICTED instead. `Board.available` still means the Daily Faceoff page was read (NO_NEWS otherwise);
+RotoWire's state is `Board.rotowire`, printed on its own line. Goalie probabilities never change (flag 92).
 """
 
 from __future__ import annotations
 
+import threading
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -62,6 +70,8 @@ class Board:
     conflicted_teams: set[str] = field(default_factory=set)
     problems: list[str] = field(default_factory=list)
     inputs: tuple | None = None  # (reports, path, problems) for swap_objective.build_role_model(goalie_inputs=)
+    scratches: dict[str, str] = field(default_factory=dict)  # C54: person_key -> "RotoWire scratch: ..." (late swap excludes)
+    rotowire: dict[str, Any] = field(default_factory=dict)  # C54: source, fetched_utc, age_min, counts, notes, line; {} = not read
 
     def not_starting(self) -> dict[str, str]:
         """person_key -> reason, for goalies whose team has another CONFIRMED starter (the repair targets)."""
@@ -130,15 +140,120 @@ def gather(pool, cache, *, offline: bool, budget_s: float, now: datetime) -> tup
     return lines, reps, path, problems, page
 
 
+def gather_rotowire(pool, cache, *, offline: bool, budget_s: float, now: datetime):
+    """C54: the RotoWire rows for this slate (data/sources/rotowire.py), bounded by the goalie-gate budget; on a
+    timeout the stored copy, labeled. Never raises: an unreadable page comes back with source 'none' and the reason.
+    tests/conftest.py replaces this with a stub returning None (RotoWire not read) for tests not marked c54."""
+    from nhl_dfs.build.swap_objective import _bounded
+    from nhl_dfs.data.http import HttpCache
+    from nhl_dfs.data.sources import rotowire as rw
+
+    http = cache if cache is not None else HttpCache(offline=offline)
+    try:
+        games = rw.slate_games(pool)
+    except Exception as exc:
+        return rw.NewsFetch(notes=[f"slate games unreadable ({type(exc).__name__})"])
+    try:
+        return _bounded(lambda: rw.fetch_news(games, cache=http, now=now), budget_s, "nhl-rotowire")
+    except Exception as exc:  # timeout: the stored copy, labeled
+        try:
+            got = rw.fetch_news(games, cache=_stored_view(http), now=now)
+        except Exception as exc2:
+            got = rw.NewsFetch(notes=[f"stored RotoWire page unusable ({type(exc2).__name__})"])
+        got.notes.insert(0, f"RotoWire page not fetched ({type(exc).__name__}: {str(exc)[:80]}); stored copy used")
+        return got
+
+
+def _match_rotowire(fetch, pool) -> tuple[dict, dict, dict, list[str], list[str]]:
+    """(starts: DK team -> [(person_key, report)] in published order, expected: DK team -> (person_key, report),
+    scratches: person_key -> Scratch with later cancels applied, unmatched lines, notes). By normalized name plus team
+    (flag 88): a start must match exactly one goalie; anything else is reported, never guessed."""
+    from nhl_dfs.contracts.ids import normalize_name
+    from nhl_dfs.contracts.statuses import GoalieState as GS
+    from nhl_dfs.data.sources import dailyfaceoff as df
+
+    dk_of = {c["nhl"]: c["dk"] for c in df.team_codes().values() if c.get("dk")}
+    by: dict[tuple[str, str], set[str]] = {}
+    is_g: dict[str, bool] = {}
+    for r in pool.rows:
+        by.setdefault((normalize_name(r.name), r.team), set()).add(r.person_key)
+        is_g[r.person_key] = r.is_goalie
+    starts: dict[str, list] = {}
+    expected: dict[str, tuple] = {}
+    scratches: dict[str, Any] = {}
+    unmatched: list[str] = []
+    notes: list[str] = []
+
+    def one(player: str, nhl: str | None) -> tuple[str | None, str]:
+        ks = by.get((normalize_name(player), dk_of.get(nhl or "", "")), set())
+        if len(ks) == 1:
+            return next(iter(ks)), ""
+        return None, f"{player} ({nhl}): " + ("not in the pool" if not ks else "matches two persons")
+
+    for rep in fetch.reports:
+        k, why = one(rep.goalie_name, rep.team)
+        if k is not None and not is_g.get(k):
+            k, why = None, f"{rep.goalie_name} ({rep.team}): not a goalie in the pool"
+        if k is None:
+            unmatched.append(why)
+            continue
+        team = dk_of[rep.team]
+        if rep.state is GS.CONFIRMED:
+            starts.setdefault(team, []).append((k, rep))
+        else:
+            expected[team] = (k, rep)
+    for sc in fetch.scratches:
+        k, why = one(sc.player, sc.team)
+        if k is None:
+            unmatched.append(why)
+        elif sc.cancel:
+            if scratches.pop(k, None) is not None:
+                notes.append(f"{sc.player}: a later RotoWire item says he will play; the earlier scratch is withdrawn")
+        else:
+            scratches[k] = sc
+    return starts, expected, scratches, unmatched, notes
+
+
+def _rw_label(rep) -> str:
+    from nhl_dfs.data.sources.rotowire import AGGREGATOR
+
+    who = "aggregator" if rep.source_name in (None, AGGREGATOR) else f"citing {rep.source_name}"
+    return f"{who}: {rep.source_url}" if rep.source_url else who
+
+
+def _rw_line(fetch, counts_extra: dict, now: datetime) -> str:
+    if fetch.source == "none":
+        return "RotoWire unavailable (" + ("; ".join(fetch.notes[:1]) or "not read") + "): board from Daily Faceoff alone"
+    c = fetch.counts
+    age = round((now - fetch.fetched_utc).total_seconds() / 60.0) if fetch.fetched_utc else None
+    ignored = sum(v for k, v in c.items() if k.startswith("ignored"))
+    return (f"RotoWire news: {fetch.source}" + (f", {age} min old" if age is not None else "") +
+            f"; today {c.get('today', 0)} item(s) on slate teams: {c.get('start', 0)} start(s), {c.get('expected', 0)} expected, "
+            f"{c.get('scratch', 0)} scratch(es), {c.get('cancel', 0)} cancel(s), {ignored} ignored, "
+            f"{counts_extra.get('unmatched', 0)} unmatched")
+
+
 # -- the board -------------------------------------------------------------------------------------------------
 
 def build(pool, *, dk_rec=None, csv_status=None, now: datetime, cache=None, offline: bool, budget_s: float = 8.0,
-          overrides: list | None = None, inputs: tuple | None = None) -> Board:
+          overrides: list | None = None, inputs: tuple | None = None, rotowire=None) -> Board:
     """The goalie board for this slate at `now`. inputs: (lines, reports, path, problems, page) from gather()
-    (tests and callers that already hold them); otherwise gathered here. Never raises."""
+    (tests and callers that already hold them); otherwise gathered here. rotowire: a rotowire.NewsFetch (tests);
+    otherwise read here, in parallel with Daily Faceoff (C54). Never raises."""
     from nhl_dfs.build.run import dk_goalie_starters, salary_statuses
     from nhl_dfs.models import roles as roles_mod
 
+    rw_box: dict[str, Any] = {}
+    rw_thread = None
+    if rotowire is None:
+        def _read_rotowire():
+            try:
+                rw_box["v"] = gather_rotowire(pool, cache, offline=offline, budget_s=budget_s, now=now)
+            except Exception as exc:  # gather_rotowire never raises; this keeps the board alive if it ever does
+                rw_box["e"] = exc
+
+        rw_thread = threading.Thread(target=_read_rotowire, name="nhl-rotowire-gather", daemon=True)
+        rw_thread.start()
     try:
         lines, reps, path, problems, page = inputs if inputs is not None else gather(
             pool, cache, offline=offline, budget_s=budget_s, now=now)
@@ -151,6 +266,17 @@ def build(pool, *, dk_rec=None, csv_status=None, now: datetime, cache=None, offl
                                      "see later news)"]
         reps = [r for r in reps if r not in later]
     board = Board(now, path == "next_data", page, problems=list(problems), inputs=(reps, path, list(problems)))
+    if rw_thread is not None:  # the same budget as the Daily Faceoff read, which ran meanwhile; a stored read may follow
+        rw_thread.join(timeout=budget_s + 2.0)
+        if rw_thread.is_alive() or "e" in rw_box:
+            from nhl_dfs.data.sources.rotowire import NewsFetch
+
+            why = "read did not finish within the goalie-gate budget" if rw_thread.is_alive() else \
+                f"read failed ({type(rw_box['e']).__name__})"
+            rotowire = NewsFetch(notes=[f"RotoWire {why}"])
+        else:
+            rotowire = rw_box.get("v")  # None: RotoWire not read (the test stub)
+    rw_starts, rw_exp, rw_scr, rw_unmatched, rw_notes = ({}, {}, {}, [], []) if rotowire is None else _match_rotowire(rotowire, pool)
     try:
         rs = roles_mod.merge(dk_rec, lines, reps, {}, now, pool=pool,
                              csv_status=csv_status if csv_status is not None else salary_statuses(pool), goalie_path=path)
@@ -217,6 +343,38 @@ def build(pool, *, dk_rec=None, csv_status=None, now: datetime, cache=None, offl
         if not conflict and s_state == "CONFIRMED" and team in dk_p and dk_p[team] != starter:
             board.problems.append(f"{team}: {name[starter]} confirmed ({s_source}) but DraftKings marks {name[dk_p[team]]} "
                                   "Starting=P; the confirmation is used")
+        if rw_starts.get(team):  # C54 (flag 89): RotoWire acts only when no other source names a different goalie
+            k_rw, rep = rw_starts[team][-1]
+            earlier = sorted({name[k] for k, _ in rw_starts[team][:-1] if k != k_rw})
+            if earlier:
+                rw_notes.append(f"{team}: an earlier RotoWire item named {', '.join(earlier)}; the later one ({name[k_rw]}) is used")
+            rw_src, rw_time = f"RotoWire ({_rw_label(rep)})", _iso(rep.news_created_utc)
+            others = []
+            if team in ovr_start:
+                others.append((f"accepted override ({_override_source(ovr_start[team][1])})", ovr_start[team][0]))
+            if df_conf:
+                others.append((f"{page_label}, {rep_utc or 'no time'}", df_conf))
+            elif gr is not None and gr.named and board.available and gr.state is not GoalieState.CONFLICTED:
+                others.append(("Daily Faceoff expected" + ("" if gr.report is not None else " (team page depth order)"), gr.named))
+            if team in dk_p:
+                others.append(("DraftKings salary file Starting=P", dk_p[team]))
+            diff = [(lab, k) for lab, k in others if k != k_rw]
+            if conflict:
+                conflict += f"; RotoWire confirms {name[k_rw]} ({rw_time})"
+            elif diff:
+                conflict = (f"RotoWire confirms {name[k_rw]} ({rw_time}) but " +
+                            "; ".join(f"{lab} names {name[k]}" for lab, k in diff) + ": CONFLICTED, no automatic repair")
+            else:
+                agree = [lab for lab, k in others if k == k_rw]
+                starter, s_state, s_time = k_rw, "CONFIRMED", rw_time
+                s_source = rw_src + "".join(f" + {lab}" for lab in agree)
+        elif team in rw_exp and not conflict and starter is None:
+            k_rw, rep = rw_exp[team]
+            starter, s_state, s_source, s_time = k_rw, "EXPECTED", f"RotoWire expected ({_rw_label(rep)})", _iso(rep.news_created_utc)
+        for k in sorted(keys):  # C54: a scratch of the goalie another source names as the starter is a disagreement
+            if k in rw_scr and starter == k and not conflict:
+                conflict = (f"{name[k]} named starter ({s_source}) but RotoWire reports him out "
+                            f"({_iso(rw_scr[k].published_utc)}): CONFLICTED, no automatic repair")
         if conflict:
             board.conflicted_teams.add(team)
             board.problems.append(f"{team}: {conflict}")
@@ -228,6 +386,10 @@ def build(pool, *, dk_rec=None, csv_status=None, now: datetime, cache=None, offl
                     _iso(ovr_out[k].effective_utc)
             elif part is Participation.OUT:
                 gl.status, gl.source = NOT_STARTING, f"DK status OUT ({rs.persons[k].dk_status or 'OUT'})"
+            elif k in rw_scr and not conflict:
+                sc = rw_scr[k]
+                gl.status, gl.report_utc = NOT_STARTING, _iso(sc.published_utc)
+                gl.source = board.scratches[k] = _scratch_label(sc)
             elif conflict:
                 gl.status, gl.source, gl.starter_state = CONFLICTED, conflict, "CONFLICTED"
             elif starter is not None and s_state == "CONFIRMED":
@@ -248,9 +410,27 @@ def build(pool, *, dk_rec=None, csv_status=None, now: datetime, cache=None, offl
             else:
                 gl.source = f"no Daily Faceoff report for this game ({page_label})"
             board.persons[k] = gl
+    if rotowire is not None:  # C54: skaters RotoWire reports out join the exclusion path; the board's own line
+        goalie_keys = {k for ks in goalies.values() for k in ks}
+        for k, sc in rw_scr.items():
+            if k not in goalie_keys:
+                board.scratches[k] = _scratch_label(sc)
+        fetched = rotowire.fetched_utc
+        board.rotowire = {"source": rotowire.source, "fetched_utc": _iso(fetched),
+                          "age_min": round((now - fetched).total_seconds() / 60.0, 1) if fetched else None,
+                          "counts": dict(sorted(rotowire.counts.items())), "notes": (rotowire.notes + rw_notes)[:8],
+                          "unmatched": rw_unmatched[:10], "scratches": {name.get(k, k): v for k, v in sorted(board.scratches.items())},
+                          "line": _rw_line(rotowire, {"unmatched": len(rw_unmatched)}, now)}
     if not board.available:
         board.problems.insert(0, f"goalie news unavailable (page source {page.get('source')}, fetched {when or 'never'})")
     return board
+
+
+def _scratch_label(sc) -> str:
+    from nhl_dfs.data.sources.rotowire import AGGREGATOR
+
+    who = "aggregator" if sc.source_name in (None, AGGREGATOR) else f"citing {sc.source_name}"
+    return f"RotoWire scratch ({who}): {sc.statement[:120]}" + (f" {sc.source_url}" if sc.source_url else "")
 
 
 # -- the table -------------------------------------------------------------------------------------------------
@@ -286,9 +466,12 @@ def gate_status(rows: list[dict], board: Board) -> str:
 
 
 def record(board: Board, rows: list[dict]) -> dict:
-    return {"GOALIE_GATE": gate_status(rows, board), "now_utc": _iso(board.now_utc), "page": board.page,
-            "problems": board.problems[:12], "rows": rows,
-            "persons": {k: asdict(g) for k, g in sorted(board.persons.items())}}
+    rec = {"GOALIE_GATE": gate_status(rows, board), "now_utc": _iso(board.now_utc), "page": board.page,
+           "problems": board.problems[:12], "rows": rows,
+           "persons": {k: asdict(g) for k, g in sorted(board.persons.items())}}
+    if board.rotowire:  # C54; absent when RotoWire was not read (the test stub), so older records keep their shape
+        rec["rotowire"] = board.rotowire
+    return rec
 
 
 def _chi(iso: str | None) -> str:
@@ -305,6 +488,10 @@ def cli_lines(rec: dict | None) -> list[str]:
     out = [f"GOALIE_GATE={rec['GOALIE_GATE']}"]
     if rec["GOALIE_GATE"] == "NO_NEWS":
         out.append("  " + "; ".join(rec.get("problems", [])[:2]))
+    if rec.get("rotowire"):  # C54
+        out.append("  " + rec["rotowire"]["line"])
+        if rec["rotowire"].get("in_file"):
+            out.append("  RotoWire reports out, still in this file: " + ", ".join(rec["rotowire"]["in_file"]))
     by: dict[tuple, list] = {}
     for r in rows:
         by.setdefault((r["goalie"], r["team"], r["status"], r["starter"], r["starter_state"], r["source"],
@@ -331,6 +518,12 @@ def notes_lines(rec: dict | None) -> list[str]:
            f"{_chi(page.get('fetched_utc'))}" + (f" ({page['age_min']:.0f} min before the run clock)"
                                                   if page.get("age_min") is not None else "")]
     out += [f"- {p}" for p in rec.get("problems", [])[:6]]
+    rw = rec.get("rotowire")
+    if rw:  # C54
+        out.append(f"- {rw['line']}")
+        out += [f"- RotoWire: {n}" for n in rw.get("notes", [])[:4]]
+        out += [f"- RotoWire unmatched: {u}" for u in rw.get("unmatched", [])[:4]]
+        out += [f"- {who}: {why}" for who, why in rw.get("scratches", {}).items()]
     out += ["", "| Entry | Slot | Goalie | Team | Status | Team starter | Source | Time (Chicago) | Pinned |",
             "|---|---|---|---|---|---|---|---|---|"]
     for r in rec.get("rows", []):
@@ -366,7 +559,13 @@ def for_run(run, m: dict, *, now: datetime, offline: bool, cache=None, budget_s:
 
         overrides, _ = accepted_overrides(run, pool, now)
     board = build(pool, now=now, cache=cache, offline=offline, budget_s=budget_s, overrides=overrides)
-    return record(board, table(board, pool, lineups_of(versions[-1]["path"], pool)))
+    lineups = lineups_of(versions[-1]["path"], pool)
+    rec = record(board, table(board, pool, lineups))
+    if board.scratches:  # C54: who RotoWire reports out is still in the file (the run applies no scratch; refresh does)
+        held = {pool.by_role_id[rid].person_key for lu in lineups.values() for rid in lu if rid in pool.by_role_id}
+        names = {r.person_key: r.name for r in pool.rows}
+        rec["rotowire"]["in_file"] = sorted(names[k] for k in board.scratches if k in held)
+    return rec
 
 
 def refresh_run_record(run, *, now: datetime, offline: bool = True, cache=None) -> dict | None:
