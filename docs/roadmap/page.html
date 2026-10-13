@@ -1,0 +1,394 @@
+<title>NHL DFS Roadmap</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=Barlow:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one 960px column on rink-ice white. Masthead over a blue-red-blue rink-line rule, a three-tile scoreboard,
+   Ben's open decisions, then a tabbed card list (up next, on hold, done), the changelog and the ordering rule. */
+:root {
+  --bg: #F2F5F8; --surface: #FFFFFF; --ink: #0E1A2B; --muted: #536173; --line: #D6DEE7; --chip: #EAEFF4;
+  --red: #C8102E; --red-bg: #FBE7EA; --on-red: #FFFFFF;
+  --blue: #1C4E92; --blue-bg: #E4ECF8;
+  --amber: #8F5400; --amber-bg: #FFF1D6;
+  --green: #1C7449; --green-bg: #E1F3E8;
+  --violet: #6A3E9E; --teal: #1D6F6B; --slate: #5D6C7E;
+  --f-display: "Big Shoulders Display", "Oswald", "Arial Narrow", sans-serif;
+  --f-body: "Barlow", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0A121C; --surface: #111C29; --ink: #E5ECF4; --muted: #97A5B6; --line: #223246; --chip: #1A2736;
+    --red: #FF5D71; --red-bg: #3A121A; --on-red: #1B0408;
+    --blue: #82AFFF; --blue-bg: #142849;
+    --amber: #F2B44C; --amber-bg: #3A2A0C;
+    --green: #58C990; --green-bg: #0E2D1F;
+    --violet: #BB9EF3; --teal: #62CCC4; --slate: #9CABBD;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0A121C; --surface: #111C29; --ink: #E5ECF4; --muted: #97A5B6; --line: #223246; --chip: #1A2736;
+  --red: #FF5D71; --red-bg: #3A121A; --on-red: #1B0408;
+  --blue: #82AFFF; --blue-bg: #142849;
+  --amber: #F2B44C; --amber-bg: #3A2A0C;
+  --green: #58C990; --green-bg: #0E2D1F;
+  --violet: #BB9EF3; --teal: #62CCC4; --slate: #9CABBD;
+  color-scheme: dark;
+}
+body { background: var(--bg); color: var(--ink); font: 16px/1.55 var(--f-body); }
+.wrap { max-width: 960px; margin: 0 auto; padding-inline: 16px; padding-block: 28px 56px; display: grid; gap: 36px; }
+h1, h2, h3 { text-wrap: balance; margin: 0; }
+h2 { font: 800 28px/1.1 var(--f-display); letter-spacing: .01em; text-transform: uppercase; }
+p { margin: 0; }
+a { color: var(--blue); }
+:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; border-radius: 4px; }
+.mono, .cid { font-family: var(--f-mono); font-size: 13px; letter-spacing: 0; }
+.muted { color: var(--muted); }
+
+/* masthead */
+.mast { display: grid; gap: 10px; }
+.eyebrow { font: 600 13px/1.2 var(--f-body); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.mast h1 { font: 800 clamp(44px, 9vw, 76px)/.92 var(--f-display); text-transform: uppercase; letter-spacing: .005em; }
+.mast .lede { max-width: 62ch; color: var(--muted); font-size: 17px; }
+.rink { height: 10px; display: grid; grid-template-columns: 1fr 6px 1fr 4px 1fr 6px 1fr; gap: 0; margin-top: 6px; }
+.rink span:nth-child(2), .rink span:nth-child(6) { background: var(--blue); }
+.rink span:nth-child(4) { background: var(--red); }
+.rink span:nth-child(odd) { border-top: 1px solid var(--line); margin-top: 4px; }
+
+/* scoreboard */
+.board { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.tile { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+.tile .label { font: 600 12px/1 var(--f-body); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.big { font: 800 52px/.9 var(--f-display); font-variant-numeric: tabular-nums; }
+.big small { font-size: 26px; color: var(--muted); }
+.bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--chip); }
+.bar i { display: block; height: 100%; }
+.tile.next { border-color: var(--red); box-shadow: inset 4px 0 0 var(--red); }
+.tile.next h3 { font: 700 21px/1.2 var(--f-body); }
+.tile.you { border-color: var(--amber); }
+.tile.you .big { color: var(--amber); }
+.tile ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+
+/* asks */
+.asks { display: grid; gap: 12px; }
+.ask { background: var(--amber-bg); border-radius: 10px; padding: 18px; display: grid; gap: 8px; }
+.ask h3 { font: 700 19px/1.3 var(--f-body); }
+.ask .rec { border-top: 1px solid color-mix(in srgb, var(--amber) 30%, transparent); padding-top: 8px; }
+.ask .rec b { color: var(--amber); }
+.ask .holds { display: flex; flex-wrap: wrap; gap: 6px; font-size: 14px; color: var(--muted); align-items: center; }
+
+/* controls */
+.section-head { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px; }
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 2px solid var(--line); }
+.tabs button { font: 600 16px/1 var(--f-body); color: var(--muted); background: none; border: 0; padding: 12px 14px; margin-bottom: -2px; border-bottom: 3px solid transparent; cursor: pointer; }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--red); }
+.tabs .count { font: 500 13px/1 var(--f-mono); color: var(--muted); margin-left: 4px; }
+.filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.chipbtn { font: 500 14px/1 var(--f-body); border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 8px 12px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
+.chipbtn[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
+.search { flex: 1 1 200px; min-width: 0; font: 400 15px/1 var(--f-body); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; }
+
+/* cards */
+.list { display: grid; gap: 10px; }
+.group { font: 800 18px/1 var(--f-display); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); padding-top: 10px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+.card[open] { border-color: color-mix(in srgb, var(--ink) 30%, var(--line)); }
+.card summary { list-style: none; cursor: pointer; padding: 16px 18px; display: grid; gap: 6px; }
+.card summary::-webkit-details-marker { display: none; }
+.row1 { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.card h3 { font: 700 19px/1.3 var(--f-body); display: flex; gap: 10px; align-items: baseline; justify-content: space-between; }
+.card h3 .chev { font: 500 14px/1 var(--f-mono); color: var(--muted); flex: none; }
+.card[open] h3 .chev { transform: rotate(90deg); }
+.teaser { color: var(--muted); max-width: 70ch; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 14px; color: var(--muted); align-items: center; }
+.goal { display: inline-flex; gap: 6px; align-items: center; }
+.pill { font: 600 12px/1 var(--f-body); letter-spacing: .06em; text-transform: uppercase; padding: 6px 9px; border-radius: 5px; white-space: nowrap; }
+.pill.done { background: var(--green-bg); color: var(--green); }
+.pill.next { background: var(--red); color: var(--on-red); }
+.pill.progress { box-shadow: inset 0 0 0 2px var(--red); color: var(--red); }
+.pill.ready { background: var(--blue-bg); color: var(--blue); }
+.pill.queued, .pill.hold { background: var(--chip); color: var(--muted); }
+.pill.you { background: var(--amber-bg); color: var(--amber); }
+.pill.flag { background: var(--amber-bg); color: var(--amber); }
+.pill.tag { box-shadow: inset 0 0 0 1px var(--line); color: var(--muted); }
+.rank { font: 500 13px/1 var(--f-mono); color: var(--muted); }
+.body { padding: 0 18px 18px; display: grid; gap: 14px; border-top: 1px solid var(--line); padding-top: 14px; margin-inline: 0; }
+.body dl { margin: 0; display: grid; gap: 12px; }
+.body dt { font: 600 12px/1 var(--f-body); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+.body dd { margin: 0; max-width: 70ch; }
+.body dd.caveat { background: var(--amber-bg); border-radius: 6px; padding: 10px 12px; }
+.deps { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.deps li { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.eng { font-size: 13px; color: var(--muted); border-top: 1px dashed var(--line); padding-top: 10px; overflow-wrap: anywhere; }
+.empty { color: var(--muted); padding: 24px 0; }
+
+/* changelog and goals */
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 36px; align-items: start; }
+.log { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.log li { display: grid; grid-template-columns: 64px 1fr; gap: 12px; }
+.log time { font: 800 17px/1.4 var(--f-display); text-transform: uppercase; color: var(--blue); }
+.goals { display: grid; gap: 16px; }
+.goalrow { display: grid; gap: 6px; }
+.goalrow .top { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.goalrow h3 { font: 700 17px/1.2 var(--f-body); display: inline-flex; gap: 8px; align-items: center; }
+.goalrow .n { font: 500 13px/1 var(--f-mono); color: var(--muted); white-space: nowrap; }
+.goalrow p { color: var(--muted); font-size: 15px; }
+.band { font: 500 12px/1 var(--f-mono); color: var(--muted); }
+.ms { margin: 4px 0 0; padding-left: 18px; color: var(--muted); font-size: 14px; display: grid; gap: 2px; }
+footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); padding-top: 16px; display: grid; gap: 4px; }
+@media (max-width: 520px) {
+  .card summary, .body { padding-inline: 14px; }
+  .log li { grid-template-columns: 1fr; gap: 2px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .card h3 .chev { transition: transform .15s ease; }
+}
+</style>
+
+<div class="wrap">
+  <header class="mast">
+    <div class="eyebrow">DraftKings NHL lineup engine</div>
+    <h1>NHL DFS Roadmap</h1>
+    <p class="lede">What we have built, what comes next and why each piece matters for winning money. Rebuilt from the project's own tracker after every dev session.</p>
+    <div class="rink" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+  </header>
+
+  <section class="board" id="board" aria-label="Summary"></section>
+
+  <section id="asks" aria-labelledby="asks-h" hidden>
+    <div class="section-head"><h2 id="asks-h">Waiting on you</h2></div>
+    <div class="asks" id="ask-list" style="margin-top:14px"></div>
+  </section>
+
+  <section aria-labelledby="work-h">
+    <div class="section-head"><h2 id="work-h">The work</h2></div>
+    <div class="tabs" role="tablist" id="tabs" style="margin-top:14px"></div>
+    <div class="filters" id="filters" style="margin-top:14px"></div>
+    <div class="list" id="list" style="margin-top:14px" aria-live="polite"></div>
+  </section>
+
+  <div class="two">
+    <section aria-labelledby="log-h">
+      <h2 id="log-h">What changed lately</h2>
+      <ol class="log" id="log" style="margin-top:14px"></ol>
+    </section>
+    <section aria-labelledby="goals-h">
+      <h2 id="goals-h">How the order is decided</h2>
+      <p class="muted" style="margin-top:10px">Work is ranked by business goal, in this order. A chunk can still wait for the chunks it builds on.</p>
+      <div class="goals" id="goals" style="margin-top:16px"></div>
+    </section>
+  </div>
+
+  <footer id="foot"></footer>
+</div>
+
+<script id="roadmap-data" type="application/json">__ROADMAP_DATA__</script>
+<script>
+(function () {
+  "use strict";
+  var D = JSON.parse(document.getElementById("roadmap-data").textContent);
+  var byId = {};
+  D.chunks.forEach(function (c) { byId[c.id] = c; });
+  var GOAL_ORDER = ["legal", "win", "washout", "other", "foundation"];
+  var GOAL_COLOR = { foundation: "var(--slate)", legal: "var(--red)", win: "var(--blue)", washout: "var(--violet)", other: "var(--teal)" };
+  var BAND_LABEL = { legal: "Band 0", win: "Band 1", washout: "Band 2", other: "Band 3", foundation: "Built first" };
+  var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sept", "Oct", "Nov", "Dec"];
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (ch) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch];
+    });
+  }
+  function fmt(d, withYear) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d || "");
+    if (!m) return d || "";
+    return MONTHS[+m[2] - 1] + " " + (+m[3]) + (withYear ? ", " + m[1] : "");
+  }
+  function goalName(g) { return (D.goals[g] && D.goals[g].name) || g; }
+  function goalDot(g) { return '<span class="dot" style="background:' + GOAL_COLOR[g] + '"></span>'; }
+  function openDeps(c) { return c.depends.filter(function (d) { return byId[d] && byId[d].state !== "done"; }); }
+
+  function stateOf(c) {
+    switch (c.state) {
+      case "done": return ["done", "Done " + fmt(c.finished)];
+      case "in_progress": return ["progress", "In progress"];
+      case "next": return ["next", "Up next"];
+      case "ready": return ["ready", "Ready"];
+      case "queued": return ["queued", "After " + openDeps(c).join(", ")];
+      case "on_hold": return c.asked ? ["you", "Waiting on you"] : ["hold", "On hold"];
+      case "gated": return ["hold", "Waiting for data"];
+    }
+    return ["queued", c.status];
+  }
+
+  /* scoreboard */
+  (function board() {
+    var total = D.chunks.length;
+    var done = D.chunks.filter(function (c) { return c.state === "done"; });
+    var segs = GOAL_ORDER.slice().reverse().map(function (g) {
+      var n = done.filter(function (c) { return c.goal === g; }).length;
+      return n ? '<i style="width:' + (100 * n / total) + '%;background:' + GOAL_COLOR[g] + '" title="' + esc(goalName(g)) + ": " + n + ' done"></i>' : "";
+    }).join("");
+    var nx = D.next && byId[D.next];
+    var nextTile = nx
+      ? '<div class="tile next"><span class="label">Up next</span><h3>' + esc(nx.name) + '</h3><p class="muted">' + esc(nx.matters) +
+        '</p><div class="meta"><span class="cid">' + nx.id + '</span><span class="goal">' + goalDot(nx.goal) + esc(goalName(nx.goal)) + "</span>" +
+        (nx.size ? "<span>" + nx.size + "</span>" : "") + "</div></div>"
+      : '<div class="tile next"><span class="label">Up next</span><h3>Nothing can start right now</h3><p class="muted">Every open chunk is on hold or waiting for data.</p></div>';
+    var asks = D.asks || [];
+    var youTile = '<div class="tile you"><span class="label">Waiting on you</span><div class="big">' + asks.length + "</div>" +
+      (asks.length
+        ? "<ul>" + asks.map(function (a) { return '<li><a href="#asks">' + esc(a.question) + "</a></li>"; }).join("") + "</ul>"
+        : '<p class="muted">Nothing needs your decision right now.</p>') + "</div>";
+    document.getElementById("board").innerHTML =
+      '<div class="tile"><span class="label">Chunks done</span><div class="big">' + done.length + " <small>of " + total + "</small></div>" +
+      '<div class="bar" role="img" aria-label="' + done.length + " of " + total + ' chunks done">' + segs + "</div>" +
+      '<p class="muted">' + (total - done.length) + " still to do, " + D.chunks.filter(function (c) { return c.state === "on_hold" || c.state === "gated"; }).length + " of them on hold.</p></div>" +
+      nextTile + youTile;
+  })();
+
+  /* asks */
+  (function asks() {
+    var list = D.asks || [];
+    if (!list.length) return;
+    document.getElementById("asks").hidden = false;
+    document.getElementById("ask-list").innerHTML = list.map(function (a) {
+      var holds = (a.chunks || []).map(function (id) {
+        var c = byId[id];
+        return '<span><span class="cid">' + id + "</span> " + esc(c ? c.name : "") + "</span>";
+      }).join('<span aria-hidden="true">·</span>');
+      return '<article class="ask"><h3>' + esc(a.question) + "</h3><p>" + esc(a.why) + "</p>" +
+        (a.recommendation ? '<p class="rec"><b>Recommended.</b> ' + esc(a.recommendation) + "</p>" : "") +
+        '<div class="holds"><span>Holds up:</span>' + holds + (a.since ? '<span aria-hidden="true">·</span><span>Open since ' + fmt(a.since) + "</span>" : "") + "</div></article>";
+    }).join("");
+  })();
+
+  /* cards */
+  function card(c, open) {
+    var st = stateOf(c);
+    var flags = "";
+    if (c.caveat) flags += '<span class="pill flag">Heads up</span>';
+    if (c.experiment) flags += '<span class="pill tag">' + (/measurement/i.test(c.title) ? "Measurement" : "Experiment") + "</span>";
+    var rank = c.rank ? '<span class="rank">#' + c.rank + " in the queue</span>" : "";
+    var dl = "";
+    function row(label, text, cls) { if (text) dl += "<div><dt>" + label + "</dt><dd" + (cls ? ' class="' + cls + '"' : "") + ">" + esc(text) + "</dd></div>"; }
+    row("What it is", c.what);
+    row("Why we are doing it", c.why);
+    row("Result", c.result);
+    row("Heads up", c.caveat, "caveat");
+    row("Waiting for", c.waiting);
+    if (c.depends.length) {
+      dl += "<div><dt>Builds on</dt><dd><ul class=\"deps\">" + c.depends.map(function (d) {
+        var dc = byId[d];
+        return '<li><span class="cid">' + d + "</span><span>" + esc(dc ? dc.name : "") + '</span><span class="pill ' + (dc && dc.state === "done" ? "done" : "queued") + '">' + (dc && dc.state === "done" ? "Done" : "Not done") + "</span></li>";
+      }).join("") + "</ul></dd></div>";
+    }
+    return '<details class="card" data-id="' + c.id + '"' + (open ? " open" : "") + "><summary>" +
+      '<div class="row1"><span class="pill ' + st[0] + '">' + esc(st[1]) + "</span>" + flags + rank + "</div>" +
+      '<h3><span>' + esc(c.name) + '</span><span class="chev" aria-hidden="true">&rsaquo;</span></h3>' +
+      '<p class="teaser">' + esc(c.matters) + "</p>" +
+      '<div class="meta"><span class="cid">' + c.id + '</span><span class="goal">' + goalDot(c.goal) + esc(goalName(c.goal)) + "</span>" +
+      (c.size ? "<span>" + c.size + "</span>" : "") + "</div></summary>" +
+      '<div class="body"><dl>' + dl + '</dl><p class="eng">Engineering title: ' + esc(c.title) + "</p></div></details>";
+  }
+
+  var PRI = { in_progress: 0, next: 1 };
+  var TABS = [
+    { key: "next", label: "Up next", pick: function (c) { return ["in_progress", "next", "ready", "queued"].indexOf(c.state) >= 0; },
+      sort: function (a, b) { return ((PRI[a.state] != null ? PRI[a.state] : 2) - (PRI[b.state] != null ? PRI[b.state] : 2)) || a.order - b.order; } },
+    { key: "hold", label: "On hold", pick: function (c) { return c.state === "on_hold" || c.state === "gated"; },
+      sort: function (a, b) { return a.order - b.order; } },
+    { key: "done", label: "Done", pick: function (c) { return c.state === "done"; },
+      sort: function (a, b) { return (b.finished || "").localeCompare(a.finished || "") || b.order - a.order; }, group: true },
+    { key: "all", label: "Everything", pick: function () { return true; }, sort: function (a, b) { return a.order - b.order; } }
+  ];
+  var ui = { tab: "next", goal: "", q: "" };
+  try {
+    var saved = localStorage.getItem("roadmap.tab");
+    if (saved && TABS.some(function (t) { return t.key === saved; })) ui.tab = saved;
+  } catch (e) { /* storage unavailable: default tab */ }
+  var hash = (location.hash || "").slice(1);
+  if (TABS.some(function (t) { return t.key === hash; })) ui.tab = hash;
+
+  function tabDef() { return TABS.filter(function (t) { return t.key === ui.tab; })[0]; }
+  function matches(c) {
+    if (ui.goal && c.goal !== ui.goal) return false;
+    if (!ui.q) return true;
+    var hay = [c.id, c.name, c.title, c.what, c.why, c.matters, c.result, c.caveat, c.waiting].join(" ").toLowerCase();
+    return ui.q.toLowerCase().split(/\s+/).every(function (w) { return hay.indexOf(w) >= 0; });
+  }
+
+  function renderTabs() {
+    document.getElementById("tabs").innerHTML = TABS.map(function (t) {
+      var n = D.chunks.filter(t.pick).length;
+      return '<button role="tab" id="tab-' + t.key + '" aria-selected="' + (t.key === ui.tab) + '" data-tab="' + t.key + '">' + t.label + '<span class="count">' + n + "</span></button>";
+    }).join("");
+  }
+  function renderFilters() {
+    var chips = ['<button class="chipbtn" aria-pressed="' + (!ui.goal) + '" data-goal="">All goals</button>'].concat(GOAL_ORDER.map(function (g) {
+      return '<button class="chipbtn" aria-pressed="' + (ui.goal === g) + '" data-goal="' + g + '">' + goalDot(g) + esc(goalName(g)) + "</button>";
+    }));
+    document.getElementById("filters").innerHTML = chips.join("") +
+      '<input class="search" id="search" type="search" placeholder="Search the work" aria-label="Search the work" value="' + esc(ui.q) + '">';
+  }
+  function renderList() {
+    var t = tabDef();
+    var items = D.chunks.filter(t.pick).filter(matches).sort(t.sort);
+    var out = "";
+    var lastGroup = null;
+    items.forEach(function (c) {
+      if (t.group && c.finished !== lastGroup) { lastGroup = c.finished; out += '<div class="group">' + esc(fmt(c.finished) || "Undated") + "</div>"; }
+      out += card(c, c.state === "next" || c.state === "in_progress");
+    });
+    document.getElementById("list").innerHTML = out || '<p class="empty">Nothing matches. Clear the search or pick another goal.</p>';
+  }
+
+  document.getElementById("tabs").addEventListener("click", function (e) {
+    var b = e.target.closest("button[data-tab]");
+    if (!b) return;
+    ui.tab = b.getAttribute("data-tab");
+    try { localStorage.setItem("roadmap.tab", ui.tab); } catch (err) { /* ignore */ }
+    renderTabs(); renderList();
+  });
+  document.getElementById("filters").addEventListener("click", function (e) {
+    var b = e.target.closest("button[data-goal]");
+    if (!b) return;
+    ui.goal = b.getAttribute("data-goal");
+    Array.prototype.forEach.call(document.querySelectorAll("#filters .chipbtn"), function (x) {
+      x.setAttribute("aria-pressed", String(x.getAttribute("data-goal") === ui.goal));
+    });
+    renderList();
+  });
+  document.getElementById("filters").addEventListener("input", function (e) {
+    if (e.target.id !== "search") return;
+    ui.q = e.target.value.trim();
+    renderList();
+  });
+  renderTabs(); renderFilters(); renderList();
+
+  /* changelog */
+  document.getElementById("log").innerHTML = (D.updates || []).map(function (u) {
+    return '<li><time datetime="' + esc(u.date) + '">' + esc(fmt(u.date)) + "</time><p>" + esc(u.text) + "</p></li>";
+  }).join("") || '<li><p class="muted">No updates recorded yet.</p></li>';
+
+  /* goals */
+  document.getElementById("goals").innerHTML = GOAL_ORDER.map(function (g) {
+    var all = D.chunks.filter(function (c) { return c.goal === g; });
+    var dn = all.filter(function (c) { return c.state === "done"; }).length;
+    var ms = g === "foundation" && D.milestones.length
+      ? '<ol class="ms">' + D.milestones.map(function (m) { return "<li>" + esc(m.name) + (m.reached ? " (reached " + fmt(m.reached) + ")" : "") + "</li>"; }).join("") + "</ol>"
+      : "";
+    return '<div class="goalrow"><div class="top"><h3>' + goalDot(g) + esc(goalName(g)) + '</h3><span class="n">' + dn + " of " + all.length + ' done</span></div>' +
+      '<div class="bar"><i style="width:' + (all.length ? 100 * dn / all.length : 0) + "%;background:" + GOAL_COLOR[g] + '"></i></div>' +
+      '<span class="band">' + BAND_LABEL[g] + "</span><p>" + esc(D.goals[g] ? D.goals[g].blurb : "") + "</p>" + ms + "</div>";
+  }).join("");
+
+  /* footer */
+  document.getElementById("foot").innerHTML =
+    "<p>Built from the project tracker (chunks.yaml, BUILD_STATUS.md) and the plain-English notes in docs/roadmap/plain.yaml" +
+    (D.commit ? ' at commit <span class="mono">' + esc(D.commit) + "</span>" + (D.commit_date ? " (" + esc(fmt(D.commit_date, true)) + ")" : "") : "") + ".</p>" +
+    "<p>Every dev session that finishes a chunk updates the notes, and the page is rebuilt after each merge or change to the queue.</p>";
+})();
+</script>
