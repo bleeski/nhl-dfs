@@ -341,11 +341,24 @@ class EntryMetrics:
     salary_used: int | None
     points_check: bool | None
     one_team_sweep: bool  # Classic: 5+ skaters from one team; Showdown: 5+ of 6 from one team
+    # C23 (Showdown only; None elsewhere): the Captain's CPT ownership in this contest, the team holding 4+ of the 6 players
+    # (None for 3-3) and whether that team won the game (the goalie decision W, so a shootout counts; None when unknown)
+    cpt_own: float | None = None
+    heavy_team: str | None = None
+    heavy_won: bool | None = None
+
+
+def winning_teams(dm: DayMap) -> set[str]:
+    """Teams whose goalie was credited with the win (decision W): a shootout winner counts, unlike a goal count."""
+    return {p.team for ps in dm.by_norm.values() for p in ps if p.pos == "G" and p.decision == "W"}
 
 
 def entry_metrics(s: st.Standings, dm: DayMap, mode: str, own_any: dict[str, float], fpts: dict[str, Decimal],
-                  dups: Counter, salary: dict[str, dict] | None) -> list[EntryMetrics]:
+                  dups: Counter, salary: dict[str, dict] | None, own_cpt: dict[str, float] | None = None) -> list[EntryMetrics]:
+    """own_cpt (Showdown): normalized name -> CPT ownership % in this contest; names are not unique on every slate (two
+    players with one normalized name merge)."""
     out = []
+    won = winning_teams(dm) if mode == "showdown" else set()
     chalk, punt = CHALK[mode], PUNT[mode]
     for e in s.entries:
         if e.blank:
@@ -393,12 +406,18 @@ def entry_metrics(s: st.Standings, dm: DayMap, mode: str, own_any: dict[str, flo
             cp = players[cpt_i]
             teams_all = Counter(p.team for p in players if p)
             split = "-".join(str(c) for c in sorted(teams_all.values(), reverse=True)) or "?"
+            heavy = next((t for t, c in teams_all.items() if c >= 4), None)
+            heavy_won = None
+            if heavy is not None and (heavy in won or dm.opp.get(heavy) in won):
+                heavy_won = heavy in won
             m = EntryMetrics(e.entry_id, e.rank, float(e.points), e.entry_name.lower().startswith(OURS), names, players, slots,
                              shape, primary, secondary, len(teams_all), 1, gt, False, False,
                              (g.decision == "W") if g and g.decision else None, False, False, names[cpt_i],
                              cp.pos if cp else None, cp.team if cp else None, split, bool(goalies), bool(cp and cp.pos == "G"),
                              sum(1 for p in players if p and p.pos == "D"), own_sum, n_chalk, n_punt, dups[key], sal_used, pc,
-                             max(teams_all.values(), default=0) >= 5)
+                             max(teams_all.values(), default=0) >= 5,
+                             cpt_own=(own_cpt or {}).get(names[cpt_i]) if own_cpt is not None else None,
+                             heavy_team=heavy, heavy_won=heavy_won)
         out.append(m)
     return out
 
@@ -443,6 +462,14 @@ def cohort_summary(ms: list[EntryMetrics], mode: str) -> dict:
                     "goalie_cpt_pct": _pct(sum(m.goalie_cpt for m in ms), n),
                     "cpt_pos": {k: _pct(c, n) for k, c in Counter(m.cpt_pos or "?" for m in ms).items()},
                     "sweep_5plus_pct": _pct(sum(m.one_team_sweep for m in ms), n)})
+        # C23: Captain ownership, the leaning team's result and the split by team
+        own = [m.cpt_own for m in ms if m.cpt_own is not None]
+        hw = [m.heavy_won for m in ms if m.heavy_won is not None]
+        by_team = Counter(f"{m.heavy_team} {m.split}" if m.heavy_team else m.split for m in ms)
+        out.update({"mean_cpt_own": round(mean(own), 1) if own else None,
+                    "cpt_own_le10_pct": _pct(sum(x <= 10.0 for x in own), len(own)) if own else None,
+                    "heavy_team_won_pct": _pct(sum(hw), len(hw)) if hw else None,
+                    "split_by_team": [{"split": k, "pct": _pct(c, n)} for k, c in by_team.most_common(5)]})
     return out
 
 
@@ -473,7 +500,7 @@ def analyze_contest(s: st.Standings, dm: DayMap, meta: dict | None, templates: d
         if r.roster_position != "CPT" or n not in fpts:
             fpts[n] = v
     salary, forecast, forecast_run = local_run_for(s.contest_id, runs_root)
-    ms = entry_metrics(s, dm, mode, own_any, fpts, dups, salary)
+    ms = entry_metrics(s, dm, mode, own_any, fpts, dups, salary, own_cpt=own_cpt if mode == "showdown" else None)
     by_rank = sorted(ms, key=lambda m: (m.rank, m.entry_id))
     k1 = max(1, round(0.01 * n_all))
     k10 = max(1, round(0.10 * n_all))
@@ -580,7 +607,7 @@ def render_contest(c: dict) -> list[str]:
     if c["mode"] == "classic":
         cols += ["G with stack %", "G vs own skaters %", "G won %", "bring-back %", "D at UTIL %", "salary"]
     else:
-        cols += ["splits (top 3)", "has G %", "G as CPT %", "CPT pos"]
+        cols += ["splits (top 3)", "has G %", "G as CPT %", "CPT pos", "CPT own %", "lean team won %", "split by team (top 2)"]
     L.append(_row(cols))
     L.append(_row(["---"] * len(cols)))
     for k in ("top1", "top10", "cash", "rest", "field"):
@@ -596,7 +623,8 @@ def render_contest(c: dict) -> list[str]:
                     s["d_in_util_pct"], s["mean_salary_used"]]
         else:
             row += [", ".join(f"{x['split']} {x['pct']}%" for x in s["splits"][:3]), s["has_goalie_pct"], s["goalie_cpt_pct"],
-                    " ".join(f"{k2} {v}%" for k2, v in sorted(s["cpt_pos"].items()))]
+                    " ".join(f"{k2} {v}%" for k2, v in sorted(s["cpt_pos"].items())), s.get("mean_cpt_own"),
+                    s.get("heavy_team_won_pct"), ", ".join(f"{x['split']} {x['pct']}%" for x in s.get("split_by_team", [])[:2])]
         L.append(_row(row))
     L.append("")
     L.append("Most owned (field % / top-1% % / cash % / FPTS):")
@@ -665,7 +693,7 @@ def pooled(contests: list[dict], mode: str) -> list[str]:
     keys = ["primary_ge3_pct", "primary_ge4_pct", "primary_ge5_pct", "mean_teams", "mean_own_sum", "mean_chalk", "mean_punt", "dup_pct"]
     keys += ["goalie_with_stack_pct", "goalie_vs_own_skaters_pct", "goalie_won_pct", "bringback_pct", "d_in_util_pct",
              "two_stacks_3plus_pct"] if mode == "classic" \
-        else ["has_goalie_pct", "goalie_cpt_pct", "sweep_5plus_pct"]
+        else ["has_goalie_pct", "goalie_cpt_pct", "sweep_5plus_pct", "mean_cpt_own", "cpt_own_le10_pct", "heavy_team_won_pct"]
     L.append(_row(["cohort", "lineups"] + keys))
     L.append(_row(["---"] * (2 + len(keys))))
     for k in ("top1", "top10", "cash", "rest", "field"):
@@ -689,7 +717,69 @@ def pooled(contests: list[dict], mode: str) -> list[str]:
     for sh, _ in shapes["top1"].most_common(10):
         L.append(_row([sh] + [round(100 * shapes[k][sh] / tot[k], 1) if tot[k] else None for k in ("top1", "cash", "field")]))
     L.append("")
+    if mode == "showdown":
+        L += captain_positions(cs) + pattern_lines(cs)
     return L
+
+
+def captain_positions(cs: list[dict]) -> list[str]:
+    """C23: the Captain position mix per cohort, pooled over Showdown contests (shares weighted by cohort size)."""
+    cohorts = ("top1", "top10", "cash", "field")
+    mix: dict[str, Counter] = {k: Counter() for k in cohorts}
+    tot = Counter()
+    for c in cs:
+        for k in cohorts:
+            s = c["cohorts"][k]
+            if s.get("n"):
+                tot[k] += s["n"]
+                for pos, pct in (s.get("cpt_pos") or {}).items():
+                    mix[k][pos] += pct * s["n"] / 100.0
+    L = ["Captain position, pooled share per cohort (C23):", "", _row(["CPT pos"] + [f"{k} %" for k in cohorts]),
+         _row(["---"] * (1 + len(cohorts)))]
+    for pos in sorted(set().union(*(mix[k] for k in cohorts))):
+        L.append(_row([pos] + [round(100 * mix[k][pos] / tot[k], 1) if tot[k] else None for k in cohorts]))
+    return L + [""]
+
+
+PATTERN_MIN_TOP1, PATTERN_GOALIE_GAP, PATTERN_OWN_GAP = 20, 10.0, 5.0  # preregistered (flag 99), judgment
+PATTERN_EVIDENCE_DATE = "2026-10-02"  # the game that suggested the question (B49)
+
+
+def showdown_pattern(contests: list[dict], exclude_dates: tuple[str, ...] = ()) -> dict:
+    """C23 pattern check (docs/experiments/captain_2026-10-13.md, flag 99), information only: pooled over Showdown contests,
+    top-1% goalie-Captain share and mean Captain CPT ownership against the field's. HOLDS needs >= 20 top-1% lineups, a goalie-Captain
+    share 10+ points under the field's and a Captain ownership 5+ points under it; TOO FEW under 20; NOT SHOWN otherwise."""
+    cs = [c for c in contests if c["mode"] == "showdown" and c.get("slate_date") not in exclude_dates]
+
+    def pool(k: str, key: str) -> tuple[int, float | None]:
+        rows = [c["cohorts"][k] for c in cs if c["cohorts"][k].get("n") and c["cohorts"][k].get(key) is not None]
+        n = sum(r["n"] for r in rows)
+        return n, (round(sum(r[key] * r["n"] for r in rows) / n, 1) if n else None)
+
+    n1, g1 = pool("top1", "goalie_cpt_pct")
+    _, gf = pool("field", "goalie_cpt_pct")
+    _, o1 = pool("top1", "mean_cpt_own")
+    _, of = pool("field", "mean_cpt_own")
+    if n1 < PATTERN_MIN_TOP1 or None in (g1, gf, o1, of):
+        verdict = "TOO FEW"
+    elif gf - g1 >= PATTERN_GOALIE_GAP and of - o1 >= PATTERN_OWN_GAP:
+        verdict = "HOLDS"
+    else:
+        verdict = "NOT SHOWN"
+    return {"contests": len(cs), "dates": sorted({c.get("slate_date") for c in cs if c.get("slate_date")}), "top1_n": n1,
+            "top1_goalie_cpt_pct": g1, "field_goalie_cpt_pct": gf, "top1_mean_cpt_own": o1, "field_mean_cpt_own": of,
+            "verdict": verdict}
+
+
+def pattern_lines(cs: list[dict]) -> list[str]:
+    L = ["Pattern check (C23, flag 99, preregistered; information only): top-1% goalie-Captain share and mean Captain CPT ownership "
+         "against the field's.", ""]
+    for label, ex in (("every date", ()), (f"without {PATTERN_EVIDENCE_DATE} (out of sample)", (PATTERN_EVIDENCE_DATE,))):
+        r = showdown_pattern(cs, ex)
+        L.append(f"- {label}: {r['verdict']} ({r['contests']} contests; top 1% n {r['top1_n']}; goalie as CPT top1 "
+                 f"{r['top1_goalie_cpt_pct']}% vs field {r['field_goalie_cpt_pct']}%; CPT own top1 {r['top1_mean_cpt_own']}% vs field "
+                 f"{r['field_mean_cpt_own']}%)")
+    return L + [""]
 
 
 def main(argv: list[str] | None = None) -> int:
