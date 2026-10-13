@@ -1,0 +1,17 @@
+# C23 cross-tree checks, 2026-10-13 (scratchpad xtree.py and xtree30.py): export = master 472a2d2, nhl-dfs = branch dev/c23-showdown-captain-choice-skater-captains
+# small counts, uncloned fixtures, two runs per tree (branch at 2954357):
+{"tree": "export", "fixture": "late_swap/showdown2", "ok": true, "phase": "S", "sha": "acc1ad9c3c972a26", "has_captain": false, "secs": 11.1}
+{"tree": "export", "fixture": "late_swap/showdown2", "ok": true, "phase": "S", "sha": "acc1ad9c3c972a26", "has_captain": false, "secs": 10.1}
+{"tree": "nhl-dfs", "fixture": "late_swap/showdown2", "ok": true, "phase": "S", "sha": "acc1ad9c3c972a26", "has_captain": true, "secs": 10.5}
+{"tree": "nhl-dfs", "fixture": "late_swap/showdown2", "ok": true, "phase": "S", "sha": "acc1ad9c3c972a26", "has_captain": true, "secs": 10.4}
+{"tree": "export", "fixture": "mini/showdown", "ok": true, "phase": "S", "sha": "ff68d9f7ff90acc9", "has_captain": false, "secs": 15.2}
+{"tree": "export", "fixture": "mini/showdown", "ok": true, "phase": "S", "sha": "ff68d9f7ff90acc9", "has_captain": false, "secs": 15.0}
+{"tree": "nhl-dfs", "fixture": "mini/showdown", "ok": true, "phase": "S", "sha": "ff68d9f7ff90acc9", "has_captain": true, "secs": 15.0}
+{"tree": "nhl-dfs", "fixture": "mini/showdown", "ok": true, "phase": "S", "sha": "ff68d9f7ff90acc9", "has_captain": true, "secs": 14.2}
+{"tree": "export", "fixture": "mini/classic", "ok": true, "phase": "S", "sha": "e8668f75542f82b6", "has_captain": false, "secs": 22.0}
+{"tree": "export", "fixture": "mini/classic", "ok": true, "phase": "S", "sha": "e8668f75542f82b6", "has_captain": false, "secs": 21.0}
+{"tree": "nhl-dfs", "fixture": "mini/classic", "ok": true, "phase": "S", "sha": "e8668f75542f82b6", "has_captain": false, "secs": 21.1}
+{"tree": "nhl-dfs", "fixture": "mini/classic", "ok": true, "phase": "S", "sha": "e8668f75542f82b6", "has_captain": false, "secs": 21.4}
+# mini/showdown cloned to 30, medium counts, seed 20261013, the off arm (branch at 3874c43 code):
+{"tree": "export", "ok": true, "sha": "ecf7fc027a80fc32", "RISK_BUDGET": "BREACHED(Captain fee share 0.44 > 0.40; goalie in 25 of 30 lineups > 15; 10 entries relaxe"}
+{"tree": "nhl-dfs", "ok": true, "sha": "ecf7fc027a80fc32", "RISK_BUDGET": "BREACHED(Captain fee share 0.44 > 0.40; goalie in 25 of 30 lineups > 15; 10 entries relaxe"}
