@@ -126,8 +126,15 @@ coerced to a known value (CLAUDE.md); other vocabularies here that have no
 ## Scenario portfolio (C8, `build/objectives.py`, `tiebreak.py`, `exposure.py`, `portfolio.py`, `scenario_pass.py`)
 
 - `run` without `--baseline` publishes v1 baseline, v2 provisional (C3), v3 scenario. Seed streams: design (discovery),
-  selection (the choice), referee (every reported figure). DTD (QUESTIONABLE) is priced once, as a seeded participation
-  mask on the scenario scores (0.85 play probability); the C3 ranking haircut is not reapplied; minutes are not reallocated.
+  selection (the choice), referee (every reported figure). DTD (QUESTIONABLE) is priced once (the C3 ranking haircut is not
+  reapplied). From C24 (B14, flags 101 to 106) a DTD skater (play probability strictly between 0 and 1, `objectives.split_play`)
+  sits out inside the simulated game (`SlateSpec.participation`, `sim/game._sit_out`), from his own seed stream
+  [seed, purpose, chunk, game, 9, crc32(person_key)]: his would-be ice time goes to the dressed skaters of his group (forwards or
+  defense, phantom included) by one factor, so the group's dm x seconds is conserved exactly per scenario, and his non-goal shots
+  and blocks by their own factors (team totals conserved in expectation); goals follow the fixed team count; the assist pilot
+  and phantom budget never see the draw. Only the persons it does not cover (goalies, a play probability of 0) keep the seeded
+  mask on the scenario scores, with mask values byte-identical to before (covered persons' mask draws are consumed and
+  discarded). A game with no DTD skater draws exactly what it drew before C24. No line promotion (B128).
 - Ties: the tied positions' prizes are pooled and split by the tied count, floored to the cent (integer cents; Decimal
   ROUND_DOWN reference `split_tie`). DK Terms verify only the even split (docs/payouts.md); [BEN] flag 9.
 - Field: at most 5,000 distinct sampled lineups per contest. Weighted mode: integer multiplicities (largest remainder)
@@ -153,7 +160,8 @@ coerced to a known value (CLAUDE.md); other vocabularies here that have no
   indicators `sim/score.FLAG_NAMES` (dressed, started, hat trick, 5+ SOG, 3+ blocks, 3+ points, any SH point, shutout,
   35+ saves), `(F, P, ceil(size/8))` uint8 packed along the draws (`np.packbits`, little bit order), same whole-chunk
   truncation as the points; `meta.json` names them (`flags`) and adds `participation`: per person `p_sim` (the
-  simulator's dress or start probability), `mask`, `p_play`, per goalie `p_start` and its source (rotation, Daily
+  simulator's dress or start probability), `mask`, `p_play` (record format 2 from C24: `draw`, the in-simulation play probability
+  the draws carry, and `p_play = p_sim x draw x mask`; settle labels the Brier grade by format), per goalie `p_start` and its source (rotation, Daily
   Faceoff state, team page, override). Cache format stays 1: older caches load and settle as before. `Outcomes.started`
   marks a goalie who started in net (a relief goalie is dressed, not started); it consumes no draws. Real 2026-09-29
   Classic: +2.6 MB per stream (cache 21.2 to 26.4 MB), peak 657 to 675 MB, draws byte-identical.
@@ -327,7 +335,9 @@ coerced to a known value (CLAUDE.md); other vocabularies here that have no
 - Objective order from `--objective auto`: scenario, provisional, baseline. Every step down is recorded
   (manifest `objective.fallbacks`, RUN_NOTES `OBJECTIVE=`, CLI). A late swap with nothing to repair evaluates no
   objective (`not needed`) and returns the input bytes; refresh always resolves (eager).
-- Scenario: the C8 pass keeps the first 8,000 UNMASKED selection and referee draws per person plus per-game hashes,
+- Scenario: the C8 pass keeps the first 8,000 never-masked selection and referee draws per person (from C24 they carry a DTD
+  skater's in-game sit-out: `scenario_cache.in_draws` names who, and no reader masks them again) plus per-game hashes (a game's
+  DTD skaters and probabilities are hashed only when it has one),
   contests (payout curves) and field lineups under `runs/<id>/scenario/`; late swap looks on the run, then its
   `parent_run_id` chain. Changed, unstarted games are re-simulated with their full-slate seed streams (games are
   independent draws, tested); started games keep cached draws. `--fast` scores on 4,000. Candidates: the MILP's best
@@ -338,7 +348,9 @@ coerced to a known value (CLAUDE.md); other vocabularies here that have no
 - Provisional: the role-applied ParamTable mean times the play probability. Baseline: the C2 prior objective.
 - Roles: ParamTable, then `roles.merge`, then `roles.apply_state` exactly once per run; `confirmed_at()` goes to
   `build_slate`. Participation is priced once per person: RoleState `p_play` replaces C8's 0.85 unless roles already
-  lowered that person's dressing or start probability. NEWS_STATE stays DK status coverage; ROLES_NEWS_STATE is C7's.
+  lowered that person's dressing or start probability. C24: re-simulated games draw their DTD skaters inside the game (the run's
+  split, so an unchanged game is not re-simulated); the mask prices only persons the draws in use do not carry (a pre-C24 cache
+  carries nobody, so it is masked as before), in late swap, refresh and the C10 controller alike. NEWS_STATE stays DK status coverage; ROLES_NEWS_STATE is C7's.
 - Optional work stops at T-5 (engine) / T-8 (LLM) before the earliest start among games with open cells
   (`config/runtime.yaml late_swap`); inside it the objective is baseline. Separate from `edit_stop_buffer_s`.
 - Goalie gate (`build/goalies.py`, B17, fix after C10): before targets are chosen, the Daily Faceoff

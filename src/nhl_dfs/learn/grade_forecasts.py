@@ -466,7 +466,10 @@ def _play_grade(keys, draws, flags, fi, saved, group: dict, part: dict) -> dict:
         else:
             p = float((draws[:, keys.index(k)] != 0).mean())
         by.setdefault(group.get(k, "F"), []).append((p - (1.0 if v else 0.0)) ** 2)
-    out = {"status": ("saved at build (p_play = dress or start probability x participation mask)" if persons else
+    fmt = int((saved or {}).get("format", 1) or 1)
+    out = {"status": (("saved at build (p_play = dress or start probability x in-simulation participation draw x mask; "
+                       "participation record format 2, C24)") if persons and fmt >= 2 else
+                      "saved at build (p_play = dress or start probability x participation mask)" if persons else
                       "IMPLIED: share of nonzero draws (older run; no play probability saved)")}
     for g, xs in by.items():
         out[g] = {"n": len(xs), "brier": round(float(np.mean(xs)), 4) if xs else None}

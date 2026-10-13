@@ -38,7 +38,7 @@ import re
 from dataclasses import dataclass, field
 from decimal import ROUND_DOWN, Decimal
 from pathlib import Path
-from typing import Mapping, Sequence
+from typing import Collection, Mapping, Sequence
 
 import numpy as np
 import yaml
@@ -300,15 +300,36 @@ def contest_from(ctx, fam_cfg: dict) -> Contest:
 
 # -- scenarios --------------------------------------------------------------------------------------
 
-def play_mask(n: int, person_keys: Sequence[str], play_prob: Mapping[str, float], seed: int, purpose_code: int) -> np.ndarray:
+def split_play(play_prob: Mapping[str, float] | None, params) -> tuple[dict[str, float], dict[str, float]]:
+    """C24 (flags 101, 102): the one participation pricing split in two, each person in exactly one part. in_sim: skaters
+    (F, D) of the ParamTable whose play probability is strictly between 0 and 1; they sit out inside the simulated game
+    (SlateSpec.participation, sim/game.py), so their minutes go to teammates. mask: everyone else priced (goalies, a play
+    probability of 0, anyone outside the ParamTable), masked after the simulation as before C24."""
+    persons = getattr(params, "persons", None) or {}
+    in_sim, mask = {}, {}
+    for k, p in (play_prob or {}).items():
+        pp = persons.get(k)
+        if pp is not None and pp.group != "G" and pp.opportunity is not None and 0.0 < float(p) < 1.0:
+            in_sim[k] = float(p)
+        else:
+            mask[k] = float(p)
+    return in_sim, mask
+
+
+def play_mask(n: int, person_keys: Sequence[str], play_prob: Mapping[str, float], seed: int, purpose_code: int,
+              in_sim: Collection[str] = ()) -> np.ndarray:
     """(n, P) bool: False where a person with play probability < 1 sits out that scenario. Its own
-    seed stream, so the simulator's draws are untouched and every lineup sees the same mask."""
+    seed stream, so the simulator's draws are untouched and every lineup sees the same mask.
+    in_sim (C24, flag 101): persons whose draws already carry their participation; their mask draws are still
+    consumed and discarded, so every other person's mask is byte-identical to the one drawn before C24."""
     mask = np.ones((n, len(person_keys)), bool)
     rng = np.random.Generator(np.random.PCG64(np.random.SeedSequence([int(seed), MASK_STREAM, int(purpose_code)])))
     for j, k in enumerate(person_keys):  # person axis order, so the draws do not depend on dict order
         p = play_prob.get(k)
         if p is not None and p < 1.0:
-            mask[:, j] = rng.random(n) < float(p)
+            draw = rng.random(n) < float(p)
+            if k not in in_sim:
+                mask[:, j] = draw
     return mask
 
 
@@ -341,21 +362,29 @@ class ScenarioSet:
 
 
 def scenario_set(base_person: np.ndarray, person_keys: Sequence[str], pool, *, purpose: str, seed: int,
-                 purpose_code: int, play_prob: Mapping[str, float] | None = None) -> ScenarioSet:
+                 purpose_code: int, play_prob: Mapping[str, float] | None = None,
+                 in_sim: Collection[str] = ()) -> ScenarioSet:
     """Role-row scores from the simulator's per-person base scores. play_prob: person_key -> probability
-    of playing given the simulator's own dressing (DTD / QUESTIONABLE today; RoleState.p_play later).
-    It is applied once, here, to every lineup alike; the missing player's minutes are NOT handed to
-    his teammates (a labeled simplification)."""
+    of playing given the simulator's own dressing (the run's whole participation pricing, RoleState.p_play
+    or DK QUESTIONABLE). in_sim (C24): the persons whose participation the draws already carry (they sat
+    out inside the simulated game and their minutes went to teammates); they are never masked again. The
+    rest is masked once, here, to every lineup alike (goalies, a play probability of 0)."""
     from nhl_dfs.sim.score import role_map_for
 
     notes = []
     base = np.asarray(base_person)
-    if play_prob:
-        mask = play_mask(base.shape[0], person_keys, play_prob, seed, purpose_code)
+    drawn = {k: play_prob[k] for k in in_sim if play_prob and k in play_prob}
+    if drawn:
+        notes.append(f"participation drawn inside the simulated game for {len(drawn)} skater(s) (play probability "
+                     + ", ".join(sorted({f'{v:g}' for v in drawn.values()})) + "); their minutes, shots and blocks go to "
+                     "the teammates who dressed")
+    rest = {k: v for k, v in (play_prob or {}).items() if k not in in_sim and v < 1.0}
+    if rest:
+        mask = play_mask(base.shape[0], person_keys, play_prob, seed, purpose_code, in_sim=in_sim)
         base = np.where(mask, base, 0).astype(np.int32)
-        sat = {k: float(1.0 - mask[:, j].mean()) for j, k in enumerate(person_keys) if k in play_prob}
+        sat = {k for k in person_keys if k in rest}
         notes.append(f"participation mask on {len(sat)} person(s) (play probability "
-                     + ", ".join(sorted({f'{play_prob[k]:g}' for k in sat})) + "); minutes not reallocated")
+                     + ", ".join(sorted({f'{rest[k]:g}' for k in sat})) + "); minutes not reallocated")
     ids, cols = role_map_for(pool, person_keys)
     return ScenarioSet(ids, np.ascontiguousarray(base[:, cols]), purpose, int(seed), notes)
 

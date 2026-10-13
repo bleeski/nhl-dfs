@@ -190,13 +190,16 @@ def play_prob_of(cache, pool, st, fam_cfg) -> tuple[dict, str]:
 
 def build_sets(cache, pool, play):
     """Selection and referee ScenarioSets with the play mask applied once over the FULL cached stream (the mask draws depend on the stream
-    length), then the selection stream split in two: design (first half) and choosing (second half)."""
+    length), then the selection stream split in two: design (first half) and choosing (second half). C24: the persons whose
+    participation the cached draws already carry (scenario_cache.in_draws) are never masked again, as in late swap."""
     from nhl_dfs.build import objectives as ob
+    from nhl_dfs.build import scenario_cache as sc
 
     out = {}
     for purpose in ("selection", "referee"):
         out[purpose] = ob.scenario_set(cache.base(purpose, cache.n(purpose)), cache.person_keys, pool, purpose=purpose, seed=cache.seed,
-                                       purpose_code=int(cache.meta["purposes"][purpose]["code"]), play_prob=play)
+                                       purpose_code=int(cache.meta["purposes"][purpose]["code"]), play_prob=play,
+                                       in_sim=sc.in_draws(cache.meta))
     sel = out["selection"]
     h = sel.n // 2
     return {"design": ob.ScenarioSet(sel.role_ids, sel.base[:h], "selection-design", sel.seed),
