@@ -1,8 +1,13 @@
 """C22 chalk core (flag 95, docs/experiments/chalk_core_2026-10-13.md): the core, the band anchor the fill records, the
 counts the preregistration decides on, and the exemption key that no caller passes yet."""
 
+import json
+import os
 import random
+import subprocess
+import sys
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -145,6 +150,7 @@ def test_the_fill_records_the_anchor_and_the_report_counts_a_move_off_the_core()
     assert rows["e1"] == {"core_held": 0, "core_held_untied": 2, "tiebreak_moved": "own"}
     assert summary["counts"]["large_gpp"] == {"N": 1, "M": 1, "M_own": 1, "M_dup": 0, "D": 1, "U": 0}
     assert summary["retention"] == {"picks": {"both": 0, "one": 0, "none": 1}, "anchors": {"both": 1, "one": 0, "none": 0}}
+    assert summary["retention_by_family"] == {"large_gpp": {"both": 0, "one": 0, "none": 1}}
     assert [p["person"] for p in summary["contests"]["C"]["core"]] == sorted(
         [pool.by_role_id[r].person_key for r in a.role_ids[:2]], key=lambda pk: -own[pool.persons[pk].classic.role_id])
     assert summary["eligible_contests"] == ["C"] and summary["cores_agree"]
@@ -159,3 +165,73 @@ def test_a_cash_pick_is_never_moved_and_never_counted():
     assert ch.key == ch.anchor_key == a.key
     assert rows["e1"]["tiebreak_moved"] == "" and rows["e1"]["core_held"] == rows["e1"]["core_held_untied"] == 2
     assert summary["counts"] == {} and summary["total"]["N"] == 0
+    assert summary["retention_by_family"] == {"cash": {"both": 1, "one": 0, "none": 0}}  # retention is reported for every family
+
+
+# -- the script: the preregistered verdict, then the whole run in a subprocess --------------------------------------------
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _c22():
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import c22_chalk_core
+
+    return c22_chalk_core
+
+
+def _run(N, D, ok=True):
+    return {"ok": ok, "N": N, "M": D, "M_own": D, "M_dup": 0, "D": D, "U": 0}
+
+
+def test_the_verdict_follows_the_preregistered_rule():
+    c22 = _c22()
+    assert c22.slate_verdict([_run(30, 4)] * 5, 5)["verdict"] == "WARRANTED"  # 20 of 150, D in every seed
+    assert c22.slate_verdict([_run(30, 0)] + [_run(30, 5)] * 4, 5)["verdict"] == "WARRANTED"  # D in 4 of 5 seeds is enough
+    assert c22.slate_verdict([_run(30, 0)] * 2 + [_run(30, 8)] * 3, 5)["verdict"] == "INCONCLUSIVE"  # 24 of 150 but D in 3 seeds
+    assert c22.slate_verdict([_run(30, 1)] * 4 + [_run(30, 0)], 5)["verdict"] == "REJECT"  # 4 of 150 is under 0.03
+    assert c22.slate_verdict([_run(30, 1)] * 5, 5)["verdict"] == "INCONCLUSIVE"  # 5 of 150 sits between the two lines
+    assert c22.slate_verdict([_run(0, 0)] * 5, 5)["verdict"].startswith("NO VERDICT")
+    assert c22.slate_verdict([_run(30, 4)] * 4 + [_run(30, 4, ok=False)], 5)["verdict"].startswith("NO VERDICT")
+    assert c22.slate_verdict([_run(30, 4)] * 2, 2)["verdict"].startswith("NOT THE PREREGISTERED SAMPLE")
+    real = lambda v: {"synthetic": False, "cloned": {"verdict": v}}  # noqa: E731
+    assert c22.study_verdict([real("WARRANTED"), real("WARRANTED")]) == "WARRANTED"
+    assert c22.study_verdict([real("REJECT"), real("REJECT")]) == "REJECT"
+    assert c22.study_verdict([real("REJECT"), real("WARRANTED")]) == "INCONCLUSIVE"
+    assert c22.study_verdict([real("WARRANTED")]).startswith("NOT MEASURED")
+    assert c22.study_verdict([real("REJECT"), real("REJECT"), {"synthetic": True, "cloned": {"verdict": "REJECT"}}]).startswith(
+        "NOT MEASURED on real caches")  # a synthetic slate never reads as REJECT
+
+
+@pytest.mark.timeout(900)
+def test_the_script_runs_the_bed_reproducibly_under_the_write_guard(tmp_path):
+    r = subprocess.run([sys.executable, str(ROOT / "scripts" / "c22_chalk_core.py"), "--out", str(tmp_path), "--small", "--seeds", "1"],
+                       capture_output=True, text=True, env={**os.environ, "PYTHONHASHSEED": "0"}, cwd=ROOT, timeout=900)
+    assert r.returncode == 0, (r.stdout[-1500:] + r.stderr[-1500:])
+    guard = json.loads((tmp_path / "guard.json").read_text(encoding="utf-8"))
+    assert guard["network_blocked"] == []
+    assert [w for w in guard["writes_refused"] if "observations" not in w] == []
+    res = json.loads((tmp_path / "results.json").read_text(encoding="utf-8"))
+    summary = res["summary"]
+    assert summary["verdict"].startswith("NOT MEASURED on real caches")
+    slate = summary["slates"][0]
+    assert slate["synthetic"] is True and slate["entries_cloned_to"] == 40
+    assert slate["noise"] == {"identical_lineups": True, "identical_counts": True}  # the measurement is reproducible
+    assert slate["cloned"]["N"] == 40 and all(run["ok"] for run in res["runs"])
+    info = slate["information_only"]
+    assert sum(info["core_retention_without_the_ownership_order"].values()) == 40  # the mean arm's 40 picks, all large_gpp
+    mean_run = next(run for run in res["runs"] if run["arm"] == "mean")
+    assert mean_run["N"] == 0 and {c["policy"] for c in mean_run["core"].values()} == {"mean"}
+    assert "NOT MEASURED" in (tmp_path / "report.md").read_text(encoding="utf-8")
+
+
+def test_the_real_slate_measurement_runs_when_a_saved_run_is_given(tmp_path):
+    saved = os.environ.get("NHL_DFS_C22_SAVED_RUN")
+    if not saved:
+        pytest.skip("NHL_DFS_C22_SAVED_RUN is not set: the real-slate measurement did NOT run here (backlog B126); a skip is not a pass")
+    r = subprocess.run([sys.executable, str(ROOT / "scripts" / "c22_chalk_core.py"), "--out", str(tmp_path), "--saved-run", saved,
+                        "--seeds", "1", "--no-info"],
+                       capture_output=True, text=True, env={**os.environ, "PYTHONHASHSEED": "0"}, cwd=ROOT, timeout=7200)
+    assert r.returncode == 0, (r.stdout[-1500:] + r.stderr[-1500:])
+    slate = json.loads((tmp_path / "results.json").read_text(encoding="utf-8"))["summary"]["slates"][0]
+    assert slate["synthetic"] is False and slate["cloned"]["N"] > 0, slate["cloned"]

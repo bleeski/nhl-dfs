@@ -733,6 +733,7 @@ def core_report(choices: Mapping[str, Choice], role_ids_by_key: Mapping[str, Seq
     blank = {"N": 0, "M": 0, "M_own": 0, "M_dup": 0, "D": 0, "U": 0}
     counts: dict[str, dict[str, int]] = {}
     retention = {"picks": Counter(), "anchors": Counter()}
+    by_family: dict[str, Counter] = {}  # every pick with a core, whatever its policy (a "mean" fill's retention too)
     word = {0: "none", 1: "one", 2: "both"}
     for eid, ch in choices.items():
         policy, core = policy_of[ch.contest_id], cores[ch.contest_id]
@@ -740,7 +741,10 @@ def core_report(choices: Mapping[str, Choice], role_ids_by_key: Mapping[str, Seq
         held = tiebreak.core_held(role_ids_by_key[ch.key], core, pool) if core else None
         untied = tiebreak.core_held(role_ids_by_key[ch.anchor_key], core, pool) if core else None
         rows[eid] = {"core_held": held, "core_held_untied": untied, "tiebreak_moved": moved}
-        if not core or policy not in CORE_POLICIES:
+        if not core:
+            continue
+        by_family.setdefault(ch.family, Counter())[word[held]] += 1
+        if policy not in CORE_POLICIES:
             continue
         c = counts.setdefault(ch.family, dict(blank))
         c["N"] += 1
@@ -773,6 +777,7 @@ def core_report(choices: Mapping[str, Choice], role_ids_by_key: Mapping[str, Seq
         "counts": dict(sorted(counts.items())),
         "total": total,
         "retention": {k: {w: int(v[w]) for w in ("both", "one", "none")} for k, v in retention.items()},
+        "retention_by_family": {f: {w: int(v[w]) for w in ("both", "one", "none")} for f, v in sorted(by_family.items())},
     }
     if pool.mode is not Mode.CLASSIC:
         summary["skipped"] = "Showdown: no core (Classic only, flag 95); tiebreak_moved is still recorded per entry"
