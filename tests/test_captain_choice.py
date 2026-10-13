@@ -385,3 +385,52 @@ def test_with_both_switches_on_no_barred_goalie_is_captain_and_the_captain_cap_s
             held[lu[0]] = held.get(lu[0], 0) + 1
     assert held and max(held.values()) <= cap
     assert sec["portfolio"]["goalie_cpt_entries"] == sum(1 for lu in lineups.values() if lu[0] in barred) == 0
+
+
+# ---- the experiment script's preregistered verdict and its run finder ----------------------------------------------
+
+_xspec = importlib.util.spec_from_file_location("c23_captain", REPO / "scripts" / "c23_captain.py")
+c23 = importlib.util.module_from_spec(_xspec)
+_xspec.loader.exec_module(c23)
+
+
+def _arm_runs(metrics, goalie=0, budget="OK"):
+    return [{"ok": True, "metric": m, "risk_budget": budget, "portfolio": {"goalie_cpt_entries": goalie}} for m in metrics]
+
+
+def test_the_switch_verdict_is_the_preregistered_rule():
+    o = _arm_runs([0.0100, 0.0102, 0.0098, 0.0101, 0.0099])  # sd 0.000158: MDE 0.000197, 2% of the mean
+    up = _arm_runs([0.0110, 0.0113, 0.0107, 0.0111, 0.0108])  # d about +0.0010 (10%) in every seed
+    assert c23.switch_verdict(o, up, "G")["verdict"] == "ACCEPT-TO-SHADOW"
+    assert c23.switch_verdict(o, _arm_runs([0.0110, 0.0113, 0.0107, 0.0111, 0.0108], goalie=9), "L")["verdict"] == "INCONCLUSIVE"
+    assert c23.switch_verdict(o, _arm_runs([0.0110, 0.0113, 0.0107, 0.0111, 0.0108], budget="BREACHED"), "G")["verdict"] == "INCONCLUSIVE"
+    assert c23.switch_verdict(o, _arm_runs([0.0099, 0.0101, 0.0097, 0.0100, 0.0098]), "G")["verdict"] == "REJECT"  # mean d below 0
+    noisy = _arm_runs([0.0100, 0.0130, 0.0070, 0.0115, 0.0085])  # MDE above 10% of the mean
+    assert c23.switch_verdict(noisy, up, "G")["reason"].startswith("MDE")
+    failed = o[:4] + [{"ok": False, "metric": None, "risk_budget": "OK", "portfolio": {}}]
+    assert c23.switch_verdict(failed, up, "G")["verdict"] == "NO VERDICT"
+
+
+def test_the_study_verdict_needs_three_real_slates_and_never_rejects_a_synthetic_one():
+    sl = lambda v, syn=False: {"synthetic": syn, "verdicts": {"G": {"verdict": v}, "L": {"verdict": v}}}
+    assert c23.study_verdict([sl("REJECT", True)] * 4, "G") == "NOT MEASURED"
+    assert c23.study_verdict([sl("REJECT")] * 2, "G") == "NOT MEASURED"
+    assert c23.study_verdict([sl("REJECT")] * 2 + [sl("INCONCLUSIVE")], "G") == "REJECT"
+    assert c23.study_verdict([sl("ACCEPT-TO-SHADOW")] * 2 + [sl("INCONCLUSIVE")], "L") == "ACCEPT-TO-SHADOW"
+    assert c23.study_verdict([sl("ACCEPT-TO-SHADOW"), sl("REJECT"), sl("INCONCLUSIVE")], "G") == "INCONCLUSIVE"
+
+
+def test_the_run_finder_keeps_the_newest_showdown_parent_per_slate(tmp_path):
+    def mk(name, **m):
+        d = tmp_path / name
+        (d / "inputs").mkdir(parents=True)
+        (d / "inputs" / "DKEntries.csv").write_text("x")
+        (d / "manifest.json").write_text(json.dumps({"mode": "showdown", "scenario": {"version": 3}, **m}))
+
+    mk("a", slate_id="s1", created_utc="2026-10-05T20:00:00Z")
+    mk("b", slate_id="s1", created_utc="2026-10-05T22:00:00Z")  # newer run of the same slate
+    mk("c", slate_id="s2", created_utc="2026-10-06T20:00:00Z", parent_run_id="x")  # a late-swap child
+    mk("d", slate_id="s3", created_utc="2026-10-02T20:00:00Z")  # before --since
+    mk("e", slate_id="s4", created_utc="2026-10-07T20:00:00Z", mode="classic")
+    mk("f", slate_id="s5", created_utc="2026-10-08T20:00:00Z", scenario={})  # no scenario version published
+    assert [p.name for p in c23.find_runs(tmp_path, "2026-10-03")] == ["b"]
