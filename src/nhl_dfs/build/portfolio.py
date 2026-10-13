@@ -773,7 +773,7 @@ def core_report(choices: Mapping[str, Choice], role_ids_by_key: Mapping[str, Seq
         "contests": {cid: {"family": ct.family, "policy": policy_of[cid],
                            "core": [person(pk, cid) for pk in cores[cid]]} for cid, ct in sorted(contests.items())},
         "eligible_contests": eligible,
-        "cores_agree": len({cores[cid] for cid in eligible}) <= 1,
+        "cores_agree": len({frozenset(cores[cid]) for cid in eligible}) <= 1 if eligible else None,  # None: no eligible contest
         "counts": dict(sorted(counts.items())),
         "total": total,
         "retention": {k: {w: int(v[w]) for w in ("both", "one", "none")} for k, v in retention.items()},

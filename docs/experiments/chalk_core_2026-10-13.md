@@ -202,3 +202,12 @@ foreach ($r in $runs) {
 # 5. Hand a session these files: c22_real\results.json, report.md, guard.json; c21_real\results.json, report.md, guard.json;
 #    each c20_real_*\summary.json, results.json, guard.json (all under $env:TEMP)
 ```
+
+Corrections after the final review (2026-10-13, same session, by the independent advisor agent; nothing here changes a count or the verdict):
+1. `saved_inputs` now refuses a late-swap or refresh child run (its manifest carries `parent_run_id`), which keeps its own inputs and a
+   near-lock clock and would otherwise have been replayed silently; it names the parent to give instead. The two runs B126 names are parents.
+2. `cores_agree` compares the two cores as sets (the same two skaters in another order agree) and reads None when no contest is eligible.
+3. Each run's stdout line now prints every contest's family, PAYOUT_SOURCE and FIELD_SIZE_SOURCE, as the preregistration says, and the
+   summary records whether the routing was the same in every run (`routing_same_in_every_run`); the IN-SAMPLE label prints only for the
+   09-29 and 09-30 runs; `--seeds` outside 1 to 5 is refused instead of capped. The bed's committed results come from `5cdc4f1`, before these
+   presentation changes, so they lack the routing field; the bed has one contest, routed large_gpp, PRIOR and PRIOR in all 8 runs.

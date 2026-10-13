@@ -159,6 +159,9 @@ def saved_inputs(src: Path, out: Path) -> tuple[Path, Path, datetime, str]:
     src = Path(src).resolve()
     if not (src / "inputs" / "DKSalaries.csv").exists() or not (src / "inputs" / "DKEntries.csv").exists():
         raise SystemExit(f"{src}: no inputs/DKSalaries.csv and inputs/DKEntries.csv (give the run that built the slate, not a child)")
+    parent = json.loads((src / "manifest.json").read_text(encoding="utf-8")).get("parent_run_id")
+    if parent:  # a late swap or refresh child keeps its own inputs and a near-lock clock: never the slate's build
+        raise SystemExit(f"{src}: a late-swap or refresh child of {parent}; give runs/{parent}, the run that built the slate")
     dst = out / "saved" / src.name
     shutil.copytree(src / "inputs", dst / "inputs", dirs_exist_ok=True)
     shutil.copy2(src / "manifest.json", dst / "manifest.json")
@@ -178,8 +181,9 @@ def run_slate_arms(name: str, salary: Path, entries: Path, clock: datetime, n_cl
         r = run_one(salary, ents, clock, scenario_n, out, f"{name}-{tag}", seed, policy_mean)
         r.update({"slate": name, "arm": arm, "synthetic": synthetic})
         results.append(r)
+        routes = "; ".join(f"{c['contest_id']} {c['family']} {c['PAYOUT_SOURCE']}/{c['FIELD_SIZE_SOURCE']}" for c in r["contests"])
         print(f"{name} {tag}: ok={r['ok']} N={r['N']} M={r['M']} (own {r['M_own']}, dup {r['M_dup']}) D={r['D']} U={r['U']} "
-              f"entries={r['entries']} {r['seconds']}s", flush=True)
+              f"entries={r['entries']} {r['seconds']}s | {routes}", flush=True)
         (out / "results.json").write_text(json.dumps({"runs": results}, indent=1, default=str), encoding="utf-8")
         return r
 
@@ -193,14 +197,20 @@ def run_slate_arms(name: str, salary: Path, entries: Path, clock: datetime, n_cl
              "scenario_n": scenario_n or "shipping (config/risk.yaml)", "noise": noise,
              "cloned": slate_verdict(runs, len(seeds)), "contests": first["contests"], "core": first["core"],
              "cores_agree": first["cores_agree"]}
+    slate_runs = [first, second, *runs[1:]]
     if info:
         a = go("as_entered", seeds[0], entries, "as-entered")
         b = go("mean", seeds[0], cloned, "mean-policy", policy_mean=True)
+        slate_runs += [a, b]
         slate["information_only"] = {
             "as_entered": {k: a[k] for k in (*COUNT_KEYS, "entries", "retention")},
             "core_retention_without_the_ownership_order": b["retention_ownership_families"],
             "core_retention_shipping_seed0": first["retention_ownership_families"],
         }
+    # the contest table above is the first run's; every run's routing (family, PAYOUT_SOURCE, FIELD_SIZE_SOURCE) is in results.json
+    slate["routing_same_in_every_run"] = all([(c["contest_id"], c["family"], c["PAYOUT_SOURCE"], c["FIELD_SIZE_SOURCE"]) for c in r["contests"]]
+                                             == [(c["contest_id"], c["family"], c["PAYOUT_SOURCE"], c["FIELD_SIZE_SOURCE"])
+                                                 for c in first["contests"]] for r in slate_runs if r["arm"] != "as_entered")
     return slate
 
 
@@ -214,7 +224,8 @@ def report_md(summary: dict) -> str:
         lines.append(f"| {s['slate']} | {s['synthetic']} | {c['seeds']} | {c['N']} | {c['M']} | {c['M_own']} | {c['M_dup']} | {c['D']} | "
                      f"{c['U']} | {rate} | {c['seeds_with_D']} | {c['verdict']} |")
     for s in summary["slates"]:
-        lines += ["", f"## {s['slate']}", "", f"Noise baseline: {s['noise']}. Cores agree across eligible contests: {s['cores_agree']}.", ""]
+        lines += ["", f"## {s['slate']}", "", f"Noise baseline: {s['noise']}. Cores agree across eligible contests: {s['cores_agree']}. "
+                  f"Contest routing the same in every run: {s['routing_same_in_every_run']}.", ""]
         for cid, c in s["core"].items():
             lines.append(f"- contest {cid} ({c['family']}, {c['policy']}): " + ("; ".join(c["core"]) or "no core"))
         for c in s["contests"]:
@@ -234,6 +245,8 @@ def main(argv=None) -> int:
     ap.add_argument("--seeds", type=int, default=5, help="seeds of the deciding arm; 5 is the preregistered sample")
     ap.add_argument("--no-info", action="store_true", help="skip the two information-only arms")
     args = ap.parse_args(argv)
+    if not 1 <= args.seeds <= len(SEEDS):
+        ap.error(f"--seeds takes 1 to {len(SEEDS)} (the preregistered seeds)")
     if args.small and args.saved_run:
         ap.error("--small is for the bed; real slates run the shipping scenario counts")
     out = args.out.resolve()
@@ -251,8 +264,10 @@ def main(argv=None) -> int:
     if args.saved_run:
         for src in args.saved_run:
             salary, entries, clock, rid = saved_inputs(src, out)
-            print(f"{rid}: real inputs, clock {clock.isoformat()}, entries cloned to {N_CLONED_REAL} (IN-SAMPLE: the 09-29 and 09-30 "
-                  "slates sit inside the standings that suggested the question)", flush=True)
+            in_sample = rid.startswith(("20260929", "20260930"))
+            print(f"{rid}: real inputs, clock {clock.isoformat()}, entries cloned to {N_CLONED_REAL}"
+                  f"{' (IN-SAMPLE: the 09-29 and 09-30 slates sit inside the standings that suggested the question)' if in_sample else ''}",
+                  flush=True)
             slates.append(run_slate_arms(rid, salary, entries, clock, N_CLONED_REAL, None, out, seeds, not args.no_info, False, results))
     else:
         n = BED_N["small" if args.small else "medium"]

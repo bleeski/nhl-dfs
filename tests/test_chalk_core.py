@@ -165,7 +165,26 @@ def test_a_cash_pick_is_never_moved_and_never_counted():
     assert ch.key == ch.anchor_key == a.key
     assert rows["e1"]["tiebreak_moved"] == "" and rows["e1"]["core_held"] == rows["e1"]["core_held_untied"] == 2
     assert summary["counts"] == {} and summary["total"]["N"] == 0
+    assert summary["cores_agree"] is None  # no eligible contest: nothing to compare
     assert summary["retention_by_family"] == {"cash": {"both": 1, "one": 0, "none": 0}}  # retention is reported for every family
+
+
+def test_two_contests_with_the_same_core_in_another_order_agree():
+    pool = classic_pool()
+    a, b, _ = disjoint_lineups(pool, 3)
+    x, y = a.role_ids[0], a.role_ids[1]
+    mean = {x: 100.0, y: 100.0}
+    own = {"C": {x: 30.0, y: 20.0}, "D": {x: 20.0, y: 30.0}}  # the same two skaters, ranked the other way in D
+    ct = {cid: contest(cid, "large_gpp", 2, [180]) for cid in ("C", "D")}
+    ch = {cid: pf.Choice(f"e{cid}", cid, "large_gpp", 0, a.key, "central", 1.0, 0.1, 0.03, 0, 50.0, -5.0, "proxy", 0,
+                         a.key, 50.0, -5.0) for cid in ct}
+    _, summary = pf.core_report(ch, {a.key: a.role_ids}, ct, own, mean, pool, FAM)
+    cores = [[p["person"] for p in summary["contests"][cid]["core"]] for cid in ("C", "D")]
+    assert cores[0] == cores[1][::-1] and summary["cores_agree"] is True
+    own["D"] = {x: 30.0, b.role_ids[0]: 25.0}
+    mean[b.role_ids[0]] = 100.0
+    _, summary = pf.core_report(ch, {a.key: a.role_ids}, ct, own, mean, pool, FAM)
+    assert summary["cores_agree"] is False
 
 
 # -- the script: the preregistered verdict, then the whole run in a subprocess --------------------------------------------
@@ -182,6 +201,21 @@ def _c22():
 
 def _run(N, D, ok=True):
     return {"ok": ok, "N": N, "M": D, "M_own": D, "M_dup": 0, "D": D, "U": 0}
+
+
+def test_a_late_swap_or_refresh_child_run_is_refused(tmp_path):
+    c22 = _c22()
+    child = tmp_path / "runs" / "20260930-231500-classic"
+    (child / "inputs").mkdir(parents=True)
+    for name in ("DKSalaries.csv", "DKEntries.csv"):
+        (child / "inputs" / name).write_text("x", encoding="utf-8")
+    (child / "manifest.json").write_text(json.dumps({"created_utc": "2026-09-30T23:15:00Z",
+                                                     "parent_run_id": "20260930-214909-classic"}), encoding="utf-8")
+    with pytest.raises(SystemExit, match="give runs/20260930-214909-classic"):
+        c22.saved_inputs(child, tmp_path / "out")
+    (child / "manifest.json").write_text(json.dumps({"created_utc": "2026-09-30T21:49:09Z"}), encoding="utf-8")
+    salary, entries, clock, rid = c22.saved_inputs(child, tmp_path / "out")
+    assert rid == child.name and clock.isoformat() == "2026-09-30T21:49:09+00:00" and salary.read_text(encoding="utf-8") == "x"
 
 
 def test_the_verdict_follows_the_preregistered_rule():
@@ -217,6 +251,7 @@ def test_the_script_runs_the_bed_reproducibly_under_the_write_guard(tmp_path):
     slate = summary["slates"][0]
     assert slate["synthetic"] is True and slate["entries_cloned_to"] == 40
     assert slate["noise"] == {"identical_lineups": True, "identical_counts": True}  # the measurement is reproducible
+    assert slate["routing_same_in_every_run"] is True
     assert slate["cloned"]["N"] == 40 and all(run["ok"] for run in res["runs"])
     info = slate["information_only"]
     assert sum(info["core_retention_without_the_ownership_order"].values()) == 40  # the mean arm's 40 picks, all large_gpp
