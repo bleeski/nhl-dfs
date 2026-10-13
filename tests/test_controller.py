@@ -157,8 +157,13 @@ def test_a_strategic_change_accepted_by_the_comparison_is_labeled_and_published(
     lus = _current(run)
     eid, out_r = next((e, r) for e, lu in lus.items() for r in lu if not pool.by_role_id[r].is_goalie)
     me = pool.by_role_id[out_r]
+    # C24: the incoming skater must not face the entry's own goalie, or C20's rule (flag 51) refuses the swap before the
+    # comparison this test is about; since C24 moved the fixture's lineups (its DTD skater sits inside the game), the first
+    # cheaper center used to be such a skater
+    gk = next(pool.by_role_id[r] for r in lus[eid] if pool.by_role_id[r].is_goalie)
+    opp = next(g.away if g.home == gk.team else g.home for g in pool.games.values() if gk.team in (g.home, g.away))
     in_r = next(r.role_id for r in pool.rows if r.position == me.position and r.roster_positions == me.roster_positions
-                and r.salary <= me.salary and r.role_id not in lus[eid] and r.person_key != me.person_key)
+                and r.salary <= me.salary and r.role_id not in lus[eid] and r.person_key != me.person_key and r.team != opp)
     seen = {}
 
     def fake(so, before, after, changed, *a, **k):
