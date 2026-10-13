@@ -33,7 +33,7 @@ Tracker for `BUILD_CHUNKS.md` (final, 26 September 2026). Every development sess
 | C20 | DONE | C18 | 2026-10-09 | 2026-10-09 | 6f6b9c0 | PASS | band 1; B37, B45; flag 13 default in force |
 | C21 | DONE | C19, C18, C46 | 2026-10-10 | 2026-10-10 | 962829b | PASS | band 1, experiment; B44, B22; reads B101 (the sampled field has no 6-1-1). DONE 2026-10-10 in a cloud session that could run only the synthetic bed: the study is NOT MEASURED on real caches (flag 63), no sleeve is built, the real run is B107; flags 56 to 63 |
 | C22 | DONE | C19 | 2026-10-13 | 2026-10-13 | 1404809 | PASS | band 1, experiment; B46; flag 95. DONE 2026-10-13 in a cloud session that could run only the synthetic bed: NOT MEASURED on real caches (not a REJECT); the breakpoint's real measurement is unmet and deferred to B126 (one PowerShell block runs it with B102 and B107); the exemption key is defined and tested in `tiebreak.rank(keep_core=True)`, not wired; every Classic manifest now carries `scenario.chalk_core` |
-| C23 | TODO | C20 | | | | | band 1, experiment: DONE on rejected is valid; B49; flag 12 default in force |
+| C23 | IN_PROGRESS | C20 | 2026-10-13 |  |  |  | band 1, experiment: DONE on rejected is valid; B49; flag 12 default in force |
 | C24 | TODO | C6 | | | | | band 1; B14; flag 8 default in force |
 | C25 | TODO | C6 | | | | | band 1; B64, B6; produces C13's gate evidence |
 | C26 | TODO | C18 | | | | | band 2; B54, B41, B57, B60; R03, R06, R09 |
