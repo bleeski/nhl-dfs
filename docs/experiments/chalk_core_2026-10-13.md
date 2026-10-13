@@ -123,3 +123,82 @@ the real run open (B126) with this rule unchanged. A NOT MEASURED close is never
 ## Result
 
 <!-- RESULT MARKER: everything below is appended after the runs; nothing above this line is edited -->
+
+## Result (appended 2026-10-13 after the bed ran; nothing above the marker was edited)
+
+**Verdict, by the rule above: NOT MEASURED on real caches.** Only the synthetic bed ran (this container has no `runs/` folder). Its per-slate
+status by the same rule is INCONCLUSIVE (D/N 0.31, D in 3 of 5 seeds); it is synthetic and decides nothing. No pick changes, the exemption
+key stays unwired, and the real run is B126. This is not a REJECT.
+
+What ran: `PYTHONHASHSEED=0 python scripts/c22_chalk_core.py --out <scratch>` on commit `5cdc4f1`, in a Linux cloud container with no other
+python process at start, 8 runs one at a time (240 seconds of run time). Every run is the whole offline scenario pass at "medium" (design 1,000,
+selection 3,000, referee 3,000, field target 1,000). The bed's one contest, 297000001 "NHL Synthetic Classic", is large_gpp (policy
+`own_then_dup`), field 5,000, PAYOUT_SOURCE=PRIOR, FIELD_SIZE_SOURCE=PRIOR; MODEL_STATUS and FIELD_CALIBRATION are PRIOR; RISK_BUDGET OK in
+every run. The write guard refused 80 writes, all of them the known observation-log append (40 `os.mkdir` and 40 `open` of
+`data/raw/observations/2026-10-13.jsonl`); no network attempt was made. The per-run records are `chalk_core_2026-10-13_results.json` and the
+guard's list is `chalk_core_2026-10-13_guard.json`.
+
+Noise baseline (first, as written): the cloned arm at seed 20261013 twice gave identical lineups and identical N, M, D and U.
+
+| Seed | N | M (all own) | D | U | Core (selection mean x field ownership) |
+|---|---:|---:|---:|---:|---|
+| 20261013 | 40 | 37 | 18 | 2 | Delta C1 10.56 pts x 18.9%; Bravo RW1 7.90 x 25.2% |
+| 20261014 | 40 | 38 | 0 | 17 | Charlie RW1 7.98 x 25.0%; Foxtrot C1 10.44 x 18.3% |
+| 20261015 | 40 | 37 | 0 | 10 | Charlie RW1 7.86 x 24.4%; Alpha C1 10.31 x 18.3% |
+| 20261016 | 40 | 38 | 24 | 3 | Echo LW1 8.54 x 22.1%; Alpha C1 10.35 x 18.2% |
+| 20261017 | 40 | 36 | 20 | 2 | Bravo C1 10.28 x 18.1%; Bravo RW1 7.89 x 23.4% |
+| Pooled | 200 | 186 | 62 | 34 | D/N 0.31; D in 3 of 5 seeds; M_dup 0 |
+
+Information only, deciding nothing:
+- As entered (the fixture's 5 entries, seed 20261013): N 5, M 4, D 1, U 1.
+- The portfolio without the ownership order (policy `mean`, 40 entries, seed 20261013) held the core in 1 lineup twice, 11 once and 28 not
+  at all; the shipping fill at the same seed held it 0, 12 and 28. Per step the tie-break moved 18 of those 40 picks off the core, yet the
+  portfolio built without it holds the core no more often, so on this bed the per-step count overstates the portfolio effect. The person cap
+  is not the reason (it allows 18 of the 40 entries per player, `config/exposure.yaml` 0.45). Why is not established here; one candidate
+  (judgment) is the joint accounting of a contest's own entries (C18): once entries are placed, repeating the same pieces adds less to the
+  contest, so the value-best pick at later steps moves off the core by itself.
+
+What this does and does not say:
+- The instrument runs end to end, the counts are reproducible on one seed, and the mean patch reaches the run (the core table shows policy
+  `mean` for the contest).
+- On the bed the tie-break moves 93 percent of picks (186 of 200), all on the ownership sum. At "medium" the selection standard error is wide,
+  so nearly every candidate falls in the first band and ownership orders them. A real slate at the shipping 20,000 selection draws has
+  narrower bands; the bed rate says nothing about it.
+- The core changes in four of the five seeds because the bed's leading skaters are near ties (products 184.6 to 199.6 across the five cores),
+  which is why D and U swing from seed to seed. A real slate's chalk (MacKinnon at 47 percent) is not a near tie; this instability is a bed
+  artifact (judgment).
+
+Disclosures, decided before this run unless marked:
+1. A plumbing run preceded it (small counts, one seed): N 40, M 37, D 21, U 1. It showed the mean arm's core retention empty, because the
+   instrument counted retention only for picks under an ownership policy and the mean arm has none. `core_report` then gained
+   `retention_by_family` (every pick with a core, whatever its policy), which is the figure the preregistration names for that arm. The rule
+   did not change.
+2. The noise baseline's first run is also the cloned arm's seed-20261013 run; the preregistration did not say whether it is reused.
+3. The bed's as-entered arm is the fixture's template, 5 entries in the one contest.
+
+Next, and not done here (B126): the same script on the real 2026-09-29 and 2026-09-30 runs on Ben's machine, offline, in scratch roots, with
+this rule. One block runs all three pending local replays (C22 B126, C21 B107, C20 B102); expect well over an hour, most of it the C22 step's
+16 full runs at the shipping counts.
+
+```powershell
+# 1. In the repo root on master (after this pull request merges), with nothing else running
+git pull
+$env:PYTHONHASHSEED = "0"
+$py = ".venv\Scripts\python.exe"
+$runs = "runs\20260929-222125-classic", "runs\20260930-214909-classic"
+
+# 2. C22 chalk core (B126): both slates in one call
+& $py scripts\c22_chalk_core.py --out "$env:TEMP\c22_real" --saved-run $runs[0] --saved-run $runs[1]
+
+# 3. C21 stack size (B107): both slates in one call
+& $py scripts\c21_stack_study.py --out "$env:TEMP\c21_real" --saved-run $runs[0] --saved-run $runs[1]
+
+# 4. C20 goalie term (B102): one call per slate, each run's own UTC clock read from its manifest as text
+foreach ($r in $runs) {
+  $clock = [regex]::Match((Get-Content "$r\manifest.json" -Raw), '"created_utc":\s*"([^"]+)"').Groups[1].Value
+  & $py scripts\c20_goalie_experiment.py --out "$env:TEMP\c20_real_$(Split-Path $r -Leaf)" --salary "$r\inputs\DKSalaries.csv" --entries "$r\inputs\DKEntries.csv" --clock $clock
+}
+
+# 5. Hand a session these files: c22_real\results.json, report.md, guard.json; c21_real\results.json, report.md, guard.json;
+#    each c20_real_*\summary.json, results.json, guard.json (all under $env:TEMP)
+```
