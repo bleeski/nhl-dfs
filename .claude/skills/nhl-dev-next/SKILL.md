@@ -15,5 +15,6 @@ allowed-tools: PowerShell(.venv\Scripts\python.exe tools\next_chunk.py*)
 Follow CLAUDE.md "Development session protocol" for the chunk named above and nothing else: read its card in
 BUILD_CHUNKS.md and only the files it names, `next_chunk.py --start <id>` and commit before the first file,
 commit after each module with explicit `git add`, run the card's exit checks, `--done`, one session-log line in
-BUILD_STATUS.md, then commit "<id>: <title> (DONE)". If a predecessor check failed above, stop and report it.
+BUILD_STATUS.md, the chunk's plain-English `result` and one `updates` line in docs/roadmap/plain.yaml (`python
+tools/roadmap.py check` prints ROADMAP=OK), then commit "<id>: <title> (DONE)". If a predecessor check failed above, stop and report it.
 When every chunk is DONE, work one READY row of BACKLOG.md instead.

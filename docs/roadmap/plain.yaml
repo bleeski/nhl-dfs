@@ -1,0 +1,484 @@
+# Plain-English layer of the roadmap page. tools/roadmap.py joins it with chunks.yaml (rank, title, band, size, depends)
+# and BUILD_STATUS.md (status, dates) and builds the page Ben reads. The page publishes as a claude.ai artifact; the link
+# and the publish steps are in docs/roadmap/README.md.
+#
+# Reader: Ben, who plays DraftKings NHL and is not an engineer. DFS words are fine (stack, chalk, ownership, leverage,
+# Captain, late swap, GPP). Engineering words are not (solver, MILP, manifest, referee module, sha256, config key).
+#
+# One entry per chunk id in chunks.yaml. Fields:
+#   title_seen  the chunks.yaml title when this entry was last reviewed. A retitled chunk fails the check until the
+#               entry is reread and restamped with `python tools/roadmap.py stamp <id>`.
+#   name        a plain name for the work, a few words.
+#   goal        only for a chunk with no band in chunks.yaml: foundation, legal, win, washout or other.
+#   what        what the work is, one or two sentences.
+#   why         why we are doing it, with the evidence the chunk's impact text names. Never add a number it lacks.
+#   matters     the business payoff: how it helps win money or protects the entry.
+#   result      required once DONE: what happened, in plain words, including anything that did not work.
+#   caveat      optional: an honest limit on a DONE result (for example built but not yet tested on real slates).
+#   waiting     optional: what a BLOCKED or GATED chunk waits for, in plain words.
+# Style: short sentences, active voice, no em dashes, dates written as "Oct 13".
+#
+# asks: the decisions or actions that wait on Ben. Remove one once it is done.
+# updates: newest first, one line per dev session or queue change (what changed and what it means).
+
+version: 1
+
+goals:
+  foundation:
+    name: Foundation
+    blurb: The engine itself. It reads your DraftKings files, projects players, simulates games, builds and checks lineups, and keeps score. Built Sept 26 to Sept 30.
+  legal:
+    name: A file DraftKings accepts
+    blurb: Comes before everything else. A slate with no legal file, or a file DraftKings rejects, wins nothing.
+  win:
+    name: Win big prizes
+    blurb: Anything that helps win large prizes in the contests you enter. Stacks, goalie choice, ownership against the field, Showdown Captains, and choosing lineups for each contest's prize table.
+  washout:
+    name: Avoid a washed-out night
+    blurb: Stops the whole portfolio from failing together. One goalie, game or line carrying too much, and dead or stranded entries.
+  other:
+    name: Upkeep and measurement
+    blurb: Bookkeeping, measurement and cleanup, ordered by value against effort.
+
+asks:
+  - id: repo-privacy
+    chunks: [C48]
+    since: 2026-10-10
+    question: Make the GitHub repository private, or publish the entered-lineups record only after the last game locks?
+    why: Today each slate's entered lineups go public on GitHub before lock, which you said is not acceptable. C48 would add the engine's forecasts to that same upload, so it is on hold until you choose.
+    recommendation: Make the repository private. It is one GitHub setting, it closes the exposure, and C48 can start right away. Publishing after lock needs its own chunk first.
+  - id: real-data-tests
+    chunks: [C20, C21, C22, C23]
+    since: 2026-10-13
+    question: Run the real-slate tests on your machine.
+    why: Four ideas were built in cloud sessions that had no saved real slates (goalie leverage, bigger stacks, keeping the chalk core, Showdown Captain rules). Each was tested only on made-up data, so each ships switched off. Your machine has the saved Sept 29 and Sept 30 runs these tests need.
+    recommendation: Ask Claude in a local session to walk you through the copy-and-paste PowerShell blocks in docs/experiments/chalk_core_2026-10-13.md (goalie leverage, stack size, chalk core) and docs/experiments/captain_2026-10-13.md (Showdown Captains). Nothing changes your lineups unless a test passes and you agree.
+
+updates:
+  - date: 2026-10-13
+    text: C22 (keep the chalk core) and C23 (Showdown Captains) finished in cloud sessions, tested only on made-up data, so both ship switched off until the real-slate test runs on your machine. Next up is C24, day-to-day players inside the simulation.
+  - date: 2026-10-12
+    text: C53 finished, so late swap now reads the file DraftKings gives you after the first lock and every upload file version has its own name. C54 added RotoWire as a second goalie source. C50 learned real contest sizes from your entry history.
+  - date: 2026-10-11
+    text: The Oct 11 late-swap failure put C53 at the top of the queue as a must-fix. C49 produced the first real report card (Showdown beats random lineups, Classic trails them) and C47 taught the engine to play Booster contests.
+  - date: 2026-10-10
+    text: A review of real results added C48 to C52 (save every forecast, replay Classic slates, study Classic busts) and ranked C49 first. C21 (bigger stacks) finished on made-up data only.
+  - date: 2026-10-09
+    text: C20 finished, so the goalie is treated as the top tournament factor and no lineup stacks skaters against its own goalie.
+  - date: 2026-10-08
+    text: C19 and C46 made the simulated field stack the way real opponents do, including 5-man stacks. Both are switched on for Classic.
+  - date: 2026-10-07
+    text: C18 finished (your own entries no longer count prizes they cannot win together). C40 went on hold until a second look on Oct 21.
+  - date: 2026-10-04
+    text: The queue was ranked by your priority rule. A legal file comes first, then big prizes, then avoiding washouts, then everything else.
+
+chunks:
+  C0a:
+    title_seen: Repo scaffold, contracts, exact scoring, tracker tooling
+    name: Exact DraftKings scoring and the project skeleton
+    goal: foundation
+    what: Set up the project, wrote DraftKings' NHL scoring rules into code exactly as published, and built the tracker that tells each work session what to build next.
+    why: Every later decision depends on scoring a lineup the way DraftKings does. One wrong point value would quietly skew every projection.
+    matters: This is the ruler everything else is measured with, and the tracker keeps the build orderly across many sessions.
+    result: Done Sept 26. DraftKings' Classic and Showdown rule files are the final authority in the project.
+  C0b:
+    title_seen: Intake, byte-splicing export, independent referee, real-file fixtures
+    name: Read your DraftKings files and write an upload DraftKings accepts
+    goal: foundation
+    what: The engine reads the salary and entries files you download from DraftKings and writes your lineups back into the entries file without touching anything else in it. A separate checker (the referee) re-checks every lineup against the rules before you see the file.
+    why: DraftKings rejects an upload with one malformed row. The referee is written separately from the builder so a bug in one cannot hide in the other.
+    matters: No legal file means no entry and no chance to win. This is the safety net under every slate.
+    result: Done Sept 28, tested on your real files from Sept 29.
+  C1:
+    title_seen: Adapters, cache, observations, prospective capture
+    name: Collect outside data with timestamps
+    goal: foundation
+    what: Connections to outside sources (DraftKings player data, NHL.com, betting odds) with a local cache, plus scheduled tasks that capture data through the day and record when each item was seen.
+    why: The models need news and odds, and fair grading later needs to know what was known before lock.
+    matters: Honest timestamps let us judge the engine using only what it could have known at the time.
+    result: Done Sept 28. DraftKings blocks the engine's direct requests for some player data, so a saved copy from your browser is used in tests. You registered 12 capture tasks on your machine.
+  C2a:
+    title_seen: Priors, feasibility fallback with result states, HiGHS candidate builder
+    name: First projections and a fast lineup builder
+    goal: foundation
+    what: Simple starting projections from DraftKings' average points and salary, and a builder that makes many distinct legal lineups in seconds, with a slower backup that always finds a legal lineup if one exists.
+    why: We needed a working lineup machine before any smart modeling, so a slate never ends with nothing to upload.
+    matters: It builds 150 different legal Classic lineups in about 4.5 seconds, fast enough for late swaps near lock.
+    result: Done Sept 28.
+  C2b:
+    title_seen: Local-first baseline run, atomic publish under a slate lock, manifest, CLI
+    name: One command builds a checked file, even offline
+    goal: foundation
+    what: The run command builds a complete, checked upload file from your two DraftKings files alone, then improves it with online data if time allows. Each version is saved safely, so a half-written file can never replace a good one.
+    why: Websites fail and lock times are fixed. The first good file has to come from local data alone.
+    matters: You always get an uploadable file fast (about 11 seconds for 150 Classic entries), and online improvements can never break it.
+    result: Done Sept 28.
+  C2c:
+    title_seen: Four-state lock model, late swap, refresh (baseline objective)
+    name: Late swap that respects locked players
+    goal: foundation
+    what: The engine knows which games have started, never moves a player whose game has locked, and stops editing a game shortly before it starts. Late swap and refresh rebuild only the open spots.
+    why: DraftKings refuses changes to started games, and news keeps arriving after the first puck drop.
+    matters: You can react to late scratches and goalie news without risking a rejected file.
+    result: Done Sept 28. Milestone 1 reached, an uploadable legal file offline with safe late swap.
+  C3:
+    title_seen: Ownership prior, field sampler, duplicate proxy, evidence gates, provisional leverage selection
+    name: Model the other players in the contest
+    goal: foundation
+    what: Estimates how often the field will roster each player, simulates the lineups opponents are likely to enter, estimates duplicate risk, and starts to favor lineups that differ from the crowd.
+    why: In big tournaments you win by beating thousands of other lineups, so what they play matters as much as who scores.
+    matters: This is the start of leverage, picking good lineups the field is underweight on so a win is not split with duplicates.
+    result: Done Sept 28. Milestone 2 reached. Day-to-day players count as questionable, still eligible, priced for both risk and leverage.
+  C4:
+    title_seen: History cache (MoneyPuck or NHL per-game reports), identity crosswalk, as-of features
+    name: Two seasons of player history
+    goal: foundation
+    what: Downloaded two seasons of per-game NHL data (about 100,000 skater games) and matched DraftKings names to NHL player records.
+    why: Projections built from real ice time and shot rates beat projections from DraftKings' season average alone.
+    matters: It is the raw material for every model that follows.
+    result: Done Sept 28. On the Sept 29 slate, 242 players matched automatically, 16 needed review and 50 had no match.
+  C5:
+    title_seen: Opportunity, event-rate, and goalie models, per person
+    name: Player projections from ice time and shot rates
+    goal: foundation
+    what: Per-player models for how much a skater plays and how often he shoots, scores, assists and blocks shots, plus goalie models.
+    why: DraftKings points come from these events, so modeling the events gives better projections and real ranges of outcomes.
+    matters: Better projections sit under every lineup choice. Players without history fall back to the simple starting projection.
+    result: Done Sept 28. On the Sept 29 slate, 168 of 308 players had history-based projections, 64 were mixed and 76 used the fallback.
+  C6:
+    title_seen: Aggregate joint simulator, market fit, scoring arrays, calibration harness
+    name: Simulate every game thousands of times
+    goal: foundation
+    what: A game simulator that plays each game out 20,000 times so teammates rise and fall together, can line up with betting-market totals, and comes with a check against real past games.
+    why: Tournaments are won on correlated ceilings, like a line that goes off together. Averages alone cannot see that.
+    matters: Simulated outcomes let the engine pick lineups for their upside in a specific contest, beyond their average.
+    result: Done Sept 29. 20,000 simulations take about 7 seconds. The check flagged two possible weaknesses (3+ point games happen more often than the model expects, and linemates' shared big nights look off), which C25 rechecks. Both odds feeds were unusable that day, so games ran on the model alone.
+  C7:
+    title_seen: Roles and news, deterministic
+    name: Starting goalies, lines and injury news
+    goal: foundation
+    what: Reads projected starting goalies, line combinations, power-play units and injury statuses, and flags players to monitor.
+    why: An unconfirmed or wrong goalie, or a scratched skater, is a zero in your lineup.
+    matters: Protects lineups from dead spots and puts players in their real roles.
+    result: Done Sept 29. At first this news reached only some steps of the build. Later chunks wired it in, and C28 finishes the job.
+  C8:
+    title_seen: Scenario objectives by contest family, evidence states, frontier, allocation, full run
+    name: Pick lineups for each contest type
+    goal: foundation
+    what: Scores every candidate lineup against the simulated games and the simulated field using each contest's prize table, then assigns lineups to your entries while spreading risk.
+    why: A cash game, a 20-entry max and a 150-entry tournament reward different lineups. One ranking for all of them leaves money on the table.
+    matters: This is the full engine, with lineups chosen for what they can win in the contest they are in.
+    result: Done Sept 29. Milestone 3 reached. A full Classic run took about 74 seconds offline. The risk limits were placeholders until you set them on Oct 2 (at most 40% of fees on one goalie or one game).
+  C9:
+    title_seen: Objective-aware refresh and late swap
+    name: Smarter late swaps
+    goal: foundation
+    what: Late swap and refresh use the same simulation-based scoring as the main build instead of the simpler ranking.
+    why: Decisions near lock should be as good as the ones made at build time.
+    matters: A late scratch gets the best replacement for that contest, in about 15 seconds.
+    result: Done Sept 29.
+  C10:
+    title_seen: Claude Code layer, agents, controller, rehearsal, measured usage
+    name: Claude runs the slate with a researcher and a critic
+    goal: foundation
+    what: The commands you use with Claude (run, late swap, refresh), a researcher agent that confirms news on the web, and a critic agent that reviews the portfolio and proposes changes, which the engine tests before accepting.
+    why: You should be able to run a slate in plain English, with news checked and a second opinion, while Claude never hand-edits lineups.
+    matters: Every change still passes through the engine and the rules check, so convenience never costs file safety.
+    result: Done Sept 30.
+  C11:
+    title_seen: Settle, financial ledger, grading, run notes, backlog, gate reports
+    name: Score our results and keep the books
+    goal: foundation
+    what: After a slate, the engine reads contest standings, records winnings and fees in a ledger, grades its own forecasts and writes improvement ideas to the backlog.
+    why: We can only improve what we measure, and money in and out has to be tracked exactly.
+    matters: Every slate becomes evidence about what works.
+    result: Done Sept 30. Milestone 4 reached, the learning loop and ledger are live. On the first graded slate, ownership forecasts correlated 0.64 to 0.76 with actual ownership.
+  C14:
+    title_seen: Lock-safe publishing, a live clock in QA rounds and lock-aware initial-run publish
+    name: Never publish changes to started games
+    what: Closes two ways the engine could write a change into a game that had already started. One was a review round that ran past lock, the other a first build that crossed a game start while it was running.
+    why: A test reproduced both, including one file with 16 started-game changes that still passed the checks. DraftKings rejects those changes.
+    matters: A file DraftKings rejects wins nothing, and this could happen on any slate.
+    result: Done Oct 4.
+  C15:
+    title_seen: Started slates, pins for started-game occupants, builds that exclude started games, a stable slate id
+    name: Build a slate after the first game starts
+    what: When you open a slate late, the engine builds lineups for the games still open, keeps started-game players in place and reports what it left out, instead of refusing to build.
+    why: On Oct 2 the salary file was downloaded after a game had started, the engine refused, and there was no engine file that night.
+    matters: You get a file even when you start late, and started-game players are never lost.
+    result: Done Oct 5.
+  C16:
+    title_seen: Payout curves from DraftKings template tables, at build time and in settle
+    name: Use the real prize tables
+    what: Prices each contest on DraftKings' actual payout table for that contest type and size, using saved copies when DraftKings blocks the live page.
+    why: Every run before this guessed the prize table. Real tables pay about 23 to 24% of entries on a top-heavy ladder, and the guess assumed 20%.
+    matters: Lineups are chosen for what they can actually win, on every slate, since your contests use standard templates.
+    result: Done Oct 5. One small part, checking your reported winnings for one contest (196228907), waits on an amount you have not entered yet.
+  C38:
+    title_seen: Field size and family from the lobby row when the contest page is unavailable
+    name: Know each contest's real size
+    what: When the contest page is blocked, reads the field size and contest type from the DraftKings lobby listing.
+    why: The engine had been assuming 5,000 entrants for contests that really had about 400, under 100, or about 27.
+    matters: Field size decides how different a lineup needs to be. Getting it wrong picks the wrong kind of lineup, especially in cloud runs, where every contest page is blocked.
+    result: Done Oct 5.
+  C17:
+    title_seen: Inputs that move lineups reach the models, odds and roles into the field features, team rates and the market clip
+    name: Feed odds and line news into the ownership forecast
+    what: Connects game totals, starting goalies, power-play units and line news to the forecast of what the field will play, and to team scoring rates.
+    why: These settings existed but never received data. On Sept 30 the forecast had Toronto stacked by 42% of the field (actual 21 to 24%) and Colorado by 19% (actual 38 to 51%).
+    matters: An accurate read of the field is the basis of leverage. Missing two teams by 20 points means fading the wrong stacks.
+    result: Done Oct 6.
+    caveat: On the one slate replayed (Sept 30), the forecast with the new inputs was slightly worse than without them. A five-slate check is still pending.
+  C39:
+    title_seen: History store kept current in-season and on every host
+    name: Keep player history up to date
+    what: Adds this season's games to the history store each day, on your machine and in cloud sessions.
+    why: History stopped at last season, so this season's form, ice time and goalie back-to-backs never reached the models, and cloud runs had no history at all.
+    matters: Projections reflect what is happening now, and goalie back-to-back detection can work.
+    result: Done Oct 6.
+  C49:
+    title_seen: DraftKings entry history and the results report against a random baseline
+    name: Score the engine against your real results
+    what: Reads your DraftKings entry history and compares the engine's finishes with what random lineups would have done in the same contests.
+    why: The engine had never been scored on real results, and every other improvement needs that yardstick.
+    matters: It is the engine's first real report card, and every later measurement builds on it.
+    result: Done Oct 11. Classic, 136 entries, cashed 23 times against 32 expected for random lineups and reached the top 10% 8 times against 13.5. Showdown, 78 entries, cashed 34 times against 22 expected. Both samples are small.
+  C53:
+    title_seen: Real post-lock exports readable (LOCKED cells), versioned delivery file names, Ben as a news source
+    name: Late swap after the first lock, with versioned files
+    what: The engine reads the entries file DraftKings gives you after the first game locks (cells marked LOCKED), and each version of the upload file gets its own name. News you report in the session counts as a source.
+    why: On Oct 11 late swap could not read your post-lock file at all. A repair version went in after the first game started, DraftKings refused 8 rows, and 8 of 28 entries were left with a dead slot.
+    matters: Late swap works on the live file all night, and you always know which version you uploaded.
+    result: Done Oct 12.
+  C54:
+    title_seen: RotoWire NHL news as a second goalie and scratch source
+    name: RotoWire as a second goalie and scratch source
+    what: Adds RotoWire's NHL news beside Daily Faceoff as a source for starting goalies and scratches.
+    why: On Oct 11 Daily Faceoff still listed two goalies as expected well after both teams had confirmed them, and RotoWire had already posted one of the confirmations.
+    matters: A goalie who does not start is a whole dead spot. A second source catches confirmations sooner.
+    result: Done Oct 12.
+  C48:
+    title_seen: Forecast record per entered lineup and the scored bank, kept beside the entered record
+    name: Save what the engine predicted for every entered lineup
+    what: For every lineup you enter, keep a small record of what the engine expected and the pool of lineups it considered, next to the record of your entries.
+    why: That record lives only inside the run folder today, and a cloud session loses it. The forecasts for 181 entries from Oct 3 to Oct 9 are already gone.
+    matters: Without it we cannot check whether the engine's predictions hold up, and the main Classic measurement (C51) cannot run. Every slate without it is a permanent loss.
+    waiting: Your decision on repository privacy (see Waiting on you).
+  C40:
+    title_seen: Daily Faceoff age gate keeps the last known lines
+    name: Keep line combinations when Daily Faceoff's page looks old
+    what: When a Daily Faceoff team page has not been updated for 24 hours, the engine throws out that team's lines and power-play units. This would keep the last known lines, labeled with their age.
+    why: On Oct 1 and Oct 3 three teams lost their lines this way, and a call-up averaging 0 points became a Showdown Captain.
+    matters: Most teams keep their lines for days, so dropping them puts real players in the wrong roles.
+    waiting: A planned second measurement on Oct 21. The first one (Oct 7) was inconclusive. The page date missed 4 of 85 real line changes, just short of the proof required.
+  C47:
+    title_seen: Top-N flat contests (Boosters), the name read into N flat prizes and P(at least one own entry in the top N)
+    name: Play Booster contests to win them
+    what: Recognizes contests that pay a flat prize to the top N (for example $10 each to the top 5) and picks lineups to get at least one of your entries into the top N.
+    why: On Oct 10, 7 of your 31 entries sat in a 237-entry Booster but were chosen as if it were a 5,000-entry tournament paying 1,000 places.
+    matters: A different prize shape calls for different lineups. You set the goal, at least one entry in the top N.
+    result: Done Oct 11.
+  C50:
+    title_seen: Recurring contest facts from the entry history size and price contests that no page, template or lobby row describes
+    name: Learn contest sizes from your own history
+    what: Uses your DraftKings entry history to learn the real size, fee and prize pool of contests you play again and again, such as the $200 Dime Time.
+    why: In cloud runs every contest page is blocked, so contests were priced as a generic 5,000-entry tournament. Your 82 contests ranged from 9 to 14,268 entrants, and 22 contest types repeat.
+    matters: The contests you actually play get correct sizes and prize pools even when DraftKings blocks the page.
+    result: Done Oct 12. How much it improves results is not measured yet.
+  C51:
+    title_seen: Classic replay, the objective's picks against the projection's and exp_payout's on the real contest, Showdown as the control (measurement)
+    name: Replay Classic slates to find the right way to choose lineups
+    what: Replays finished Classic slates against the real contest results and compares three ways of choosing lineups (the current method, highest projection, highest expected payout), with Showdown as the comparison because it is doing well.
+    why: Classic cashed 23 times in 136 entries against 32 expected and put none of 135 tournament entries in the top 1%. The current method counts only top-1% prizes, while the contests checked pay only 26 to 40% of their prize money to the top 1%.
+    matters: This tells us whether the Classic engine is aiming at the wrong target. Several Classic tuning ideas wait on its answer.
+    waiting: 5 finished Classic slates, each with downloaded results and the engine's saved lineup pool. The Sept 29 and Sept 30 slates qualify. You switch it on when the count is met.
+  C52:
+    title_seen: Classic bust attribution, goalie, primary stack, shape, ownership and dead spots (measurement)
+    name: Why Classic lineups bust
+    what: Compares the engine's worst-finishing Classic lineups with its best by goalie, main stack, game, ownership and dead spots.
+    why: To find what the busts have in common, such as the goalie who did not start on Sept 29 or the unconfirmed goalie shipped on Oct 3.
+    matters: Points the next fixes at the real causes of losing lineups. It only describes and changes nothing by itself.
+    waiting: C51 done and 10 finished Classic slates with results.
+  C18:
+    title_seen: Joint own-entry accounting in the greedy fill and the QA evaluator
+    name: Don't count prizes your own entries can't both win
+    what: When you hold several entries in one contest, the engine counts what they can win together instead of crediting each lineup with a prize another of your lineups would take.
+    why: In a review test the selector always picked a pair of lineups worth $67.50 together when a pair worth $90 was available, and the critic accepted a swap between two of your own entries as a big gain.
+    matters: Better sets of lineups in multi-entry contests. The effect is modest at 1 to 2 entries per contest and grows as you scale up.
+    result: Done Oct 7.
+  C19:
+    title_seen: Field stack mix by slate size, team4 and double-stack behaviors, mixture weights, shape report
+    name: Make the simulated field stack like real players
+    what: Reshapes the simulated field so its stacks match what opponents really enter, by slate size.
+    why: The old model gave only 25% of opponents a stack, all 3-man. In 52,490 real lineups, 93.5% held a 3+ stack and 65.7% a 4+ stack.
+    matters: A field that stacks too little understates what a stacked lineup has to beat.
+    result: Done Oct 8 and switched on for Classic.
+  C46:
+    title_seen: Field 5+ stacks, a team5 rule and its own mixture table (B100, flag 47)
+    name: Add 5-man stacks to the simulated field
+    what: Adds 5+ skater stacks to the simulated field, with their own mix table.
+    why: After C19 the simulated field had 0.6% 5+ stacks against 21% in real contests, and on a 3-game slate the top 1% held 5+ stacks 45 to 65% of the time.
+    matters: Every live Classic run is built against this field, so it needs the stacks winners actually use.
+    result: Done Oct 8 and switched on. Still missing, the field never builds a 6-1-1 shape (about 6% of real lineups).
+  C20:
+    title_seen: Goalie as the top-1% factor, unresolved goalies in research, no skater against the lineup's goalie, goalie choice with leverage
+    name: Goalie choice, and never stack against your own goalie
+    what: Treats the goalie as the biggest factor in a top-1% finish, sends unconfirmed goalies to the researcher, stops tournament lineups from rostering skaters against their own goalie, and tests a goalie-leverage setting.
+    why: The goalie whose team won sat in 92% of top-1% lineups against 54% of the field. Top-1% goalies were often 9 to 15% owned starters on favorites, while the field's chalk goalies made up 0% of the top 1%.
+    matters: The goalie decides a tournament more than any other slot, and a lineup that bets against its own goalie is a built-in washout.
+    result: Done Oct 9.
+    caveat: The goalie-leverage setting stays off. It was tested only on made-up data and came out inconclusive, and the real-slate test waits on your machine.
+  C21:
+    title_seen: Stack size by slate blow-up, discovery sleeves and the shape mix (experiment)
+    name: Test bigger stacks on small slates
+    what: An experiment on whether 5-2-1 or 3-3-2 stack shapes beat the current 4-3-1 core on real slates.
+    why: On a 3-game slate, top-1% lineups held 5+ stacks 45 to 65% of the time against 20 to 23% for the field. The engine has no idea of main-stack size today.
+    matters: Stack size may be one of the biggest levers in small-slate tournaments.
+    result: Done Oct 10 in a cloud session with no saved real slates, so it ran only on made-up data. Your lineups did not change.
+    caveat: Built, real-slate test pending.
+  C22:
+    title_seen: Chalk core kept, leverage applied to the depth slots (experiment)
+    name: Keep the top chalk, get different around it
+    what: Tests keeping the slate's top two chalk players and differentiating with lower-owned teammates around them.
+    why: On 3 slates, top-1% lineups held the top two chalk pieces 90 to 100% of the time and set themselves apart with 1 to 3 low-owned teammates.
+    matters: Fading chalk that hits sinks a lineup. This checks whether the engine's ownership penalty ever pushes it off chalk it should keep.
+    result: Done Oct 13 on made-up data only, because the cloud session had no saved real slates. The setting exists but is not connected.
+    caveat: Built, real-slate test pending.
+  C23:
+    title_seen: Showdown Captain choice, skater Captains, Captain leverage, team split sleeve (experiment)
+    name: Better Showdown Captains
+    what: Tests two Showdown switches. One allows a goalie Captain only when his simulated ceiling ranks top 3, the other favors lower-owned skater Captains.
+    why: In one Showdown game, goalie Captains were 20 to 33% of the field and 0% of the top 1%. Winning Captains were 3 to 11% owned skaters, and our three busted Captains were the field's chalk.
+    matters: The Captain scores 1.5 times, so it decides Showdowns. The evidence is one game, so it is tested before anything changes.
+    result: Done Oct 13 on made-up data only. Both switches ship off.
+    caveat: Built, real-slate test pending.
+  C24:
+    title_seen: DTD participation inside the simulator
+    name: Day-to-day players inside the simulation
+    what: When a questionable player sits in a simulated game, his ice time and chances go to his teammates instead of him simply scoring zero.
+    why: Today a scratch only zeros the player. In real hockey his linemates and power-play partners play more when he sits.
+    matters: Prices day-to-day players and their teammates correctly as both risk and leverage, on any slate with a questionable skater. It ranks low among the winning items because the problem is reasoned out, not yet seen in data.
+  C25:
+    title_seen: Clean calibration constants, the co-ceiling cause, and the 3+ point tail preregistration
+    name: Recheck how well the simulator matches real games
+    what: Redoes the simulator's accuracy check on clean data, finds out why linemates' shared big nights look off, and writes the test plan for 3+ point games.
+    why: The first check (Sept 29) used league numbers that included the very games it was tested on, so its warnings are not reliable yet.
+    matters: Tournaments are won on ceilings. This confirms whether the simulator undersells them before anyone tunes it, and it unlocks C13. No tuning happens here.
+  C41:
+    title_seen: Selection robust to field ownership error (low, base and high ownership)
+    name: Lineups that hold up if the ownership forecast is off
+    what: Tests lineups against lower-owned and higher-owned versions of the field, not just the single best guess.
+    why: Player ownership forecasts miss by about 4 points on average, and team stack shares missed by 20 points on Sept 30.
+    matters: A lineup that only works if the forecast is exactly right can be badly placed in reality. If it would change which lineups are picked, it waits on C51's answer.
+  C42:
+    title_seen: Improvement pass after the greedy fill (experiment)
+    name: A second pass to improve the lineup set
+    what: An experiment. After the engine fills your entries one by one, it tries swapping lineups between entries to see if the whole set gets better.
+    why: The engine fills entries in a single pass, so the order of entries can decide which ones get the better lineups. The design called for an improvement step that was never built.
+    matters: Could add value on every multi-entry slate. If the gain is within the noise, it is rejected and we move on.
+  C26:
+    title_seen: Controller safety, known exclusions in repairs, caps after QA, transactional override batches, export hash
+    name: Safety checks when news or reviews change lineups
+    what: Fixes four problems in the step that applies news and review changes. A repair could add a player DraftKings already lists as OUT, an accepted swap could break the goalie or game limits, two conflicting goalie reports could clear a team from every lineup, and the run record could misname the delivered file.
+    why: The first was reproduced in three entries. All four are certain bugs, not guesses.
+    matters: Each could leave entries with a dead spot or concentrated risk. The OUT-player fix is small and could be pulled ahead.
+  C27:
+    title_seen: Portfolio caps, exact fee-share feasibility, line-core and PP-unit exposure, one goalie-share key
+    name: Risk limits that hold across the whole portfolio
+    what: Makes the fee limits (at most 40% on one goalie or one game) exact, and adds limits on how much rides on one line or power-play unit.
+    why: When the limit check cannot find a fit it quietly falls back to a cruder limit. A test case ended at 41% where 33% was possible. Line and power-play limits are not enforced at all.
+    matters: Spreads risk so one goalie or line cannot sink the whole night, on every slate with several entries.
+  C28:
+    title_seen: Role state in Phase A and in simulate
+    name: Use confirmed goalies in the very first file
+    what: The first quick file and the simulator use the latest goalie and lineup news instead of only the history table.
+    why: If a run stops after the first quick file near lock, it can ship a goalie who is not starting. That is how the Sept 29 Adin Hill entry scored 0.
+    matters: A goalie who does not start makes the lineup worthless, so the first file should be as safe as the last.
+  C43:
+    title_seen: Cloud parity, the skills run under bash and cloud-built runs get a pre-lock refresh
+    name: Cloud runs get the same pre-lock refresh
+    what: Makes the run, late swap and refresh commands work in cloud sessions, and gives cloud-built files the refresh about an hour before lock.
+    why: The Oct 1 and Oct 3 slates ran in the cloud, where these commands only work on Windows and the scheduled refresh only sees local runs. The Oct 3 file shipped an unconfirmed goalie in 2 entries.
+    matters: Cloud slates should be as protected near lock as local ones.
+  C44:
+    title_seen: Goalie and game caps in late swap and refresh
+    name: Keep goalie limits during late swaps
+    what: Late swap and refresh respect the goalie and game fee limits and spread repairs across alternatives.
+    why: Today, when a goalie is ruled out late, every affected entry can switch to the same confirmed starter.
+    matters: Stops a late goalie change from piling the whole portfolio onto one goalie.
+  C45:
+    title_seen: Cross-mode fee-weighted risk (Classic and Showdown on one slate)
+    name: Count risk across Classic and Showdown together
+    what: Measures goalie and game exposure across Classic and Showdown on the same night, first as a report and then as a limit.
+    why: Each run limits only its own mode, so one goalie could be 40% of your Classic fees and your Showdown Captain too. You played both modes on Oct 2.
+    matters: Your real exposure is everything you entered that night.
+  C29:
+    title_seen: Settle without a local run, stable slate groups
+    name: Book results for slates run in the cloud
+    what: Records money and ownership results for slates that have standings but no saved local run, and stops a slate being counted twice when its salary file changes.
+    why: 20 of your entries ($7.30 in fees, 13 contests) have results that cannot be booked today.
+    matters: Complete books, and more evidence for every measurement that waits on settled slates.
+  C30:
+    title_seen: Standings tooling, the checklist sees filed standings, the synthesis runs after each pull
+    name: The standings checklist sees everything you pulled
+    what: The standings checklist recognizes results you have filed even without an entries file, and the results summary reruns after each pull.
+    why: After 17 standings files were filed, the checklist counted only 4.
+    matters: You stop re-pulling standings you already have, and the measurements stay current.
+  C37:
+    title_seen: Skills agree with CLAUDE.md, the status lists and the save-entered step
+    name: Slate reports list every status and save the entries record
+    what: Updates the run, late swap and refresh instructions so each report lists every required status and the entered-lineups record is saved.
+    why: The run instructions forbid the step that saves your entries record, and the late swap and refresh reports leave out most required statuses.
+    matters: Without it the standings checklist misses contests and reports are incomplete. No lineups change.
+  C31:
+    title_seen: QA throughput and provenance, independent same-entry proposals, packet team counts, round rule, metrics for the published version
+    name: Make the critic's good suggestions count
+    what: Lets more of the critic agent's good suggestions through, and keeps the run notes accurate after a reviewed version is published.
+    why: On Oct 1 the only suggestion to spread goalie exposure was rejected because of the order it was checked in, and the notes kept the old version's numbers.
+    matters: The critic only helps if good suggestions reach your file and the report describes what you actually uploaded.
+  C32:
+    title_seen: Hygiene, dead and v1-only config keys, docstrings, enum cleanup, apply-once, shootout shooters, raw eviction, page-age report
+    name: Clean up settings and small defects
+    what: A batch of small fixes, including unused or misleading settings, a known failing test, a shootout detail, cache cleanup and a report of how old each news page is.
+    why: Misleading settings invite wrong changes later.
+    matters: Housekeeping that keeps the engine easy to change safely. No lineups change.
+  C33:
+    title_seen: Referee raw-byte check of entry lines and pinned cells
+    name: The rules check reads the file byte by byte
+    what: The independent rules check compares the exact text of each entry row and locked cell, beyond the values it reads.
+    why: Today a change in quoting would pass the check. The builder has not been seen doing this, and whether DraftKings would care is unknown.
+    matters: An extra independent guard on the file you upload.
+  C34:
+    title_seen: Repair draws for large_gpp late-swap repairs
+    name: Consistent late-swap choices
+    what: Uses more simulations, or a steadier measure, when choosing a late-swap repair in big tournaments.
+    why: With today's number of simulations the best repair can flip between runs and with the clock.
+    matters: The same inputs should give the same answer, so you can trust a late swap.
+  C35:
+    title_seen: Fast field sampler agreement and field resampling in the standard error
+    name: A more accurate fast field simulation
+    what: Improves the fast method of simulating opponents' lineups, and adds field uncertainty to the engine's error bars.
+    why: The fast method matches the slower exact method only 51% of the time for optimizer-style opponents, and the error bars leave field variation out.
+    matters: Better field samples and more honest confidence behind every tournament decision.
+  C36:
+    title_seen: Odds history grading in settle
+    name: Grade the model against betting markets
+    what: Saves the betting market's team totals and win odds near lock for each slate, and grades the model against them after the games.
+    why: The odds are captured every hour but never used to grade the model.
+    matters: Shows whether the simulator is sharper or duller than the market, one slate at a time.
+  C12:
+    title_seen: Field-model fit by contest family
+    name: Fit the opponent model to real contest data
+    goal: win
+    what: Once enough contest results are on file, tunes the model of how opponents build lineups, separately for each contest type, and tests it on slates held back for checking.
+    why: The opponent model runs on reasoned starting values today. Real data should replace them, but only when there is enough to trust.
+    matters: A more accurate picture of the field sharpens leverage in every tournament.
+    waiting: At least 30 distinct Classic slates with 15,000 opponent lineups on file, or 50 Showdown games with 5,000.
+  C13:
+    title_seen: Segment simulator challenger
+    name: Test a more detailed game simulator
+    goal: win
+    what: Builds a finer-grained game simulator and tests it against the current one, only if the current one shows a clear, measured weakness.
+    why: The Sept 29 check suggested the simulator misjudges linemates' shared big nights. If C25 confirms that cleanly, a better simulator could fix it.
+    matters: Better ceiling correlation means better stacks in tournaments. It waits on proof so we do not build an expensive model on a hunch.
+    waiting: C25's clean measurement showing the weakness, plus a written test plan before any code.

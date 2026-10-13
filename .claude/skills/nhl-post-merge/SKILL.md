@@ -1,6 +1,6 @@
 ---
 name: nhl-post-merge
-description: "After a merged DEV-session pull request: clean up merged branches, confirm local and GitHub agree, and write the paste-ready prompt for the next dev session. Use when a pull_request.closed event or Ben reports that a dev pull request merged, or when Ben explicitly asks for the next prompt or a repo cleanup. A lineup run's pull request (the data/entered record) does not trigger it."
+description: "After a merged DEV-session pull request: clean up merged branches, confirm local and GitHub agree, write the paste-ready prompt for the next dev session, and republish Ben's roadmap page. Use when a pull_request.closed event or Ben reports that a dev pull request merged, or when Ben explicitly asks for the next prompt or a repo cleanup. A lineup run's pull request (the data/entered record) does not trigger it."
 ---
 
 ## When
@@ -33,6 +33,14 @@ Ben asked that this run only after a dev session. A lineup run opens its own sma
 2. `python tools/post_merge.py prompt --out <scratchpad file>` renders docs/templates/next_session_prompt.md with the mechanical fields filled. Fill every `<<WRITE: ...>>` block from the repo's real state: the last session-log entry, the flags waiting for Ben, open pull requests, the card's files, the numbers on record. Every number comes from a command you ran now, labeled with where it was measured. Keep the template's section order and its plain-English, copy-and-paste PowerShell and /advisor requirements.
 3. `python tools/post_merge.py check-prompt <file>` must print PROMPT=OK (it fails on a leftover marker, a missing section, a missing /advisor line or an em dash).
 4. Show the finished prompt to Ben in one fenced block (four backticks, so inner fences survive) to copy and paste, and say where the file is. Never commit the prompt. Offer to adjust it; if Ben corrects the format, change docs/templates/next_session_prompt.md in a small pull request so the next prompt inherits it.
+
+## 3. Refresh Ben's roadmap page
+
+Run the `nhl-roadmap` skill (or the steps in `.claude/skills/nhl-roadmap/SKILL.md`) on the merged master: `python
+tools/roadmap.py build`, then republish the page to the link in docs/roadmap/README.md. If the check prints
+ROADMAP=STALE, do not edit docs/roadmap/plain.yaml here: say which entries are missing and put "bring
+docs/roadmap/plain.yaml up to date first" at the top of the next prompt. Report `ROADMAP_PAGE=PUBLISHED`,
+`ROADMAP_PAGE=STALE` or `ROADMAP_PAGE=NOT_PUBLISHED (<reason>)` in the reply.
 
 ## Do not
 
