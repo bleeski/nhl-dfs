@@ -1,0 +1,2212 @@
+{
+ "summary": {
+  "verdict": {
+   "G": "NOT MEASURED",
+   "L": "NOT MEASURED"
+  },
+  "slates": [
+   {
+    "slate": "bed",
+    "synthetic": true,
+    "clock": "2026-09-28T18:00:00+00:00",
+    "entries_cloned_to": 30,
+    "scenario_n": {
+     "design": 1000,
+     "selection": 3000,
+     "referee": 3000,
+     "field_target": 1000
+    },
+    "noise": {
+     "identical_lineups": true,
+     "metric_first": 0.05429,
+     "metric_second": 0.05429
+    },
+    "verdicts": {
+     "G": {
+      "n_seeds": 5,
+      "mean_O": 0.056103,
+      "mde": 0.003151,
+      "mean_d": -0.009461,
+      "se_d": 0.000678,
+      "seeds_d_positive": 0,
+      "d": [
+       -0.011187,
+       -0.00704,
+       -0.009937,
+       -0.009806,
+       -0.009333
+      ],
+      "risk_budget_ok": true,
+      "goalie_cpt_entries_arm": 0,
+      "goalie_cpt_entries_O": 93,
+      "goalie_ok": true,
+      "verdict": "REJECT",
+      "reason": "mean difference at or below 0, or under 1% of O's mean"
+     },
+     "L": {
+      "n_seeds": 5,
+      "mean_O": 0.056103,
+      "mde": 0.003151,
+      "mean_d": 0.002243,
+      "se_d": 0.000502,
+      "seeds_d_positive": 5,
+      "d": [
+       0.002863,
+       0.003693,
+       0.001267,
+       0.002404,
+       0.000987
+      ],
+      "risk_budget_ok": true,
+      "goalie_cpt_entries_arm": 110,
+      "goalie_cpt_entries_O": 93,
+      "goalie_ok": false,
+      "verdict": "INCONCLUSIVE",
+      "reason": "neither accepted nor rejected"
+     }
+    },
+    "goalie_ranks": [
+     {
+      "person": "frederik andersen|CAR|G",
+      "ceiling": 33.8,
+      "rank": 8
+     },
+     {
+      "person": "kevin lankinen|VAN|G",
+      "ceiling": 35.61,
+      "rank": 6
+     }
+    ],
+    "would_bar": [
+     "frederik andersen|CAR|G",
+     "kevin lankinen|VAN|G"
+    ],
+    "field_goalie_cpt_pct": 12.4,
+    "split_O": {
+     "status": "OK",
+     "goal_share": {
+      "CAR": 0.5,
+      "VAN": 0.5
+     },
+     "target_lean": {
+      "CAR": 15,
+      "VAN": 15
+     },
+     "underdog": "CAR",
+     "sleeve_cap": 0.1,
+     "sleeve_target": 3,
+     "published": {
+      "lean": {
+       "CAR": 9,
+       "VAN": 18
+      },
+      "five_one": {
+       "CAR": 6,
+       "VAN": 8
+      },
+      "three_three": 3
+     },
+     "enforced": false
+    },
+    "contests": [
+     {
+      "contest_id": "196000101",
+      "name": "NHL Showdown $150 Quarter Jukebox (VAN @ CAR)",
+      "family": "large_gpp",
+      "field_size": 713,
+      "PAYOUT_SOURCE": "PRIOR",
+      "FIELD_SIZE_SOURCE": "HISTORY"
+     },
+     {
+      "contest_id": "196000102",
+      "name": "NHL Showdown $100 Dime Time (VAN @ CAR)",
+      "family": "large_gpp",
+      "field_size": 1164,
+      "PAYOUT_SOURCE": "PRIOR",
+      "FIELD_SIZE_SOURCE": "HISTORY"
+     },
+     {
+      "contest_id": "196000103",
+      "name": "NHL Showdown $100 Daily Dollar [Single Entry] (VAN @ CAR)",
+      "family": "small_field",
+      "field_size": 109,
+      "PAYOUT_SOURCE": "PRIOR",
+      "FIELD_SIZE_SOURCE": "HISTORY"
+     }
+    ],
+    "information_only": {
+     "O": {
+      "lineups_changed_vs_O": [
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "goalie_cpt_entries": [
+       20,
+       16,
+       19,
+       20,
+       18
+      ],
+      "mean_cpt_own_pct": [
+       8.8,
+       13.93,
+       9.38,
+       11.29,
+       9.33
+      ],
+      "distinct_captains": [
+       8,
+       9,
+       8,
+       7,
+       8
+      ],
+      "gate_dropped": [
+       0,
+       0,
+       0,
+       0,
+       0
+      ]
+     },
+     "G": {
+      "lineups_changed_vs_O": [
+       29,
+       29,
+       29,
+       30,
+       28
+      ],
+      "goalie_cpt_entries": [
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "mean_cpt_own_pct": [
+       10.49,
+       13.83,
+       13.61,
+       16.69,
+       21.1
+      ],
+      "distinct_captains": [
+       11,
+       9,
+       12,
+       9,
+       9
+      ],
+      "gate_dropped": [
+       5,
+       3,
+       10,
+       4,
+       1
+      ]
+     },
+     "L": {
+      "lineups_changed_vs_O": [
+       30,
+       29,
+       29,
+       26,
+       28
+      ],
+      "goalie_cpt_entries": [
+       21,
+       22,
+       23,
+       23,
+       21
+      ],
+      "mean_cpt_own_pct": [
+       5.05,
+       5.14,
+       4.06,
+       3.22,
+       6.32
+      ],
+      "distinct_captains": [
+       9,
+       8,
+       7,
+       7,
+       6
+      ],
+      "gate_dropped": [
+       0,
+       0,
+       0,
+       0,
+       0
+      ]
+     },
+     "B": {
+      "metric": 0.044017,
+      "lineups_changed_vs_O": 30,
+      "portfolio": {
+       "entries": 30,
+       "goalie_cpt_entries": 0,
+       "mean_cpt_own_pct": 4.86,
+       "distinct_captains": 11,
+       "max_captain": "brock boeser|VAN|F",
+       "max_captain_count": 6,
+       "captain_cap": 7,
+       "field_goalie_cpt_pct": 12.4,
+       "field_contest": "196000102"
+      }
+     },
+     "O_goalie_vs_skater_captain_p_top1": [
+      [
+       0.059515,
+       20,
+       0.04384,
+       10
+      ],
+      [
+       0.064925,
+       16,
+       0.046014,
+       14
+      ],
+      [
+       0.064179,
+       19,
+       0.052755,
+       11
+      ],
+      [
+       0.058715,
+       20,
+       0.04296,
+       10
+      ],
+      [
+       0.0634,
+       18,
+       0.046583,
+       12
+      ]
+     ]
+    },
+    "routing_same_in_every_run": true
+   }
+  ],
+  "seeds": [
+   20261013,
+   20261014,
+   20261015,
+   20261016,
+   20261017
+  ],
+  "thresholds": {
+   "t": 2.78,
+   "accept_rel": 0.03,
+   "reject_rel": 0.01,
+   "mde_rel": 0.1,
+   "pos_seeds": 4
+  },
+  "shipping_timing_on_bed": {
+   "seconds": 48.3,
+   "ok": true,
+   "metric": 0.055373
+  },
+  "pythonhashseed": "0",
+  "finished_utc": "2026-10-13T08:19:21Z"
+ },
+ "runs": [
+  {
+   "tag": "bed-O-s0",
+   "arm": "O",
+   "seed": 20261013,
+   "ok": true,
+   "seconds": 30.9,
+   "metric": 0.05429,
+   "metric_entries": 30,
+   "risk_budget": "BREACHED(Captain fee share 0.44 > 0.40; goalie in 25 of 30 lineups > 15; 10 entries relaxed the goalie/game cap)",
+   "portfolio": {
+    "entries": 30,
+    "goalie_cpt_entries": 20,
+    "mean_cpt_own_pct": 8.8,
+    "distinct_captains": 8,
+    "max_captain": "kevin lankinen|VAN|G",
+    "max_captain_count": 12,
+    "captain_cap": 7,
+    "field_goalie_cpt_pct": 12.4,
+    "field_contest": "196000102"
+   },
+   "would_bar": [
+    "frederik andersen|CAR|G",
+    "kevin lankinen|VAN|G"
+   ],
+   "barred_roles": [],
+   "goalie_ranks": [
+    {
+     "person": "frederik andersen|CAR|G",
+     "ceiling": 33.8,
+     "rank": 8
+    },
+    {
+     "person": "kevin lankinen|VAN|G",
+     "ceiling": 35.61,
+     "rank": 6
+    }
+   ],
+   "leverage_points": [
+    null,
+    null
+   ],
+   "gate_dropped": 0,
+   "split": {
+    "status": "OK",
+    "goal_share": {
+     "CAR": 0.5,
+     "VAN": 0.5
+    },
+    "target_lean": {
+     "CAR": 15,
+     "VAN": 15
+    },
+    "underdog": "CAR",
+    "sleeve_cap": 0.1,
+    "sleeve_target": 3,
+    "published": {
+     "lean": {
+      "CAR": 9,
+      "VAN": 18
+     },
+     "five_one": {
+      "CAR": 6,
+      "VAN": 8
+     },
+     "three_three": 3
+    },
+    "enforced": false
+   },
+   "p_top1_goalie_cpt": 0.059515,
+   "n_goalie_cpt": 20,
+   "p_top1_skater_cpt": 0.04384,
+   "n_skater_cpt": 10,
+   "lineups_sha": "039afbfeff11b25c",
+   "contests": [
+    {
+     "contest_id": "196000101",
+     "name": "NHL Showdown $150 Quarter Jukebox (VAN @ CAR)",
+     "family": "large_gpp",
+     "field_size": 713,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    },
+    {
+     "contest_id": "196000102",
+     "name": "NHL Showdown $100 Dime Time (VAN @ CAR)",
+     "family": "large_gpp",
+     "field_size": 1164,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    },
+    {
+     "contest_id": "196000103",
+     "name": "NHL Showdown $100 Daily Dollar [Single Entry] (VAN @ CAR)",
+     "family": "small_field",
+     "field_size": 109,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    }
+   ],
+   "statuses": {
+    "MODEL_STATUS": "PRIOR",
+    "FIELD_CALIBRATION": "PRIOR",
+    "PAYOUT_SOURCE": "PRIOR",
+    "RISK_BUDGET": "BREACHED(Captain fee share 0.44 > 0.40; goalie in 25 of 30 lineups > 15; 10 entries relaxed the goalie/game cap)"
+   },
+   "failed": [],
+   "slate": "bed",
+   "synthetic": true,
+   "key": "bed-O-s0"
+  },
+  {
+   "tag": "bed-O-s0-noise",
+   "arm": "O",
+   "seed": 20261013,
+   "ok": true,
+   "seconds": 30.2,
+   "metric": 0.05429,
+   "metric_entries": 30,
+   "risk_budget": "BREACHED(Captain fee share 0.44 > 0.40; goalie in 25 of 30 lineups > 15; 10 entries relaxed the goalie/game cap)",
+   "portfolio": {
+    "entries": 30,
+    "goalie_cpt_entries": 20,
+    "mean_cpt_own_pct": 8.8,
+    "distinct_captains": 8,
+    "max_captain": "kevin lankinen|VAN|G",
+    "max_captain_count": 12,
+    "captain_cap": 7,
+    "field_goalie_cpt_pct": 12.4,
+    "field_contest": "196000102"
+   },
+   "would_bar": [
+    "frederik andersen|CAR|G",
+    "kevin lankinen|VAN|G"
+   ],
+   "barred_roles": [],
+   "goalie_ranks": [
+    {
+     "person": "frederik andersen|CAR|G",
+     "ceiling": 33.8,
+     "rank": 8
+    },
+    {
+     "person": "kevin lankinen|VAN|G",
+     "ceiling": 35.61,
+     "rank": 6
+    }
+   ],
+   "leverage_points": [
+    null,
+    null
+   ],
+   "gate_dropped": 0,
+   "split": {
+    "status": "OK",
+    "goal_share": {
+     "CAR": 0.5,
+     "VAN": 0.5
+    },
+    "target_lean": {
+     "CAR": 15,
+     "VAN": 15
+    },
+    "underdog": "CAR",
+    "sleeve_cap": 0.1,
+    "sleeve_target": 3,
+    "published": {
+     "lean": {
+      "CAR": 9,
+      "VAN": 18
+     },
+     "five_one": {
+      "CAR": 6,
+      "VAN": 8
+     },
+     "three_three": 3
+    },
+    "enforced": false
+   },
+   "p_top1_goalie_cpt": 0.059515,
+   "n_goalie_cpt": 20,
+   "p_top1_skater_cpt": 0.04384,
+   "n_skater_cpt": 10,
+   "lineups_sha": "039afbfeff11b25c",
+   "contests": [
+    {
+     "contest_id": "196000101",
+     "name": "NHL Showdown $150 Quarter Jukebox (VAN @ CAR)",
+     "family": "large_gpp",
+     "field_size": 713,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    },
+    {
+     "contest_id": "196000102",
+     "name": "NHL Showdown $100 Dime Time (VAN @ CAR)",
+     "family": "large_gpp",
+     "field_size": 1164,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    },
+    {
+     "contest_id": "196000103",
+     "name": "NHL Showdown $100 Daily Dollar [Single Entry] (VAN @ CAR)",
+     "family": "small_field",
+     "field_size": 109,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    }
+   ],
+   "statuses": {
+    "MODEL_STATUS": "PRIOR",
+    "FIELD_CALIBRATION": "PRIOR",
+    "PAYOUT_SOURCE": "PRIOR",
+    "RISK_BUDGET": "BREACHED(Captain fee share 0.44 > 0.40; goalie in 25 of 30 lineups > 15; 10 entries relaxed the goalie/game cap)"
+   },
+   "failed": [],
+   "slate": "bed",
+   "synthetic": true,
+   "key": "bed-O-s0-noise"
+  },
+  {
+   "tag": "bed-O-s1",
+   "arm": "O",
+   "seed": 20261014,
+   "ok": true,
+   "seconds": 32.0,
+   "metric": 0.0561,
+   "metric_entries": 30,
+   "risk_budget": "BREACHED(goalie in 26 of 30 lineups > 15; 11 entries relaxed the goalie/game cap)",
+   "portfolio": {
+    "entries": 30,
+    "goalie_cpt_entries": 16,
+    "mean_cpt_own_pct": 13.93,
+    "distinct_captains": 9,
+    "max_captain": "frederik andersen|CAR|G",
+    "max_captain_count": 10,
+    "captain_cap": 7,
+    "field_goalie_cpt_pct": 11.6,
+    "field_contest": "196000102"
+   },
+   "would_bar": [
+    "frederik andersen|CAR|G",
+    "kevin lankinen|VAN|G"
+   ],
+   "barred_roles": [],
+   "goalie_ranks": [
+    {
+     "person": "frederik andersen|CAR|G",
+     "ceiling": 35.61,
+     "rank": 6
+    },
+    {
+     "person": "kevin lankinen|VAN|G",
+     "ceiling": 33.5,
+     "rank": 10
+    }
+   ],
+   "leverage_points": [
+    null,
+    null
+   ],
+   "gate_dropped": 0,
+   "split": {
+    "status": "OK",
+    "goal_share": {
+     "CAR": 0.5,
+     "VAN": 0.5
+    },
+    "target_lean": {
+     "CAR": 15,
+     "VAN": 15
+    },
+    "underdog": "CAR",
+    "sleeve_cap": 0.1,
+    "sleeve_target": 3,
+    "published": {
+     "lean": {
+      "CAR": 8,
+      "VAN": 16
+     },
+     "five_one": {
+      "CAR": 5,
+      "VAN": 11
+     },
+     "three_three": 6
+    },
+    "enforced": false
+   },
+   "p_top1_goalie_cpt": 0.064925,
+   "n_goalie_cpt": 16,
+   "p_top1_skater_cpt": 0.046014,
+   "n_skater_cpt": 14,
+   "lineups_sha": "901394a572438b66",
+   "contests": [
+    {
+     "contest_id": "196000101",
+     "name": "NHL Showdown $150 Quarter Jukebox (VAN @ CAR)",
+     "family": "large_gpp",
+     "field_size": 713,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    },
+    {
+     "contest_id": "196000102",
+     "name": "NHL Showdown $100 Dime Time (VAN @ CAR)",
+     "family": "large_gpp",
+     "field_size": 1164,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    },
+    {
+     "contest_id": "196000103",
+     "name": "NHL Showdown $100 Daily Dollar [Single Entry] (VAN @ CAR)",
+     "family": "small_field",
+     "field_size": 109,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    }
+   ],
+   "statuses": {
+    "MODEL_STATUS": "PRIOR",
+    "FIELD_CALIBRATION": "PRIOR",
+    "PAYOUT_SOURCE": "PRIOR",
+    "RISK_BUDGET": "BREACHED(goalie in 26 of 30 lineups > 15; 11 entries relaxed the goalie/game cap)"
+   },
+   "failed": [],
+   "slate": "bed",
+   "synthetic": true,
+   "key": "bed-O-s1"
+  },
+  {
+   "tag": "bed-O-s2",
+   "arm": "O",
+   "seed": 20261015,
+   "ok": true,
+   "seconds": 31.8,
+   "metric": 0.05999,
+   "metric_entries": 30,
+   "risk_budget": "BREACHED(goalie in 28 of 30 lineups > 15; 13 entries relaxed the goalie/game cap)",
+   "portfolio": {
+    "entries": 30,
+    "goalie_cpt_entries": 19,
+    "mean_cpt_own_pct": 9.38,
+    "distinct_captains": 8,
+    "max_captain": "frederik andersen|CAR|G",
+    "max_captain_count": 10,
+    "captain_cap": 7,
+    "field_goalie_cpt_pct": 11.7,
+    "field_contest": "196000102"
+   },
+   "would_bar": [
+    "frederik andersen|CAR|G",
+    "kevin lankinen|VAN|G"
+   ],
+   "barred_roles": [],
+   "goalie_ranks": [
+    {
+     "person": "frederik andersen|CAR|G",
+     "ceiling": 36.31,
+     "rank": 6
+    },
+    {
+     "person": "kevin lankinen|VAN|G",
+     "ceiling": 34.21,
+     "rank": 9
+    }
+   ],
+   "leverage_points": [
+    null,
+    null
+   ],
+   "gate_dropped": 0,
+   "split": {
+    "status": "OK",
+    "goal_share": {
+     "CAR": 0.5,
+     "VAN": 0.5
+    },
+    "target_lean": {
+     "CAR": 15,
+     "VAN": 15
+    },
+    "underdog": "CAR",
+    "sleeve_cap": 0.1,
+    "sleeve_target": 3,
+    "published": {
+     "lean": {
+      "CAR": 7,
+      "VAN": 14
+     },
+     "five_one": {
+      "CAR": 4,
+      "VAN": 9
+     },
+     "three_three": 9
+    },
+    "enforced": false
+   },
+   "p_top1_goalie_cpt": 0.064179,
+   "n_goalie_cpt": 19,
+   "p_top1_skater_cpt": 0.052755,
+   "n_skater_cpt": 11,
+   "lineups_sha": "e239ba2a6c882fdc",
+   "contests": [
+    {
+     "contest_id": "196000101",
+     "name": "NHL Showdown $150 Quarter Jukebox (VAN @ CAR)",
+     "family": "large_gpp",
+     "field_size": 713,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    },
+    {
+     "contest_id": "196000102",
+     "name": "NHL Showdown $100 Dime Time (VAN @ CAR)",
+     "family": "large_gpp",
+     "field_size": 1164,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    },
+    {
+     "contest_id": "196000103",
+     "name": "NHL Showdown $100 Daily Dollar [Single Entry] (VAN @ CAR)",
+     "family": "small_field",
+     "field_size": 109,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    }
+   ],
+   "statuses": {
+    "MODEL_STATUS": "PRIOR",
+    "FIELD_CALIBRATION": "PRIOR",
+    "PAYOUT_SOURCE": "PRIOR",
+    "RISK_BUDGET": "BREACHED(goalie in 28 of 30 lineups > 15; 13 entries relaxed the goalie/game cap)"
+   },
+   "failed": [],
+   "slate": "bed",
+   "synthetic": true,
+   "key": "bed-O-s2"
+  },
+  {
+   "tag": "bed-O-s3",
+   "arm": "O",
+   "seed": 20261016,
+   "ok": true,
+   "seconds": 29.8,
+   "metric": 0.053463,
+   "metric_entries": 30,
+   "risk_budget": "BREACHED(Captain fee share 0.51 > 0.40; goalie in 30 of 30 lineups > 15; 15 entries relaxed the goalie/game cap)",
+   "portfolio": {
+    "entries": 30,
+    "goalie_cpt_entries": 20,
+    "mean_cpt_own_pct": 11.29,
+    "distinct_captains": 7,
+    "max_captain": "kevin lankinen|VAN|G",
+    "max_captain_count": 14,
+    "captain_cap": 7,
+    "field_goalie_cpt_pct": 12.7,
+    "field_contest": "196000102"
+   },
+   "would_bar": [
+    "frederik andersen|CAR|G",
+    "kevin lankinen|VAN|G"
+   ],
+   "barred_roles": [],
+   "goalie_ranks": [
+    {
+     "person": "frederik andersen|CAR|G",
+     "ceiling": 33.8,
+     "rank": 9
+    },
+    {
+     "person": "kevin lankinen|VAN|G",
+     "ceiling": 35.61,
+     "rank": 6
+    }
+   ],
+   "leverage_points": [
+    null,
+    null
+   ],
+   "gate_dropped": 0,
+   "split": {
+    "status": "OK",
+    "goal_share": {
+     "CAR": 0.5,
+     "VAN": 0.5
+    },
+    "target_lean": {
+     "CAR": 15,
+     "VAN": 15
+    },
+    "underdog": "CAR",
+    "sleeve_cap": 0.1,
+    "sleeve_target": 3,
+    "published": {
+     "lean": {
+      "CAR": 6,
+      "VAN": 16
+     },
+     "five_one": {
+      "CAR": 2,
+      "VAN": 9
+     },
+     "three_three": 8
+    },
+    "enforced": false
+   },
+   "p_top1_goalie_cpt": 0.058715,
+   "n_goalie_cpt": 20,
+   "p_top1_skater_cpt": 0.04296,
+   "n_skater_cpt": 10,
+   "lineups_sha": "718493f04b7f08b4",
+   "contests": [
+    {
+     "contest_id": "196000101",
+     "name": "NHL Showdown $150 Quarter Jukebox (VAN @ CAR)",
+     "family": "large_gpp",
+     "field_size": 713,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    },
+    {
+     "contest_id": "196000102",
+     "name": "NHL Showdown $100 Dime Time (VAN @ CAR)",
+     "family": "large_gpp",
+     "field_size": 1164,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    },
+    {
+     "contest_id": "196000103",
+     "name": "NHL Showdown $100 Daily Dollar [Single Entry] (VAN @ CAR)",
+     "family": "small_field",
+     "field_size": 109,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    }
+   ],
+   "statuses": {
+    "MODEL_STATUS": "PRIOR",
+    "FIELD_CALIBRATION": "PRIOR",
+    "PAYOUT_SOURCE": "PRIOR",
+    "RISK_BUDGET": "BREACHED(Captain fee share 0.51 > 0.40; goalie in 30 of 30 lineups > 15; 15 entries relaxed the goalie/game cap)"
+   },
+   "failed": [],
+   "slate": "bed",
+   "synthetic": true,
+   "key": "bed-O-s3"
+  },
+  {
+   "tag": "bed-O-s4",
+   "arm": "O",
+   "seed": 20261017,
+   "ok": true,
+   "seconds": 31.4,
+   "metric": 0.056673,
+   "metric_entries": 30,
+   "risk_budget": "BREACHED(Captain fee share 0.44 > 0.40; goalie in 28 of 30 lineups > 15; 13 entries relaxed the goalie/game cap)",
+   "portfolio": {
+    "entries": 30,
+    "goalie_cpt_entries": 18,
+    "mean_cpt_own_pct": 9.33,
+    "distinct_captains": 8,
+    "max_captain": "kevin lankinen|VAN|G",
+    "max_captain_count": 12,
+    "captain_cap": 7,
+    "field_goalie_cpt_pct": 9.7,
+    "field_contest": "196000102"
+   },
+   "would_bar": [
+    "frederik andersen|CAR|G",
+    "kevin lankinen|VAN|G"
+   ],
+   "barred_roles": [],
+   "goalie_ranks": [
+    {
+     "person": "frederik andersen|CAR|G",
+     "ceiling": 33.8,
+     "rank": 6
+    },
+    {
+     "person": "kevin lankinen|VAN|G",
+     "ceiling": 33.8,
+     "rank": 6
+    }
+   ],
+   "leverage_points": [
+    null,
+    null
+   ],
+   "gate_dropped": 0,
+   "split": {
+    "status": "OK",
+    "goal_share": {
+     "CAR": 0.5,
+     "VAN": 0.5
+    },
+    "target_lean": {
+     "CAR": 15,
+     "VAN": 15
+    },
+    "underdog": "CAR",
+    "sleeve_cap": 0.1,
+    "sleeve_target": 3,
+    "published": {
+     "lean": {
+      "CAR": 7,
+      "VAN": 17
+     },
+     "five_one": {
+      "CAR": 2,
+      "VAN": 11
+     },
+     "three_three": 6
+    },
+    "enforced": false
+   },
+   "p_top1_goalie_cpt": 0.0634,
+   "n_goalie_cpt": 18,
+   "p_top1_skater_cpt": 0.046583,
+   "n_skater_cpt": 12,
+   "lineups_sha": "1551ce41701c5ac1",
+   "contests": [
+    {
+     "contest_id": "196000101",
+     "name": "NHL Showdown $150 Quarter Jukebox (VAN @ CAR)",
+     "family": "large_gpp",
+     "field_size": 713,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    },
+    {
+     "contest_id": "196000102",
+     "name": "NHL Showdown $100 Dime Time (VAN @ CAR)",
+     "family": "large_gpp",
+     "field_size": 1164,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    },
+    {
+     "contest_id": "196000103",
+     "name": "NHL Showdown $100 Daily Dollar [Single Entry] (VAN @ CAR)",
+     "family": "small_field",
+     "field_size": 109,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    }
+   ],
+   "statuses": {
+    "MODEL_STATUS": "PRIOR",
+    "FIELD_CALIBRATION": "PRIOR",
+    "PAYOUT_SOURCE": "PRIOR",
+    "RISK_BUDGET": "BREACHED(Captain fee share 0.44 > 0.40; goalie in 28 of 30 lineups > 15; 13 entries relaxed the goalie/game cap)"
+   },
+   "failed": [],
+   "slate": "bed",
+   "synthetic": true,
+   "key": "bed-O-s4"
+  },
+  {
+   "tag": "bed-G-s0",
+   "arm": "G",
+   "seed": 20261013,
+   "ok": true,
+   "seconds": 30.5,
+   "metric": 0.043103,
+   "metric_entries": 30,
+   "risk_budget": "BREACHED(goalie in 22 of 30 lineups > 15; 9 entries relaxed the goalie/game cap)",
+   "portfolio": {
+    "entries": 30,
+    "goalie_cpt_entries": 0,
+    "mean_cpt_own_pct": 10.49,
+    "distinct_captains": 11,
+    "max_captain": "quinn hughes|VAN|D",
+    "max_captain_count": 5,
+    "captain_cap": 7,
+    "field_goalie_cpt_pct": 12.4,
+    "field_contest": "196000102"
+   },
+   "would_bar": [
+    "frederik andersen|CAR|G",
+    "kevin lankinen|VAN|G"
+   ],
+   "barred_roles": [
+    "90000311",
+    "90000327"
+   ],
+   "goalie_ranks": [
+    {
+     "person": "frederik andersen|CAR|G",
+     "ceiling": 33.8,
+     "rank": 8
+    },
+    {
+     "person": "kevin lankinen|VAN|G",
+     "ceiling": 35.61,
+     "rank": 6
+    }
+   ],
+   "leverage_points": [
+    null,
+    null
+   ],
+   "gate_dropped": 5,
+   "split": {
+    "status": "OK",
+    "goal_share": {
+     "CAR": 0.5,
+     "VAN": 0.5
+    },
+    "target_lean": {
+     "CAR": 15,
+     "VAN": 15
+    },
+    "underdog": "CAR",
+    "sleeve_cap": 0.1,
+    "sleeve_target": 3,
+    "published": {
+     "lean": {
+      "CAR": 12,
+      "VAN": 17
+     },
+     "five_one": {
+      "CAR": 9,
+      "VAN": 9
+     },
+     "three_three": 1
+    },
+    "enforced": false
+   },
+   "p_top1_goalie_cpt": null,
+   "n_goalie_cpt": 0,
+   "p_top1_skater_cpt": 0.043103,
+   "n_skater_cpt": 30,
+   "lineups_sha": "6d67344e578ad3ce",
+   "contests": [
+    {
+     "contest_id": "196000101",
+     "name": "NHL Showdown $150 Quarter Jukebox (VAN @ CAR)",
+     "family": "large_gpp",
+     "field_size": 713,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    },
+    {
+     "contest_id": "196000102",
+     "name": "NHL Showdown $100 Dime Time (VAN @ CAR)",
+     "family": "large_gpp",
+     "field_size": 1164,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    },
+    {
+     "contest_id": "196000103",
+     "name": "NHL Showdown $100 Daily Dollar [Single Entry] (VAN @ CAR)",
+     "family": "small_field",
+     "field_size": 109,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    }
+   ],
+   "statuses": {
+    "MODEL_STATUS": "PRIOR",
+    "FIELD_CALIBRATION": "PRIOR",
+    "PAYOUT_SOURCE": "PRIOR",
+    "RISK_BUDGET": "BREACHED(goalie in 22 of 30 lineups > 15; 9 entries relaxed the goalie/game cap)"
+   },
+   "failed": [],
+   "slate": "bed",
+   "synthetic": true,
+   "key": "bed-G-s0"
+  },
+  {
+   "tag": "bed-G-s1",
+   "arm": "G",
+   "seed": 20261014,
+   "ok": true,
+   "seconds": 32.5,
+   "metric": 0.04906,
+   "metric_entries": 30,
+   "risk_budget": "BREACHED(goalie in 24 of 30 lineups > 15; 11 entries relaxed the goalie/game cap)",
+   "portfolio": {
+    "entries": 30,
+    "goalie_cpt_entries": 0,
+    "mean_cpt_own_pct": 13.83,
+    "distinct_captains": 9,
+    "max_captain": "quinn hughes|VAN|D",
+    "max_captain_count": 7,
+    "captain_cap": 7,
+    "field_goalie_cpt_pct": 11.6,
+    "field_contest": "196000102"
+   },
+   "would_bar": [
+    "frederik andersen|CAR|G",
+    "kevin lankinen|VAN|G"
+   ],
+   "barred_roles": [
+    "90000311",
+    "90000327"
+   ],
+   "goalie_ranks": [
+    {
+     "person": "frederik andersen|CAR|G",
+     "ceiling": 35.61,
+     "rank": 6
+    },
+    {
+     "person": "kevin lankinen|VAN|G",
+     "ceiling": 33.5,
+     "rank": 10
+    }
+   ],
+   "leverage_points": [
+    null,
+    null
+   ],
+   "gate_dropped": 3,
+   "split": {
+    "status": "OK",
+    "goal_share": {
+     "CAR": 0.5,
+     "VAN": 0.5
+    },
+    "target_lean": {
+     "CAR": 15,
+     "VAN": 15
+    },
+    "underdog": "CAR",
+    "sleeve_cap": 0.1,
+    "sleeve_target": 3,
+    "published": {
+     "lean": {
+      "CAR": 9,
+      "VAN": 16
+     },
+     "five_one": {
+      "CAR": 7,
+      "VAN": 11
+     },
+     "three_three": 5
+    },
+    "enforced": false
+   },
+   "p_top1_goalie_cpt": null,
+   "n_goalie_cpt": 0,
+   "p_top1_skater_cpt": 0.04906,
+   "n_skater_cpt": 30,
+   "lineups_sha": "ea2f3c494a2a082e",
+   "contests": [
+    {
+     "contest_id": "196000101",
+     "name": "NHL Showdown $150 Quarter Jukebox (VAN @ CAR)",
+     "family": "large_gpp",
+     "field_size": 713,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    },
+    {
+     "contest_id": "196000102",
+     "name": "NHL Showdown $100 Dime Time (VAN @ CAR)",
+     "family": "large_gpp",
+     "field_size": 1164,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    },
+    {
+     "contest_id": "196000103",
+     "name": "NHL Showdown $100 Daily Dollar [Single Entry] (VAN @ CAR)",
+     "family": "small_field",
+     "field_size": 109,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    }
+   ],
+   "statuses": {
+    "MODEL_STATUS": "PRIOR",
+    "FIELD_CALIBRATION": "PRIOR",
+    "PAYOUT_SOURCE": "PRIOR",
+    "RISK_BUDGET": "BREACHED(goalie in 24 of 30 lineups > 15; 11 entries relaxed the goalie/game cap)"
+   },
+   "failed": [],
+   "slate": "bed",
+   "synthetic": true,
+   "key": "bed-G-s1"
+  },
+  {
+   "tag": "bed-G-s2",
+   "arm": "G",
+   "seed": 20261015,
+   "ok": true,
+   "seconds": 31.3,
+   "metric": 0.050053,
+   "metric_entries": 30,
+   "risk_budget": "BREACHED(goalie in 28 of 30 lineups > 15; 13 entries relaxed the goalie/game cap)",
+   "portfolio": {
+    "entries": 30,
+    "goalie_cpt_entries": 0,
+    "mean_cpt_own_pct": 13.61,
+    "distinct_captains": 12,
+    "max_captain": "quinn hughes|VAN|D",
+    "max_captain_count": 7,
+    "captain_cap": 7,
+    "field_goalie_cpt_pct": 11.7,
+    "field_contest": "196000102"
+   },
+   "would_bar": [
+    "frederik andersen|CAR|G",
+    "kevin lankinen|VAN|G"
+   ],
+   "barred_roles": [
+    "90000311",
+    "90000327"
+   ],
+   "goalie_ranks": [
+    {
+     "person": "frederik andersen|CAR|G",
+     "ceiling": 36.31,
+     "rank": 6
+    },
+    {
+     "person": "kevin lankinen|VAN|G",
+     "ceiling": 34.21,
+     "rank": 9
+    }
+   ],
+   "leverage_points": [
+    null,
+    null
+   ],
+   "gate_dropped": 10,
+   "split": {
+    "status": "OK",
+    "goal_share": {
+     "CAR": 0.5,
+     "VAN": 0.5
+    },
+    "target_lean": {
+     "CAR": 15,
+     "VAN": 15
+    },
+    "underdog": "CAR",
+    "sleeve_cap": 0.1,
+    "sleeve_target": 3,
+    "published": {
+     "lean": {
+      "CAR": 9,
+      "VAN": 15
+     },
+     "five_one": {
+      "CAR": 4,
+      "VAN": 11
+     },
+     "three_three": 6
+    },
+    "enforced": false
+   },
+   "p_top1_goalie_cpt": null,
+   "n_goalie_cpt": 0,
+   "p_top1_skater_cpt": 0.050053,
+   "n_skater_cpt": 30,
+   "lineups_sha": "4a153a7dd7cc9129",
+   "contests": [
+    {
+     "contest_id": "196000101",
+     "name": "NHL Showdown $150 Quarter Jukebox (VAN @ CAR)",
+     "family": "large_gpp",
+     "field_size": 713,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    },
+    {
+     "contest_id": "196000102",
+     "name": "NHL Showdown $100 Dime Time (VAN @ CAR)",
+     "family": "large_gpp",
+     "field_size": 1164,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    },
+    {
+     "contest_id": "196000103",
+     "name": "NHL Showdown $100 Daily Dollar [Single Entry] (VAN @ CAR)",
+     "family": "small_field",
+     "field_size": 109,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    }
+   ],
+   "statuses": {
+    "MODEL_STATUS": "PRIOR",
+    "FIELD_CALIBRATION": "PRIOR",
+    "PAYOUT_SOURCE": "PRIOR",
+    "RISK_BUDGET": "BREACHED(goalie in 28 of 30 lineups > 15; 13 entries relaxed the goalie/game cap)"
+   },
+   "failed": [],
+   "slate": "bed",
+   "synthetic": true,
+   "key": "bed-G-s2"
+  },
+  {
+   "tag": "bed-G-s3",
+   "arm": "G",
+   "seed": 20261016,
+   "ok": true,
+   "seconds": 29.0,
+   "metric": 0.043657,
+   "metric_entries": 30,
+   "risk_budget": "BREACHED(goalie in 26 of 30 lineups > 15; 11 entries relaxed the goalie/game cap)",
+   "portfolio": {
+    "entries": 30,
+    "goalie_cpt_entries": 0,
+    "mean_cpt_own_pct": 16.69,
+    "distinct_captains": 9,
+    "max_captain": "quinn hughes|VAN|D",
+    "max_captain_count": 9,
+    "captain_cap": 7,
+    "field_goalie_cpt_pct": 12.7,
+    "field_contest": "196000102"
+   },
+   "would_bar": [
+    "frederik andersen|CAR|G",
+    "kevin lankinen|VAN|G"
+   ],
+   "barred_roles": [
+    "90000311",
+    "90000327"
+   ],
+   "goalie_ranks": [
+    {
+     "person": "frederik andersen|CAR|G",
+     "ceiling": 33.8,
+     "rank": 9
+    },
+    {
+     "person": "kevin lankinen|VAN|G",
+     "ceiling": 35.61,
+     "rank": 6
+    }
+   ],
+   "leverage_points": [
+    null,
+    null
+   ],
+   "gate_dropped": 4,
+   "split": {
+    "status": "OK",
+    "goal_share": {
+     "CAR": 0.5,
+     "VAN": 0.5
+    },
+    "target_lean": {
+     "CAR": 15,
+     "VAN": 15
+    },
+    "underdog": "CAR",
+    "sleeve_cap": 0.1,
+    "sleeve_target": 3,
+    "published": {
+     "lean": {
+      "CAR": 8,
+      "VAN": 18
+     },
+     "five_one": {
+      "CAR": 5,
+      "VAN": 12
+     },
+     "three_three": 4
+    },
+    "enforced": false
+   },
+   "p_top1_goalie_cpt": null,
+   "n_goalie_cpt": 0,
+   "p_top1_skater_cpt": 0.043657,
+   "n_skater_cpt": 30,
+   "lineups_sha": "5a703f257558f138",
+   "contests": [
+    {
+     "contest_id": "196000101",
+     "name": "NHL Showdown $150 Quarter Jukebox (VAN @ CAR)",
+     "family": "large_gpp",
+     "field_size": 713,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    },
+    {
+     "contest_id": "196000102",
+     "name": "NHL Showdown $100 Dime Time (VAN @ CAR)",
+     "family": "large_gpp",
+     "field_size": 1164,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    },
+    {
+     "contest_id": "196000103",
+     "name": "NHL Showdown $100 Daily Dollar [Single Entry] (VAN @ CAR)",
+     "family": "small_field",
+     "field_size": 109,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    }
+   ],
+   "statuses": {
+    "MODEL_STATUS": "PRIOR",
+    "FIELD_CALIBRATION": "PRIOR",
+    "PAYOUT_SOURCE": "PRIOR",
+    "RISK_BUDGET": "BREACHED(goalie in 26 of 30 lineups > 15; 11 entries relaxed the goalie/game cap)"
+   },
+   "failed": [],
+   "slate": "bed",
+   "synthetic": true,
+   "key": "bed-G-s3"
+  },
+  {
+   "tag": "bed-G-s4",
+   "arm": "G",
+   "seed": 20261017,
+   "ok": true,
+   "seconds": 31.8,
+   "metric": 0.04734,
+   "metric_entries": 30,
+   "risk_budget": "BREACHED(goalie in 27 of 30 lineups > 15; 12 entries relaxed the goalie/game cap)",
+   "portfolio": {
+    "entries": 30,
+    "goalie_cpt_entries": 0,
+    "mean_cpt_own_pct": 21.1,
+    "distinct_captains": 9,
+    "max_captain": "quinn hughes|VAN|D",
+    "max_captain_count": 12,
+    "captain_cap": 7,
+    "field_goalie_cpt_pct": 9.7,
+    "field_contest": "196000102"
+   },
+   "would_bar": [
+    "frederik andersen|CAR|G",
+    "kevin lankinen|VAN|G"
+   ],
+   "barred_roles": [
+    "90000311",
+    "90000327"
+   ],
+   "goalie_ranks": [
+    {
+     "person": "frederik andersen|CAR|G",
+     "ceiling": 33.8,
+     "rank": 6
+    },
+    {
+     "person": "kevin lankinen|VAN|G",
+     "ceiling": 33.8,
+     "rank": 6
+    }
+   ],
+   "leverage_points": [
+    null,
+    null
+   ],
+   "gate_dropped": 1,
+   "split": {
+    "status": "OK",
+    "goal_share": {
+     "CAR": 0.5,
+     "VAN": 0.5
+    },
+    "target_lean": {
+     "CAR": 15,
+     "VAN": 15
+    },
+    "underdog": "CAR",
+    "sleeve_cap": 0.1,
+    "sleeve_target": 3,
+    "published": {
+     "lean": {
+      "CAR": 8,
+      "VAN": 18
+     },
+     "five_one": {
+      "CAR": 5,
+      "VAN": 14
+     },
+     "three_three": 4
+    },
+    "enforced": false
+   },
+   "p_top1_goalie_cpt": null,
+   "n_goalie_cpt": 0,
+   "p_top1_skater_cpt": 0.04734,
+   "n_skater_cpt": 30,
+   "lineups_sha": "81b3eda8f916339b",
+   "contests": [
+    {
+     "contest_id": "196000101",
+     "name": "NHL Showdown $150 Quarter Jukebox (VAN @ CAR)",
+     "family": "large_gpp",
+     "field_size": 713,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    },
+    {
+     "contest_id": "196000102",
+     "name": "NHL Showdown $100 Dime Time (VAN @ CAR)",
+     "family": "large_gpp",
+     "field_size": 1164,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    },
+    {
+     "contest_id": "196000103",
+     "name": "NHL Showdown $100 Daily Dollar [Single Entry] (VAN @ CAR)",
+     "family": "small_field",
+     "field_size": 109,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    }
+   ],
+   "statuses": {
+    "MODEL_STATUS": "PRIOR",
+    "FIELD_CALIBRATION": "PRIOR",
+    "PAYOUT_SOURCE": "PRIOR",
+    "RISK_BUDGET": "BREACHED(goalie in 27 of 30 lineups > 15; 12 entries relaxed the goalie/game cap)"
+   },
+   "failed": [],
+   "slate": "bed",
+   "synthetic": true,
+   "key": "bed-G-s4"
+  },
+  {
+   "tag": "bed-L-s0",
+   "arm": "L",
+   "seed": 20261013,
+   "ok": true,
+   "seconds": 31.2,
+   "metric": 0.057153,
+   "metric_entries": 30,
+   "risk_budget": "BREACHED(Captain fee share 0.57 > 0.40; goalie in 27 of 30 lineups > 15; 12 entries relaxed the goalie/game cap)",
+   "portfolio": {
+    "entries": 30,
+    "goalie_cpt_entries": 21,
+    "mean_cpt_own_pct": 5.05,
+    "distinct_captains": 9,
+    "max_captain": "kevin lankinen|VAN|G",
+    "max_captain_count": 16,
+    "captain_cap": 7,
+    "field_goalie_cpt_pct": 12.4,
+    "field_contest": "196000102"
+   },
+   "would_bar": [
+    "frederik andersen|CAR|G",
+    "kevin lankinen|VAN|G"
+   ],
+   "barred_roles": [],
+   "goalie_ranks": [
+    {
+     "person": "frederik andersen|CAR|G",
+     "ceiling": 33.8,
+     "rank": 8
+    },
+    {
+     "person": "kevin lankinen|VAN|G",
+     "ceiling": 35.61,
+     "rank": 6
+    }
+   ],
+   "leverage_points": [
+    1.121,
+    5.391
+   ],
+   "gate_dropped": 0,
+   "split": {
+    "status": "OK",
+    "goal_share": {
+     "CAR": 0.5,
+     "VAN": 0.5
+    },
+    "target_lean": {
+     "CAR": 15,
+     "VAN": 15
+    },
+    "underdog": "CAR",
+    "sleeve_cap": 0.1,
+    "sleeve_target": 3,
+    "published": {
+     "lean": {
+      "CAR": 6,
+      "VAN": 19
+     },
+     "five_one": {
+      "CAR": 4,
+      "VAN": 11
+     },
+     "three_three": 5
+    },
+    "enforced": false
+   },
+   "p_top1_goalie_cpt": 0.061886,
+   "n_goalie_cpt": 21,
+   "p_top1_skater_cpt": 0.046111,
+   "n_skater_cpt": 9,
+   "lineups_sha": "3b9da871cd33d8aa",
+   "contests": [
+    {
+     "contest_id": "196000101",
+     "name": "NHL Showdown $150 Quarter Jukebox (VAN @ CAR)",
+     "family": "large_gpp",
+     "field_size": 713,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    },
+    {
+     "contest_id": "196000102",
+     "name": "NHL Showdown $100 Dime Time (VAN @ CAR)",
+     "family": "large_gpp",
+     "field_size": 1164,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    },
+    {
+     "contest_id": "196000103",
+     "name": "NHL Showdown $100 Daily Dollar [Single Entry] (VAN @ CAR)",
+     "family": "small_field",
+     "field_size": 109,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    }
+   ],
+   "statuses": {
+    "MODEL_STATUS": "PRIOR",
+    "FIELD_CALIBRATION": "PRIOR",
+    "PAYOUT_SOURCE": "PRIOR",
+    "RISK_BUDGET": "BREACHED(Captain fee share 0.57 > 0.40; goalie in 27 of 30 lineups > 15; 12 entries relaxed the goalie/game cap)"
+   },
+   "failed": [],
+   "slate": "bed",
+   "synthetic": true,
+   "key": "bed-L-s0"
+  },
+  {
+   "tag": "bed-L-s1",
+   "arm": "L",
+   "seed": 20261014,
+   "ok": true,
+   "seconds": 32.3,
+   "metric": 0.059793,
+   "metric_entries": 30,
+   "risk_budget": "BREACHED(Captain fee share 0.57 > 0.40; goalie in 26 of 30 lineups > 15; 11 entries relaxed the goalie/game cap)",
+   "portfolio": {
+    "entries": 30,
+    "goalie_cpt_entries": 22,
+    "mean_cpt_own_pct": 5.14,
+    "distinct_captains": 8,
+    "max_captain": "kevin lankinen|VAN|G",
+    "max_captain_count": 16,
+    "captain_cap": 7,
+    "field_goalie_cpt_pct": 11.6,
+    "field_contest": "196000102"
+   },
+   "would_bar": [
+    "frederik andersen|CAR|G",
+    "kevin lankinen|VAN|G"
+   ],
+   "barred_roles": [],
+   "goalie_ranks": [
+    {
+     "person": "frederik andersen|CAR|G",
+     "ceiling": 35.61,
+     "rank": 6
+    },
+    {
+     "person": "kevin lankinen|VAN|G",
+     "ceiling": 33.5,
+     "rank": 10
+    }
+   ],
+   "leverage_points": [
+    0.96,
+    5.229
+   ],
+   "gate_dropped": 0,
+   "split": {
+    "status": "OK",
+    "goal_share": {
+     "CAR": 0.5,
+     "VAN": 0.5
+    },
+    "target_lean": {
+     "CAR": 15,
+     "VAN": 15
+    },
+    "underdog": "CAR",
+    "sleeve_cap": 0.1,
+    "sleeve_target": 3,
+    "published": {
+     "lean": {
+      "CAR": 8,
+      "VAN": 15
+     },
+     "five_one": {
+      "CAR": 5,
+      "VAN": 11
+     },
+     "three_three": 7
+    },
+    "enforced": false
+   },
+   "p_top1_goalie_cpt": 0.063723,
+   "n_goalie_cpt": 22,
+   "p_top1_skater_cpt": 0.048988,
+   "n_skater_cpt": 8,
+   "lineups_sha": "b674ab935d4f24d6",
+   "contests": [
+    {
+     "contest_id": "196000101",
+     "name": "NHL Showdown $150 Quarter Jukebox (VAN @ CAR)",
+     "family": "large_gpp",
+     "field_size": 713,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    },
+    {
+     "contest_id": "196000102",
+     "name": "NHL Showdown $100 Dime Time (VAN @ CAR)",
+     "family": "large_gpp",
+     "field_size": 1164,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    },
+    {
+     "contest_id": "196000103",
+     "name": "NHL Showdown $100 Daily Dollar [Single Entry] (VAN @ CAR)",
+     "family": "small_field",
+     "field_size": 109,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    }
+   ],
+   "statuses": {
+    "MODEL_STATUS": "PRIOR",
+    "FIELD_CALIBRATION": "PRIOR",
+    "PAYOUT_SOURCE": "PRIOR",
+    "RISK_BUDGET": "BREACHED(Captain fee share 0.57 > 0.40; goalie in 26 of 30 lineups > 15; 11 entries relaxed the goalie/game cap)"
+   },
+   "failed": [],
+   "slate": "bed",
+   "synthetic": true,
+   "key": "bed-L-s1"
+  },
+  {
+   "tag": "bed-L-s2",
+   "arm": "L",
+   "seed": 20261015,
+   "ok": true,
+   "seconds": 32.9,
+   "metric": 0.061257,
+   "metric_entries": 30,
+   "risk_budget": "BREACHED(Captain fee share 0.54 > 0.40; goalie in 30 of 30 lineups > 15; 15 entries relaxed the goalie/game cap)",
+   "portfolio": {
+    "entries": 30,
+    "goalie_cpt_entries": 23,
+    "mean_cpt_own_pct": 4.06,
+    "distinct_captains": 7,
+    "max_captain": "kevin lankinen|VAN|G",
+    "max_captain_count": 15,
+    "captain_cap": 7,
+    "field_goalie_cpt_pct": 11.7,
+    "field_contest": "196000102"
+   },
+   "would_bar": [
+    "frederik andersen|CAR|G",
+    "kevin lankinen|VAN|G"
+   ],
+   "barred_roles": [],
+   "goalie_ranks": [
+    {
+     "person": "frederik andersen|CAR|G",
+     "ceiling": 36.31,
+     "rank": 6
+    },
+    {
+     "person": "kevin lankinen|VAN|G",
+     "ceiling": 34.21,
+     "rank": 9
+    }
+   ],
+   "leverage_points": [
+    1.029,
+    5.297
+   ],
+   "gate_dropped": 0,
+   "split": {
+    "status": "OK",
+    "goal_share": {
+     "CAR": 0.5,
+     "VAN": 0.5
+    },
+    "target_lean": {
+     "CAR": 15,
+     "VAN": 15
+    },
+    "underdog": "CAR",
+    "sleeve_cap": 0.1,
+    "sleeve_target": 3,
+    "published": {
+     "lean": {
+      "CAR": 7,
+      "VAN": 16
+     },
+     "five_one": {
+      "CAR": 1,
+      "VAN": 10
+     },
+     "three_three": 7
+    },
+    "enforced": false
+   },
+   "p_top1_goalie_cpt": 0.065004,
+   "n_goalie_cpt": 23,
+   "p_top1_skater_cpt": 0.048943,
+   "n_skater_cpt": 7,
+   "lineups_sha": "ac196d5937a3e4fb",
+   "contests": [
+    {
+     "contest_id": "196000101",
+     "name": "NHL Showdown $150 Quarter Jukebox (VAN @ CAR)",
+     "family": "large_gpp",
+     "field_size": 713,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    },
+    {
+     "contest_id": "196000102",
+     "name": "NHL Showdown $100 Dime Time (VAN @ CAR)",
+     "family": "large_gpp",
+     "field_size": 1164,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    },
+    {
+     "contest_id": "196000103",
+     "name": "NHL Showdown $100 Daily Dollar [Single Entry] (VAN @ CAR)",
+     "family": "small_field",
+     "field_size": 109,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    }
+   ],
+   "statuses": {
+    "MODEL_STATUS": "PRIOR",
+    "FIELD_CALIBRATION": "PRIOR",
+    "PAYOUT_SOURCE": "PRIOR",
+    "RISK_BUDGET": "BREACHED(Captain fee share 0.54 > 0.40; goalie in 30 of 30 lineups > 15; 15 entries relaxed the goalie/game cap)"
+   },
+   "failed": [],
+   "slate": "bed",
+   "synthetic": true,
+   "key": "bed-L-s2"
+  },
+  {
+   "tag": "bed-L-s3",
+   "arm": "L",
+   "seed": 20261016,
+   "ok": true,
+   "seconds": 29.7,
+   "metric": 0.055867,
+   "metric_entries": 30,
+   "risk_budget": "BREACHED(Captain fee share 0.66 > 0.40; goalie in 30 of 30 lineups > 15; 15 entries relaxed the goalie/game cap)",
+   "portfolio": {
+    "entries": 30,
+    "goalie_cpt_entries": 23,
+    "mean_cpt_own_pct": 3.22,
+    "distinct_captains": 7,
+    "max_captain": "kevin lankinen|VAN|G",
+    "max_captain_count": 19,
+    "captain_cap": 7,
+    "field_goalie_cpt_pct": 12.7,
+    "field_contest": "196000102"
+   },
+   "would_bar": [
+    "frederik andersen|CAR|G",
+    "kevin lankinen|VAN|G"
+   ],
+   "barred_roles": [],
+   "goalie_ranks": [
+    {
+     "person": "frederik andersen|CAR|G",
+     "ceiling": 33.8,
+     "rank": 9
+    },
+    {
+     "person": "kevin lankinen|VAN|G",
+     "ceiling": 35.61,
+     "rank": 6
+    }
+   ],
+   "leverage_points": [
+    1.088,
+    5.244
+   ],
+   "gate_dropped": 0,
+   "split": {
+    "status": "OK",
+    "goal_share": {
+     "CAR": 0.5,
+     "VAN": 0.5
+    },
+    "target_lean": {
+     "CAR": 15,
+     "VAN": 15
+    },
+    "underdog": "CAR",
+    "sleeve_cap": 0.1,
+    "sleeve_target": 3,
+    "published": {
+     "lean": {
+      "CAR": 6,
+      "VAN": 21
+     },
+     "five_one": {
+      "CAR": 4,
+      "VAN": 15
+     },
+     "three_three": 3
+    },
+    "enforced": false
+   },
+   "p_top1_goalie_cpt": 0.060765,
+   "n_goalie_cpt": 23,
+   "p_top1_skater_cpt": 0.039771,
+   "n_skater_cpt": 7,
+   "lineups_sha": "79327a82731f817f",
+   "contests": [
+    {
+     "contest_id": "196000101",
+     "name": "NHL Showdown $150 Quarter Jukebox (VAN @ CAR)",
+     "family": "large_gpp",
+     "field_size": 713,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    },
+    {
+     "contest_id": "196000102",
+     "name": "NHL Showdown $100 Dime Time (VAN @ CAR)",
+     "family": "large_gpp",
+     "field_size": 1164,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    },
+    {
+     "contest_id": "196000103",
+     "name": "NHL Showdown $100 Daily Dollar [Single Entry] (VAN @ CAR)",
+     "family": "small_field",
+     "field_size": 109,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    }
+   ],
+   "statuses": {
+    "MODEL_STATUS": "PRIOR",
+    "FIELD_CALIBRATION": "PRIOR",
+    "PAYOUT_SOURCE": "PRIOR",
+    "RISK_BUDGET": "BREACHED(Captain fee share 0.66 > 0.40; goalie in 30 of 30 lineups > 15; 15 entries relaxed the goalie/game cap)"
+   },
+   "failed": [],
+   "slate": "bed",
+   "synthetic": true,
+   "key": "bed-L-s3"
+  },
+  {
+   "tag": "bed-L-s4",
+   "arm": "L",
+   "seed": 20261017,
+   "ok": true,
+   "seconds": 32.3,
+   "metric": 0.05766,
+   "metric_entries": 30,
+   "risk_budget": "BREACHED(Captain fee share 0.51 > 0.40; goalie in 30 of 30 lineups > 15; 15 entries relaxed the goalie/game cap)",
+   "portfolio": {
+    "entries": 30,
+    "goalie_cpt_entries": 21,
+    "mean_cpt_own_pct": 6.32,
+    "distinct_captains": 6,
+    "max_captain": "kevin lankinen|VAN|G",
+    "max_captain_count": 14,
+    "captain_cap": 7,
+    "field_goalie_cpt_pct": 9.7,
+    "field_contest": "196000102"
+   },
+   "would_bar": [
+    "frederik andersen|CAR|G",
+    "kevin lankinen|VAN|G"
+   ],
+   "barred_roles": [],
+   "goalie_ranks": [
+    {
+     "person": "frederik andersen|CAR|G",
+     "ceiling": 33.8,
+     "rank": 6
+    },
+    {
+     "person": "kevin lankinen|VAN|G",
+     "ceiling": 33.8,
+     "rank": 6
+    }
+   ],
+   "leverage_points": [
+    0.985,
+    5.51
+   ],
+   "gate_dropped": 0,
+   "split": {
+    "status": "OK",
+    "goal_share": {
+     "CAR": 0.5,
+     "VAN": 0.5
+    },
+    "target_lean": {
+     "CAR": 15,
+     "VAN": 15
+    },
+    "underdog": "CAR",
+    "sleeve_cap": 0.1,
+    "sleeve_target": 3,
+    "published": {
+     "lean": {
+      "CAR": 8,
+      "VAN": 17
+     },
+     "five_one": {
+      "CAR": 1,
+      "VAN": 13
+     },
+     "three_three": 5
+    },
+    "enforced": false
+   },
+   "p_top1_goalie_cpt": 0.060729,
+   "n_goalie_cpt": 21,
+   "p_top1_skater_cpt": 0.0505,
+   "n_skater_cpt": 9,
+   "lineups_sha": "cc1ebaa2f5ade461",
+   "contests": [
+    {
+     "contest_id": "196000101",
+     "name": "NHL Showdown $150 Quarter Jukebox (VAN @ CAR)",
+     "family": "large_gpp",
+     "field_size": 713,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    },
+    {
+     "contest_id": "196000102",
+     "name": "NHL Showdown $100 Dime Time (VAN @ CAR)",
+     "family": "large_gpp",
+     "field_size": 1164,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    },
+    {
+     "contest_id": "196000103",
+     "name": "NHL Showdown $100 Daily Dollar [Single Entry] (VAN @ CAR)",
+     "family": "small_field",
+     "field_size": 109,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    }
+   ],
+   "statuses": {
+    "MODEL_STATUS": "PRIOR",
+    "FIELD_CALIBRATION": "PRIOR",
+    "PAYOUT_SOURCE": "PRIOR",
+    "RISK_BUDGET": "BREACHED(Captain fee share 0.51 > 0.40; goalie in 30 of 30 lineups > 15; 15 entries relaxed the goalie/game cap)"
+   },
+   "failed": [],
+   "slate": "bed",
+   "synthetic": true,
+   "key": "bed-L-s4"
+  },
+  {
+   "tag": "bed-B-s0",
+   "arm": "B",
+   "seed": 20261013,
+   "ok": true,
+   "seconds": 29.9,
+   "metric": 0.044017,
+   "metric_entries": 30,
+   "risk_budget": "BREACHED(goalie in 22 of 30 lineups > 15; 8 entries relaxed the goalie/game cap)",
+   "portfolio": {
+    "entries": 30,
+    "goalie_cpt_entries": 0,
+    "mean_cpt_own_pct": 4.86,
+    "distinct_captains": 11,
+    "max_captain": "brock boeser|VAN|F",
+    "max_captain_count": 6,
+    "captain_cap": 7,
+    "field_goalie_cpt_pct": 12.4,
+    "field_contest": "196000102"
+   },
+   "would_bar": [
+    "frederik andersen|CAR|G",
+    "kevin lankinen|VAN|G"
+   ],
+   "barred_roles": [
+    "90000311",
+    "90000327"
+   ],
+   "goalie_ranks": [
+    {
+     "person": "frederik andersen|CAR|G",
+     "ceiling": 33.8,
+     "rank": 8
+    },
+    {
+     "person": "kevin lankinen|VAN|G",
+     "ceiling": 35.61,
+     "rank": 6
+    }
+   ],
+   "leverage_points": [
+    1.121,
+    5.391
+   ],
+   "gate_dropped": 5,
+   "split": {
+    "status": "OK",
+    "goal_share": {
+     "CAR": 0.5,
+     "VAN": 0.5
+    },
+    "target_lean": {
+     "CAR": 15,
+     "VAN": 15
+    },
+    "underdog": "CAR",
+    "sleeve_cap": 0.1,
+    "sleeve_target": 3,
+    "published": {
+     "lean": {
+      "CAR": 11,
+      "VAN": 17
+     },
+     "five_one": {
+      "CAR": 8,
+      "VAN": 12
+     },
+     "three_three": 2
+    },
+    "enforced": false
+   },
+   "p_top1_goalie_cpt": null,
+   "n_goalie_cpt": 0,
+   "p_top1_skater_cpt": 0.044017,
+   "n_skater_cpt": 30,
+   "lineups_sha": "ece3c9ae7b6bfda7",
+   "contests": [
+    {
+     "contest_id": "196000101",
+     "name": "NHL Showdown $150 Quarter Jukebox (VAN @ CAR)",
+     "family": "large_gpp",
+     "field_size": 713,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    },
+    {
+     "contest_id": "196000102",
+     "name": "NHL Showdown $100 Dime Time (VAN @ CAR)",
+     "family": "large_gpp",
+     "field_size": 1164,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    },
+    {
+     "contest_id": "196000103",
+     "name": "NHL Showdown $100 Daily Dollar [Single Entry] (VAN @ CAR)",
+     "family": "small_field",
+     "field_size": 109,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "HISTORY"
+    }
+   ],
+   "statuses": {
+    "MODEL_STATUS": "PRIOR",
+    "FIELD_CALIBRATION": "PRIOR",
+    "PAYOUT_SOURCE": "PRIOR",
+    "RISK_BUDGET": "BREACHED(goalie in 22 of 30 lineups > 15; 8 entries relaxed the goalie/game cap)"
+   },
+   "failed": [],
+   "slate": "bed",
+   "synthetic": true,
+   "key": "bed-B-s0"
+  }
+ ]
+}

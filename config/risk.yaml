@@ -56,6 +56,21 @@ discovery:
     ceiling_quantile: 0.9        # q90: the goalie's 90th percentile of points over the design scenarios
     ceiling_weight: 0.25         # a quarter of the gap between that and his mean
     leverage_weight: 10.0        # one point for each 10 percentage points of top-goalie share above his field ownership
+  # Showdown Captain policy (C23, [BEN] flags 96 to 98; experiment docs/experiments/captain_2026-10-13.md). Scenario pass only. Ceiling =
+  # a person's ceiling_quantile of simulated points over the design scenarios, ranked among every player on the slate. Gate: a goalie
+  # ranked above top_k is never Captain. Leverage: every Captain row gains weight x (ceiling / top ceiling) x ln(100 / max(CPT own %,
+  # own_floor_pct)) points (build/captain.py). Split: report only. Hand-set, labeled PRIOR, never fitted. BOTH SHIP OFF; turning one on
+  # needs Ben after the real run (B127) and a chunk that also wires v1, v2, late swap and QA.
+  captain:
+    goalie_gate:
+      enabled: false
+      ceiling_quantile: 0.99     # the 99th percentile
+      top_k: 3                   # rank = 1 + players with a strictly higher ceiling; a goalie may be Captain at rank <= 3
+    leverage:
+      enabled: false
+      weight: 1.5                # 30% against 5% owned, both top ceiling: 2.7 points; largest spread 5.5 points
+      own_floor_pct: 1.0         # a Captain owned less than 1% (or never drawn) counts as 1%
+    split_sleeve_max: 0.10       # report only: the underdog's 5-1 sleeve target cap (like stress_sleeve_max)
 
 # Selection (build/portfolio.select): candidates are screened per contest to the best
 # max(screen_min, screen_per_entry x its entries) by field-only family utility plus each discovery

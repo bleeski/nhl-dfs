@@ -57,6 +57,7 @@ def generate(
     min_pairwise_diff: int = 2,
     mip_rel_gap: float | None = None,
     avoid_own_goalie: bool = False,
+    exclude: frozenset[str] = frozenset(),
 ) -> list[Candidate]:
     """Up to n candidates. Fewer come back when the budget ends or every family is exhausted.
 
@@ -67,6 +68,8 @@ def generate(
     goalie (Classic only). Off by default, and the field sampler never asks, so the modeled field is unchanged. A
     family the rule makes infeasible is exhausted like any other, with fewer or no candidates returned; the selection
     step, not this one, decides what an entry gets when that happens.
+    exclude: role ids no family's model may choose (`LineupModel(exclude=...)`); C23's goalie gate passes barred Captain rows.
+    Empty by default, which builds the same model as before.
     """
     import numpy as np
 
@@ -84,7 +87,8 @@ def generate(
     models: dict[str, LineupModel | None] = {}
     for name, groups in menu:
         try:
-            models[name] = LineupModel(pool, mode, groups=tuple(groups), avoid_own_goalie=avoid_own_goalie)
+            models[name] = LineupModel(pool, mode, exclude=frozenset(exclude), groups=tuple(groups),
+                                       avoid_own_goalie=avoid_own_goalie)
         except InfeasibleInput:
             models[name] = None
     exhausted = {name for name, m in models.items() if m is None}
