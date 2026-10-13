@@ -25,8 +25,18 @@ Means are DK points in tenths, priced means on the 8,000 kept selection draws, M
 1. Reproducibility. Every draw column of a game with no DTD skater is byte-identical between the trees (09-29: 67 of 67,
    09-30: 87 of 87). On the mini fixture, C24 with every priced person forced back to the mask reproduces origin/master's
    cached draws and lineups byte for byte.
-2. The DTD skaters themselves are priced as before (his mean was p x dressed mean under the mask, and is now): changes
-   +0.5, +2.4 (Demidov, z 2.4, one of six), -0.4, +0.2, +0.2 and +0.2 tenths, all but one within 2 SE.
+2. The DTD skaters themselves are priced as before (his mean was p x dressed mean under the mask, and is now); all but
+   Demidov (z 2.4, one of six) within 2 SE. Each covered skater and his three most-changed teammates (by the size of the
+   cross-tree change; every one of them within noise, as expected for a lift of about one Monte Carlo SE):
+
+   | Slate | Skater | Before | After | Change (z) | Most-changed teammates: before to after (z, label) |
+   |---|---|---|---|---|---|
+   | 20260929 | Dakota Joshua (TOR) | 20.5 [0.4] | 21.1 [0.5] | +0.5 (0.84) | Matthew Knies (TOR) 76.8 to 78.8 (1.59, within noise); Auston Matthews (TOR) 82.9 to 84.1 (0.78, within noise); Jack Roslovic (TOR) 52.1 to 53.2 (1.04, within noise) |
+   | 20260929 | Ivan Demidov (MTL) | 59.0 [0.6] | 61.4 [0.8] | +2.4 (2.43) | Lane Hutson (MTL) 93.1 to 95.2 (1.9, within noise); Cole Caufield (MTL) 119.2 to 121.1 (1.26, within noise); Nick Suzuki (MTL) 116.5 to 118.2 (1.18, within noise) |
+   | 20260929 | Nick Paul (TOR) | 28.0 [0.5] | 27.6 [0.5] | -0.4 (-0.58) | Matthew Knies (TOR) 76.8 to 78.8 (1.59, within noise); Auston Matthews (TOR) 82.9 to 84.1 (0.78, within noise); Jack Roslovic (TOR) 52.1 to 53.2 (1.04, within noise) |
+   | 20260929 | Raphael Lavoie (VGK) | 3.9 [0.2] | 4.1 [0.2] | +0.2 (0.54) | Parker Wotherspoon (VGK) 52.2 to 51.7 (-0.69, within noise); Brayden Mcnabb (VGK) 64.1 to 63.6 (-0.55, within noise); Victor Olofsson (VGK) 49.3 to 49.7 (0.47, within noise) |
+   | 20260929 | Vincent Iorio (NYR) | 5.5 [0.2] | 5.7 [0.2] | +0.2 (0.5) | Eeli Tolvanen (NYR) 67.2 to 66.5 (-0.73, within noise); Pavel Dorofeyev (NYR) 96.7 to 97.4 (0.53, within noise); Vladislav Gavrikov (NYR) 66.7 to 67.2 (0.65, within noise) |
+   | 20260930 | Corey Perry (LAK) | 36.8 [0.5] | 37.0 [0.6] | +0.2 (0.26) | Cody Ceci (LAK) 50.5 to 51.8 (1.77, within noise); Quinton Byfield (LAK) 83.8 to 85.0 (1.02, within noise); Drew Doughty (LAK) 55.9 to 56.8 (1.11, within noise) |
 3. Team totals (the over-absorption check; per team, expected gain = sum of (1 - p) x his dressed mean, observed = summed
    change of every other skater on the team, TOR counted once):
 
@@ -51,8 +61,9 @@ Means are DK points in tenths, priced means on the 8,000 kept selection draws, M
    (29 of 30) is not interpretable.
 6. Timings, contended on the C24 side (another project's test suite ran through the C24 replays and both calibrate runs):
    simulation seconds design / selection / referee, 09-29 origin/master 7.4 / 12.1 / 11.4 against C24 15.4 / 15.9 / 14.0;
-   09-30 3.1 / 4.6 / 5.0 against 4.5 / 5.7 / 5.7. Whole replays 114 and 154 s against 183 and 161 s. The extra cost of the
-   draw itself is one small generator per DTD skater per chunk; the measured difference is load, not established as code.
+   09-30 3.1 / 4.6 / 5.0 against 4.5 / 5.7 / 5.7. Whole replays 114 and 154 s against 183 and 161 s. The draw's own cost was
+   not measured separately (it adds one small random generator per DTD skater per chunk); these timings were taken on a
+   busy machine and do not isolate it.
 
 ## Calibration (the card's exit check)
 
