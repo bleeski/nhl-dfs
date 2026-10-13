@@ -79,6 +79,11 @@ class Choice:
     dup: float
     dup_measure: str
     level: int  # 0 all caps, 1 overlap dropped, 2 exposure dropped, 3 goalie/game cap relaxed, 4 repeat
+    # C22 (flag 95): the band's anchor, the pick with no ownership order (rank under policy "mean" on the same items).
+    # The tie-break moved this pick when anchor_key differs from key.
+    anchor_key: str = ""
+    anchor_own: float = 0.0
+    anchor_dup: float = 0.0
 
 
 @dataclass
@@ -415,7 +420,7 @@ def _greedy(kappa: float, order: list, entry_contest: Mapping[str, str], fees: M
         rule = faced is not None and cid in rule_cids
         attempts = ([(0, True), (1, True), (2, True), (0, False), (1, False), (2, False), (3, True), (3, False), (4, True), (4, False)]
                     if rule else [(lv, False) for lv in (0, 1, 2, 3, 4)])
-        pick, level, over = None, 0, (0, 0.0)
+        pick, anchor, level, over = None, None, 0, (0, 0.0)
         for level, strict in attempts:
             ok = [k for k in range(K) if (not strict or not faced[k]) and passes(k, eid, level)]
             if ok and level == 3:  # relax the goalie and game caps by the smallest step any candidate needs
@@ -428,6 +433,7 @@ def _greedy(kappa: float, order: list, entry_contest: Mapping[str, str], fees: M
                                    float(fin[k]) / (S * prize) if top_n else 0.0)  # expected top-N finishes added (C47)
                      for k in ok]
             pick = tiebreak.rank(items, risk_cfg, st.policy)[0]
+            anchor = tiebreak.rank(items, risk_cfg, "mean")[0].item  # C22: what the pick is without the ownership order
             break
         k = pick.item.ref
         if level:
@@ -442,7 +448,7 @@ def _greedy(kappa: float, order: list, entry_contest: Mapping[str, str], fees: M
                                                        f"passed the caps; taken at level {level}"))
         choices[eid] = Choice(eid, cid, st.contest.family, k, candidates[k].key, candidates[k].family, float(score[k]),
                               float(se[k]), pick.band, pick.band_index, float(st.own_pct[k]), float(st.dup[k]),
-                              st.dup_name, level)
+                              st.dup_name, level, anchor.key, anchor.own, anchor.dup)
         # update state: fees, counts, own copies in this contest
         f = int(fees[eid])
         for g in goalies[k]:
@@ -696,3 +702,78 @@ def screen(states: Mapping[str, _ContestState], candidates: Sequence[Candidate],
 
 def lineup_keys(by_entry: Mapping[str, Sequence[str]], pool) -> dict[str, str]:
     return {e: lineup_key([pool.by_role_id[r] for r in lu], pool.mode) for e, lu in by_entry.items()}
+
+
+# -- C22 chalk core measurement (flag 95, docs/experiments/chalk_core_2026-10-13.md) ---------------------------------------
+
+CORE_POLICIES = ("own_then_dup", "dup_first")  # the in-band orders that read ownership or duplicates (large_gpp, small_field, wta)
+
+
+def _moved_by(ch: Choice, policy: str) -> str:
+    """Which component of the policy's in-band key made the pick differ from the band's anchor ("" when it did not)."""
+    if ch.anchor_key == ch.key:
+        return ""
+    if policy == "finishes":
+        return "finishes"
+    first, second = ("dup", "own") if policy == "dup_first" else ("own", "dup")
+    a = {"own": ch.anchor_own, "dup": ch.anchor_dup}
+    p = {"own": ch.own_pct, "dup": ch.dup}
+    return first if p[first] != a[first] else second
+
+
+def core_report(choices: Mapping[str, Choice], role_ids_by_key: Mapping[str, Sequence[str]], contests: Mapping[str, ob.Contest],
+                own_by_contest: Mapping[str, Mapping[str, float]], role_mean: Mapping[str, float], pool,
+                fam_cfg: dict) -> tuple[dict[str, dict], dict]:
+    """C22: per entry, the core pieces its pick and its band's anchor hold and what moved the pick; for the run, each
+    contest's core and the counts the preregistration decides on (N eligible picks, M moved, M_own and M_dup, D moved off
+    the core, U moved onto it) with the core retention of the picks beside the anchors'. Reads only; changes no pick."""
+    policy_of = {cid: fam_cfg["families"][ct.family]["selection"] for cid, ct in contests.items()}
+    cores = {cid: tiebreak.chalk_core(role_mean, own_by_contest.get(cid, {}), pool) for cid in contests}
+    rows: dict[str, dict] = {}
+    blank = {"N": 0, "M": 0, "M_own": 0, "M_dup": 0, "D": 0, "U": 0}
+    counts: dict[str, dict[str, int]] = {}
+    retention = {"picks": Counter(), "anchors": Counter()}
+    word = {0: "none", 1: "one", 2: "both"}
+    for eid, ch in choices.items():
+        policy, core = policy_of[ch.contest_id], cores[ch.contest_id]
+        moved = _moved_by(ch, policy)
+        held = tiebreak.core_held(role_ids_by_key[ch.key], core, pool) if core else None
+        untied = tiebreak.core_held(role_ids_by_key[ch.anchor_key], core, pool) if core else None
+        rows[eid] = {"core_held": held, "core_held_untied": untied, "tiebreak_moved": moved}
+        if not core or policy not in CORE_POLICIES:
+            continue
+        c = counts.setdefault(ch.family, dict(blank))
+        c["N"] += 1
+        c["M"] += bool(moved)
+        c["M_own"] += moved == "own"
+        c["M_dup"] += moved == "dup"
+        c["D"] += held < untied
+        c["U"] += held > untied
+        retention["picks"][word[held]] += 1
+        retention["anchors"][word[untied]] += 1
+    total = {k: sum(c[k] for c in counts.values()) for k in blank}
+
+    def person(pk: str, cid: str) -> dict:
+        row = pool.persons[pk].classic  # a core exists only in Classic, one row per person
+        rid = row.role_id
+        mean, own = float(role_mean.get(rid, 0.0)), float(own_by_contest.get(cid, {}).get(rid, 0.0))
+        return {"person": pk, "name": row.name, "team": row.team, "mean_pts": round(mean / 10.0, 2), "own_pct": round(own, 1),
+                "product": round(mean / 10.0 * own, 1)}
+
+    eligible = sorted({ch.contest_id for ch in choices.values() if cores[ch.contest_id] and policy_of[ch.contest_id] in CORE_POLICIES})
+    summary = {
+        "definition": "flag 95: per contest the two skaters with the largest selection mean x field ownership; a pick is counted when "
+                      "its contest's policy is own_then_dup or dup_first (Classic); D = the pick holds fewer core pieces than the "
+                      "band's anchor (the pick with no ownership order)",
+        "mode": pool.mode.value,
+        "contests": {cid: {"family": ct.family, "policy": policy_of[cid],
+                           "core": [person(pk, cid) for pk in cores[cid]]} for cid, ct in sorted(contests.items())},
+        "eligible_contests": eligible,
+        "cores_agree": len({cores[cid] for cid in eligible}) <= 1,
+        "counts": dict(sorted(counts.items())),
+        "total": total,
+        "retention": {k: {w: int(v[w]) for w in ("both", "one", "none")} for k, v in retention.items()},
+    }
+    if pool.mode is not Mode.CLASSIC:
+        summary["skipped"] = "Showdown: no core (Classic only, flag 95); tiebreak_moved is still recorded per entry"
+    return rows, summary
