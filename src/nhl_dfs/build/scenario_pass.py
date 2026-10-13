@@ -17,12 +17,14 @@ runs/<id>/scenario/ (build/scenario_cache.py) for late swap and refresh.
 
 from __future__ import annotations
 
+import json
 import time
 from collections import Counter
 from typing import Any
 
 import numpy as np
 
+from nhl_dfs.build import captain as cap_mod
 from nhl_dfs.build import exposure
 from nhl_dfs.build import objectives as ob
 from nhl_dfs.build import portfolio as pf
@@ -268,11 +270,17 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
                               own=fb.marginals[big.contest_id].own)
     cands = list(found)
     seen = {x.key for x in cands}
+    # C23 (flag 96): with the goalie gate on, a bank or provisional lineup whose Captain is barred is dropped too
+    barred = frozenset(((disc.get("captain") or {}).get("goalie_gate") or {}).get("barred_roles") or ())
+    gate_dropped = 0
     extra = [(lu, "central:provisional") for lu in (prov["assignment"].by_entry.values() if prov else [])]
     extra += [(x.role_ids, "central:bank") for x in ((prov.get("bank") or []) if prov else [])]
     for lu, tag in extra:
         rows = [work.by_role_id[r] for r in lu if r in work.by_role_id]
         if len(rows) != len(lu):
+            continue
+        if barred and cap_mod.captain_barred(lu, barred):
+            gate_dropped += 1
             continue
         key = lineup_key(rows, work.mode)
         if key not in seen:
@@ -282,6 +290,8 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
     timings["discovery_peak_mb"] = peak_mb()
     sec["discovery"] = {**disc, "chalk_team": chalk, "candidates": len(cands),
                         "from_bank_and_provisional": len(cands) - len(found)}
+    if barred:
+        sec["discovery"]["captain_gate_dropped"] = gate_dropped
 
     # caps and the risk budget
     fees = {e.entry_id: ob.to_cents(contests_mod.fee_value(e.fee) or 0) for e in entries.entries}
@@ -339,6 +349,9 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
     # C22 (flag 95): the chalk core and how often the ownership tie-break moved a pick off it; reads only
     core_rows, sec["chalk_core"] = pf.core_report(sel.choices, {c.key: c.role_ids for c in cands}, contests, own_by,
                                                   sets["selection"].means_tenths(), work, fam_cfg)
+    if work.mode is Mode.SHOWDOWN:  # C23 (flags 96 to 98): reads only; a failure is reported and never costs the run its file
+        sec["captain"] = _captain_section(disc, by_entry, work, entries, contests, own_by, big.contest_id, caps, slate,
+                                          risk_cfg, gate_dropped)
     rows = []
     for e in entries.entries:
         ch = sel.choices[e.entry_id]
@@ -434,6 +447,29 @@ def _grow_fields(work, proj, contexts, fb, own_n, prov, st, risk_cfg, seed, over
                        "sampler": sampler, "mip_rel_gap": g.get("mip_rel_gap") if sampler.startswith("milp") else None,
                        "detail": extra.detail, "shape_mix": field_mod.shape_report(joined, work, own_cfg)}
     return FieldBuild(fields, margs, fb.elapsed_s, fb.feats, fb.inputs), report
+
+
+def _captain_section(disc, by_entry, work, entries, contests, own_by, big_cid, caps, slate, risk_cfg, gate_dropped) -> dict:
+    """C23: the Captain policy's report, the published portfolio's Captains and the split report, in built-in types only."""
+    try:
+        cfg = cap_mod.config(risk_cfg)
+        contest_of = {e.entry_id: str(e.contest_id) for e in entries.entries}
+        tournament = {e.entry_id for e in entries.entries if contests[str(e.contest_id)].family != "cash"}
+        share = {}
+        for g in slate.games:
+            lh, la = float(g.rates.lambda_home), float(g.rates.lambda_away)
+            if lh + la > 0:
+                share[g.home], share[g.away] = lh / (lh + la), la / (lh + la)
+        lineups = [tuple(lu) for e, lu in sorted(by_entry.items()) if e in tournament]
+        out = {"policy": disc.get("captain") or {},
+               "portfolio": cap_mod.portfolio_report(by_entry, work, contest_of, own_by, str(big_cid), caps.captain),
+               "split": cap_mod.split_report(share, lineups, work, len(lineups), float(cfg.get("split_sleeve_max", 0.10)),
+                                             len(slate.games)),
+               "gate_dropped": int(gate_dropped)}
+        json.dumps(out)  # the manifest is plain json: refuse anything else here, not at publish
+        return out
+    except Exception as exc:
+        return {"error": f"{type(exc).__name__}: {str(exc)[:160]}"}
 
 
 def _chalk_team(pool, own: dict) -> str | None:

@@ -186,6 +186,9 @@ def discover(pool, design: ob.ScenarioSet, n_total: int, runtime: dict, risk_cfg
     own: role_id -> percent ownership in the biggest contest's field, for the goalie term (C20, flag 54), which
     `discovery.goalie_term.enabled` switches on (shipped off; Classic only): every job's goalie rows gain
     `goalie_term_points`, and with it off nothing here changes.
+    Showdown (C23, flags 96 and 97): `captain.policy` reads `discovery.captain`; with the goalie gate on every job excludes the
+    barred Captain rows, with the leverage term on every job's Captain rows gain its points, and with both off nothing here
+    changes. The policy's report (the goalie ranks and would-be-barred goalies) is `report["captain"]` on every Showdown slate.
     Returns (candidates, report)."""
     from nhl_dfs.build import candidates as cand_mod
     from nhl_dfs.build.milp import GroupConstraint
@@ -199,10 +202,13 @@ def discover(pool, design: ob.ScenarioSet, n_total: int, runtime: dict, risk_cfg
     tp = team_points(design, pool)
     gt = d.get("goalie_term") or {}
     term = goalie_term_points(design, pool, gt, own) if gt.get("enabled") and pool.mode is Mode.CLASSIC else {}
+    cp = _captain_policy(design, pool, risk_cfg, own)
 
     def objective(rows=None):
         obj = role_objective(design, pool, rows)
         for rid, v in term.items():
+            obj[rid] += v
+        for rid, v in cp.term.items():
             obj[rid] += v
         return obj
 
@@ -233,12 +239,16 @@ def discover(pool, design: ob.ScenarioSet, n_total: int, runtime: dict, risk_cfg
               "goalie_term": {"enabled": bool(term), "points": {k: round(v, 3) for k, v in sorted(term.items())}}}
     if menu:
         report["target"]["goalie"] = jobs[-1][2]
+    if pool.mode is Mode.SHOWDOWN:
+        report["captain"] = cp.report
+    gate_kw = {"exclude": cp.barred} if cp.barred else {}  # passed only when the gate bars a row: off, the call is as before
     for i, (name, obj, k) in enumerate(jobs):
         try:
             got = cand_mod.generate(pool, pool.mode, obj, k, seed=seed + 101 * i, perturb_sd=float(c["perturb_sd_points"]),
                                     time_limit_total_s=max(1.0, budget * k / total_k),
                                     min_pairwise_diff=int(c["min_pairwise_diff"]),
-                                    groups_menu=menu if name == "goalie" else (), avoid_own_goalie=avoid_own_goalie)
+                                    groups_menu=menu if name == "goalie" else (), avoid_own_goalie=avoid_own_goalie,
+                                    **gate_kw)
         except cand_mod.SolverUnavailable:
             got = []
         for g in got:
@@ -249,6 +259,22 @@ def discover(pool, design: ob.ScenarioSet, n_total: int, runtime: dict, risk_cfg
             report["made"][name.split(":")[0]] += 1
     report["made"] = dict(report["made"])
     return out, report
+
+
+def _captain_policy(design: ob.ScenarioSet, pool, risk_cfg: Mapping, own: Mapping[str, float] | None):
+    """C23: the Showdown Captain policy. With both switches off it only reports, so a failure there is reported, never raised;
+    with a switch on it must work and raises."""
+    from nhl_dfs.build import captain as cap_mod
+
+    if pool.mode is not Mode.SHOWDOWN:
+        return cap_mod.CaptainPolicy()
+    try:
+        return cap_mod.policy(design, pool, risk_cfg, own)
+    except Exception as exc:
+        c = cap_mod.config(risk_cfg)
+        if (c.get("goalie_gate") or {}).get("enabled") or (c.get("leverage") or {}).get("enabled"):
+            raise
+        return cap_mod.CaptainPolicy(report={"error": f"{type(exc).__name__}: {str(exc)[:120]}"})
 
 
 def goalie_tag(person_key: str) -> str:

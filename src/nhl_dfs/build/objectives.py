@@ -85,6 +85,23 @@ def validate_risk_config(cfg: dict) -> None:
             raise ValueError("risk.yaml discovery.goalie_term.ceiling_quantile must be in (0, 1)")
         if float(gt.get("ceiling_weight", -1)) < 0 or float(gt.get("leverage_weight", -1)) < 0:
             raise ValueError("risk.yaml discovery.goalie_term weights must be non-negative")
+    cp = (cfg.get("discovery") or {}).get("captain")
+    if cp is not None:
+        g, lv = cp.get("goalie_gate") or {}, cp.get("leverage") or {}
+        for name, blk in (("goalie_gate", g), ("leverage", lv)):
+            if not isinstance(blk.get("enabled"), bool):
+                raise ValueError(f"risk.yaml discovery.captain.{name}.enabled must be true or false")
+        if not 0 < float(g.get("ceiling_quantile", 0)) < 1:
+            raise ValueError("risk.yaml discovery.captain.goalie_gate.ceiling_quantile must be in (0, 1)")
+        k = g.get("top_k")
+        if isinstance(k, bool) or not isinstance(k, int) or k < 1:
+            raise ValueError("risk.yaml discovery.captain.goalie_gate.top_k must be a whole number >= 1")
+        if float(lv.get("weight", -1)) < 0:
+            raise ValueError("risk.yaml discovery.captain.leverage.weight must be non-negative")
+        if not 0 < float(lv.get("own_floor_pct", 0)) <= 100:
+            raise ValueError("risk.yaml discovery.captain.leverage.own_floor_pct must be in (0, 100]")
+        if not 0 <= float(cp.get("split_sleeve_max", -1)) <= 1:
+            raise ValueError("risk.yaml discovery.captain.split_sleeve_max must be in [0, 1]")
     og = cfg.get("own_goalie")
     if og is not None:
         if not isinstance(og.get("enabled"), bool):
