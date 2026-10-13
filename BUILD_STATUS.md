@@ -32,7 +32,7 @@ Tracker for `BUILD_CHUNKS.md` (final, 26 September 2026). Every development sess
 | C46 | DONE | C19 | 2026-10-08 | 2026-10-08 | 22d3430 | PASS | band 1; B100; flag 47 answered yes 2026-10-08, rules in flag 49; ranked ahead of C20. DONE 2026-10-08: the real-pool gate passed (5+ 21.5 against 21.3, 3+ 95.7, 4+ 65.7) and the team5 table is switched on in commit 22d3430 (flag 49 OUTCOME); B100 DONE, B101 (no 6-1-1 in the field) open; B43 counts runs built on one mixture |
 | C20 | DONE | C18 | 2026-10-09 | 2026-10-09 | 6f6b9c0 | PASS | band 1; B37, B45; flag 13 default in force |
 | C21 | DONE | C19, C18, C46 | 2026-10-10 | 2026-10-10 | 962829b | PASS | band 1, experiment; B44, B22; reads B101 (the sampled field has no 6-1-1). DONE 2026-10-10 in a cloud session that could run only the synthetic bed: the study is NOT MEASURED on real caches (flag 63), no sleeve is built, the real run is B107; flags 56 to 63 |
-| C22 | TODO | C19 | | | | | band 1, experiment: DONE on rejected is valid; B46 |
+| C22 | IN_PROGRESS | C19 | 2026-10-13 |  |  |  | band 1, experiment: DONE on rejected is valid; B46 |
 | C23 | TODO | C20 | | | | | band 1, experiment: DONE on rejected is valid; B49; flag 12 default in force |
 | C24 | TODO | C6 | | | | | band 1; B14; flag 8 default in force |
 | C25 | TODO | C6 | | | | | band 1; B64, B6; produces C13's gate evidence |
