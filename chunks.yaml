@@ -786,6 +786,9 @@ deferred:
   - item: "Chalk core measurement on the real 09-29 and 09-30 runs (B126, B46)"
     trigger: "Ben runs scripts/c22_chalk_core.py on runs 20260929-222125-classic and 20260930-214909-classic (the PowerShell block in the C22 report, which also runs B102 and B107), or two later Classic runs saved on his machine give a second pair of real slates"
     backlog: [B126]
+  - item: "Showdown Captain report and the gate and leverage arms on the saved Showdown slates (B127, B49)"
+    trigger: "Ben runs the PowerShell block in docs/experiments/captain_2026-10-13.md (scripts/standings_synthesis.py on the saved Showdown standings, then scripts/c23_captain.py on the saved Showdown runs), or attaches the Showdown standings exports to a session"
+    backlog: [B127]
   - item: "CI and merge cost of a cloud run's entered-record pull request (B106)"
     trigger: "Ben turns on Allow auto-merge in the repo settings, or the next change to .github/workflows/ci.yml, whichever comes first"
     backlog: [B106]
