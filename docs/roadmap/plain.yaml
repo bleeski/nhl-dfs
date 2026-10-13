@@ -51,8 +51,8 @@ asks:
     chunks: [C20, C21, C22, C23]
     since: 2026-10-13
     question: Run the real-slate tests on your machine.
-    why: Four ideas were built in cloud sessions that had no saved real slates (goalie leverage, bigger stacks, keeping the chalk core, Showdown Captain rules). Each was tested only on made-up data, so each ships switched off. Your machine has the saved Sept 29 and Sept 30 runs these tests need.
-    recommendation: Ask Claude in a local session to walk you through the copy-and-paste PowerShell blocks in docs/experiments/chalk_core_2026-10-13.md (goalie leverage, stack size, chalk core) and docs/experiments/captain_2026-10-13.md (Showdown Captains). Nothing changes your lineups unless a test passes and you agree.
+    why: Four ideas were built in cloud sessions that had no saved real slates (goalie leverage, bigger stacks, keeping the chalk core, Showdown Captain rules). Each was tested only on made-up data, so each ships switched off. Three of them need the Sept 29 and Sept 30 Classic runs, which are saved on your machine.
+    recommendation: Ask Claude in a local session to walk you through the copy-and-paste PowerShell block in docs/experiments/chalk_core_2026-10-13.md (goalie leverage, stack size, chalk core). The Showdown Captain block (docs/experiments/captain_2026-10-13.md) also needs saved Showdown runs from Oct 3 on, and as of Oct 13 your machine has none because those slates ran in the cloud, so for now it can only check the Captain pattern in your Oct 2 results. Nothing changes your lineups unless a test passes and you agree.
 
 updates:
   - date: 2026-10-13

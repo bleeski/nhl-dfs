@@ -38,9 +38,11 @@ Ben asked that this run only after a dev session. A lineup run opens its own sma
 
 Run the `nhl-roadmap` skill (or the steps in `.claude/skills/nhl-roadmap/SKILL.md`) on the merged master: `python
 tools/roadmap.py build`, then republish the page to the link in docs/roadmap/README.md. If the check prints
-ROADMAP=STALE, do not edit docs/roadmap/plain.yaml here: say which entries are missing and put "bring
-docs/roadmap/plain.yaml up to date first" at the top of the next prompt. Report `ROADMAP_PAGE=PUBLISHED`,
-`ROADMAP_PAGE=STALE` or `ROADMAP_PAGE=NOT_PUBLISHED (<reason>)` in the reply.
+ROADMAP=STALE, do not edit docs/roadmap/plain.yaml here: say which entries are missing. Report
+`ROADMAP_PAGE=PUBLISHED`, `ROADMAP_PAGE=STALE` or `ROADMAP_PAGE=NOT_PUBLISHED (<reason>)` in the reply. When it is not
+PUBLISHED, add one line to the next prompt, inside it after the `/plan` line (check-prompt requires the prompt to
+start with `/plan`): "Before the chunk: bring docs/roadmap/plain.yaml up to date (ROADMAP=STALE: <ids>)" or "Before
+the chunk: republish the roadmap page with the nhl-roadmap skill if this session has the Artifact tool".
 
 ## Do not
 

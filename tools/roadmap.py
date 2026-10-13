@@ -96,6 +96,9 @@ def check(root: Path = ROOT) -> list[str]:
         for cid in ask.get("chunks") or []:
             if cid not in ids:
                 problems.append(f"asks[{i}] ({ask.get('id')}): unknown chunk {cid}")
+            elif _status(rows, cid) not in ("DONE", "BLOCKED", "GATED"):
+                problems.append(f"asks[{i}] ({ask.get('id')}): {cid} is now {_status(rows, cid)}, so the ask may be "
+                                "answered; update or remove it")
     for label, text in _texts(plain):
         if "—" in text:
             problems.append(f"{label}: contains an em dash (style rule)")

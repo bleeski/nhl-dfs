@@ -48,7 +48,7 @@ STATUS = """# Build status
 |---|---|---|---|---|---|---|---|
 | C0a | DONE |  | 2026-09-26 | 2026-09-26 | abc1234 | PASS | first |
 | C1 | TODO | C0a | | | | | |
-| C2 | TODO | C1 | | | | | |
+| C2 | BLOCKED | C1 | | | | | |
 
 ## Open [BEN] flags
 """
@@ -139,6 +139,13 @@ def test_done_without_result_and_em_dash_are_reported(tree):
     assert any("C1.matters: contains an em dash" in p for p in problems)
 
 
+def test_ask_on_an_unblocked_chunk_is_reported(tree):
+    """Catches a 'Waiting on you' item left on the page after Ben answered and the chunk went back to TODO."""
+    assert roadmap.check(tree) == []
+    (tree / "BUILD_STATUS.md").write_text(STATUS.replace("| C2 | BLOCKED |", "| C2 | TODO |"), encoding="utf-8")
+    assert any("asks[0] (one): C2 is now TODO" in p for p in roadmap.check(tree))
+
+
 def test_unbanded_chunk_needs_a_goal(tree):
     _set_plain(tree, "    goal: foundation\n", "")
     assert any(p.startswith("C0a: no band") for p in roadmap.check(tree))
@@ -150,7 +157,7 @@ def test_page_data_states_rank_and_escaping(tree):
     data = json.loads(blob)
     by = {c["id"]: c for c in data["chunks"]}
     assert data["next"] == "C1"
-    assert (by["C0a"]["state"], by["C1"]["state"], by["C2"]["state"]) == ("done", "next", "queued")
+    assert (by["C0a"]["state"], by["C1"]["state"], by["C2"]["state"]) == ("done", "next", "on_hold")
     assert (by["C0a"]["rank"], by["C1"]["rank"], by["C2"]["rank"]) == (None, 1, 2)
     assert (by["C1"]["goal"], by["C2"]["goal"], by["C0a"]["goal"]) == ("win", "washout", "foundation")
     assert by["C2"]["asked"] is True and by["C0a"]["finished"] == "2026-09-26"

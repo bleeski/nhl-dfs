@@ -24,7 +24,16 @@ so the suite fails until the notes are current.
   data, and adds one `updates` line (CLAUDE.md, Finish).
 - A session that adds, splits or retitles a chunk writes or rereads that entry and runs `python tools/roadmap.py stamp <id>`.
 - A queue change (reorder, a new band, Ben's answer that unblocks a chunk) adds one `updates` line, and edits or removes
-  the matching `asks` entry.
+  the matching `asks` entry. The check fails while an ask names a chunk that is no longer DONE, BLOCKED or GATED.
+- Backlog work that settles a `caveat` or an `ask` (for example the real-slate runs B102, B107, B126 and B127 behind
+  the C20 to C23 caveats) rewrites or removes them and adds one `updates` line. The check cannot see this one, so it is
+  on the session.
+
+## When the page falls behind
+
+A session without the Artifact tool cannot publish (`ROADMAP_PAGE=NOT_PUBLISHED`). Any later session that has the tool
+catches up: `read` the link, compare the commit in the page footer with `git rev-parse --short origin/master`, and when
+they differ, build from an up-to-date master and republish.
 
 ## When the page is republished
 

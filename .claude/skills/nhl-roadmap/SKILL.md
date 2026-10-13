@@ -21,7 +21,9 @@ claude.ai artifact; the link and the rules for writing the notes are in docs/roa
    `file_path` = outputs/roadmap/roadmap.html and `url` = the link, no `icon`, and a short `label` such as
    "C24 done" or "queue change 2026-10-14". Never publish without `url`: that creates a second page.
 4. No Artifact tool in this session (some cloud sessions): say `ROADMAP_PAGE=NOT_PUBLISHED (no Artifact tool)`. The
-   notes in the repo are what matter; the next session with the tool republishes.
+   notes in the repo are what matter; the next session with the tool republishes. Catch-up, in any session with the
+   tool: the page footer names the commit it was built from; when it differs from `git rev-parse --short
+   origin/master`, build from an up-to-date master and republish.
 5. Tell Ben in one line what changed on the page (the newest `updates` line) and give the link.
 
 ## Do not
