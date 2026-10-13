@@ -336,6 +336,9 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
     sec["family_mix"] = {"target": dict(zip(("central", "alternate", "priors_wrong"), sel.families_target)),
                          "selected": sel.family_mix}
     sec["portfolio"] = {**ref.record(), "measured_on": "referee scenarios"}
+    # C22 (flag 95): the chalk core and how often the ownership tie-break moved a pick off it; reads only
+    core_rows, sec["chalk_core"] = pf.core_report(sel.choices, {c.key: c.role_ids for c in cands}, contests, own_by,
+                                                  sets["selection"].means_tenths(), work, fam_cfg)
     rows = []
     for e in entries.entries:
         ch = sel.choices[e.entry_id]
@@ -343,7 +346,7 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
         rows.append({"entry_id": e.entry_id, "contest_id": str(e.contest_id), "family": ch.family,
                      "PAYOUT_SOURCE": contests[str(e.contest_id)].payout_source.value,
                      "candidate_family": ch.cand_family, "band_index": ch.band_index, "own_sum_pct": round(ch.own_pct, 1),
-                     "dup": round(ch.dup, 2), "dup_measure": ch.dup_measure, "cap_level": ch.level,
+                     "dup": round(ch.dup, 2), "dup_measure": ch.dup_measure, "cap_level": ch.level, **core_rows[e.entry_id],
                      "dtd_players": sum(1 for r in by_entry[e.entry_id] if st.get(r, (None,))[0] is Participation.QUESTIONABLE),
                      **pe})
     sec["entries"] = rows

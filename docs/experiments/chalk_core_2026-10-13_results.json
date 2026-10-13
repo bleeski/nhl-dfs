@@ -1,0 +1,680 @@
+{
+ "summary": {
+  "verdict": "NOT MEASURED on real caches (a synthetic slate is in the run; its statuses decide nothing)",
+  "slates": [
+   {
+    "slate": "bed",
+    "synthetic": true,
+    "clock": "2026-10-15T12:00:00+00:00",
+    "entries_cloned_to": 40,
+    "scenario_n": {
+     "design": 1000,
+     "selection": 3000,
+     "referee": 3000,
+     "field_target": 1000
+    },
+    "noise": {
+     "identical_lineups": true,
+     "identical_counts": true
+    },
+    "cloned": {
+     "seeds": 5,
+     "N": 200,
+     "M": 186,
+     "M_own": 186,
+     "M_dup": 0,
+     "D": 62,
+     "U": 34,
+     "seeds_with_D": 3,
+     "D_rate": 0.31,
+     "verdict": "INCONCLUSIVE"
+    },
+    "contests": [
+     {
+      "contest_id": "297000001",
+      "name": "NHL Synthetic Classic",
+      "family": "large_gpp",
+      "field_size": 5000,
+      "PAYOUT_SOURCE": "PRIOR",
+      "FIELD_SIZE_SOURCE": "PRIOR"
+     }
+    ],
+    "core": {
+     "297000001": {
+      "family": "large_gpp",
+      "policy": "own_then_dup",
+      "core": [
+       "Delta C1 (DDD) 10.56 pts x 18.9%",
+       "Bravo RW1 (BBB) 7.9 pts x 25.2%"
+      ]
+     }
+    },
+    "cores_agree": true,
+    "information_only": {
+     "as_entered": {
+      "N": 5,
+      "M": 4,
+      "M_own": 4,
+      "M_dup": 0,
+      "D": 1,
+      "U": 1,
+      "entries": 5,
+      "retention": {
+       "picks": {
+        "both": 0,
+        "one": 1,
+        "none": 4
+       },
+       "anchors": {
+        "both": 0,
+        "one": 1,
+        "none": 4
+       }
+      }
+     },
+     "core_retention_without_the_ownership_order": {
+      "both": 1,
+      "one": 11,
+      "none": 28
+     },
+     "core_retention_shipping_seed0": {
+      "both": 0,
+      "one": 12,
+      "none": 28
+     }
+    }
+   }
+  ],
+  "seeds": [
+   20261013,
+   20261014,
+   20261015,
+   20261016,
+   20261017
+  ],
+  "thresholds": {
+   "warrant_rate": 0.1,
+   "warrant_seeds": 4,
+   "reject_rate": 0.03
+  },
+  "pythonhashseed": "0",
+  "finished_utc": "2026-10-13T02:57:42Z"
+ },
+ "runs": [
+  {
+   "tag": "bed-noise-first",
+   "seed": 20261013,
+   "policy_mean": false,
+   "ok": true,
+   "seconds": 33.2,
+   "N": 40,
+   "M": 37,
+   "M_own": 37,
+   "M_dup": 0,
+   "D": 18,
+   "U": 2,
+   "counts_by_family": {
+    "large_gpp": {
+     "N": 40,
+     "M": 37,
+     "M_own": 37,
+     "M_dup": 0,
+     "D": 18,
+     "U": 2
+    }
+   },
+   "retention": {
+    "picks": {
+     "both": 0,
+     "one": 12,
+     "none": 28
+    },
+    "anchors": {
+     "both": 0,
+     "one": 28,
+     "none": 12
+    }
+   },
+   "cores_agree": true,
+   "retention_ownership_families": {
+    "both": 0,
+    "one": 12,
+    "none": 28
+   },
+   "core": {
+    "297000001": {
+     "family": "large_gpp",
+     "policy": "own_then_dup",
+     "core": [
+      "Delta C1 (DDD) 10.56 pts x 18.9%",
+      "Bravo RW1 (BBB) 7.9 pts x 25.2%"
+     ]
+    }
+   },
+   "contests": [
+    {
+     "contest_id": "297000001",
+     "name": "NHL Synthetic Classic",
+     "family": "large_gpp",
+     "field_size": 5000,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "PRIOR"
+    }
+   ],
+   "entries": 40,
+   "statuses": {
+    "MODEL_STATUS": "PRIOR",
+    "FIELD_CALIBRATION": "PRIOR",
+    "PAYOUT_SOURCE": "PRIOR",
+    "RISK_BUDGET": "OK"
+   },
+   "lineups_sha": "70afb4c1166e14c5",
+   "failed": [],
+   "slate": "bed",
+   "arm": "cloned",
+   "synthetic": true
+  },
+  {
+   "tag": "bed-noise-second",
+   "seed": 20261013,
+   "policy_mean": false,
+   "ok": true,
+   "seconds": 30.8,
+   "N": 40,
+   "M": 37,
+   "M_own": 37,
+   "M_dup": 0,
+   "D": 18,
+   "U": 2,
+   "counts_by_family": {
+    "large_gpp": {
+     "N": 40,
+     "M": 37,
+     "M_own": 37,
+     "M_dup": 0,
+     "D": 18,
+     "U": 2
+    }
+   },
+   "retention": {
+    "picks": {
+     "both": 0,
+     "one": 12,
+     "none": 28
+    },
+    "anchors": {
+     "both": 0,
+     "one": 28,
+     "none": 12
+    }
+   },
+   "cores_agree": true,
+   "retention_ownership_families": {
+    "both": 0,
+    "one": 12,
+    "none": 28
+   },
+   "core": {
+    "297000001": {
+     "family": "large_gpp",
+     "policy": "own_then_dup",
+     "core": [
+      "Delta C1 (DDD) 10.56 pts x 18.9%",
+      "Bravo RW1 (BBB) 7.9 pts x 25.2%"
+     ]
+    }
+   },
+   "contests": [
+    {
+     "contest_id": "297000001",
+     "name": "NHL Synthetic Classic",
+     "family": "large_gpp",
+     "field_size": 5000,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "PRIOR"
+    }
+   ],
+   "entries": 40,
+   "statuses": {
+    "MODEL_STATUS": "PRIOR",
+    "FIELD_CALIBRATION": "PRIOR",
+    "PAYOUT_SOURCE": "PRIOR",
+    "RISK_BUDGET": "OK"
+   },
+   "lineups_sha": "70afb4c1166e14c5",
+   "failed": [],
+   "slate": "bed",
+   "arm": "noise",
+   "synthetic": true
+  },
+  {
+   "tag": "bed-cloned-s1",
+   "seed": 20261014,
+   "policy_mean": false,
+   "ok": true,
+   "seconds": 31.6,
+   "N": 40,
+   "M": 38,
+   "M_own": 38,
+   "M_dup": 0,
+   "D": 0,
+   "U": 17,
+   "counts_by_family": {
+    "large_gpp": {
+     "N": 40,
+     "M": 38,
+     "M_own": 38,
+     "M_dup": 0,
+     "D": 0,
+     "U": 17
+    }
+   },
+   "retention": {
+    "picks": {
+     "both": 2,
+     "one": 15,
+     "none": 23
+    },
+    "anchors": {
+     "both": 0,
+     "one": 0,
+     "none": 40
+    }
+   },
+   "cores_agree": true,
+   "retention_ownership_families": {
+    "both": 2,
+    "one": 15,
+    "none": 23
+   },
+   "core": {
+    "297000001": {
+     "family": "large_gpp",
+     "policy": "own_then_dup",
+     "core": [
+      "Charlie RW1 (CCC) 7.98 pts x 25.0%",
+      "Foxtrot C1 (FFF) 10.44 pts x 18.3%"
+     ]
+    }
+   },
+   "contests": [
+    {
+     "contest_id": "297000001",
+     "name": "NHL Synthetic Classic",
+     "family": "large_gpp",
+     "field_size": 5000,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "PRIOR"
+    }
+   ],
+   "entries": 40,
+   "statuses": {
+    "MODEL_STATUS": "PRIOR",
+    "FIELD_CALIBRATION": "PRIOR",
+    "PAYOUT_SOURCE": "PRIOR",
+    "RISK_BUDGET": "OK"
+   },
+   "lineups_sha": "e38071e45f5bd99e",
+   "failed": [],
+   "slate": "bed",
+   "arm": "cloned",
+   "synthetic": true
+  },
+  {
+   "tag": "bed-cloned-s2",
+   "seed": 20261015,
+   "policy_mean": false,
+   "ok": true,
+   "seconds": 32.4,
+   "N": 40,
+   "M": 37,
+   "M_own": 37,
+   "M_dup": 0,
+   "D": 0,
+   "U": 10,
+   "counts_by_family": {
+    "large_gpp": {
+     "N": 40,
+     "M": 37,
+     "M_own": 37,
+     "M_dup": 0,
+     "D": 0,
+     "U": 10
+    }
+   },
+   "retention": {
+    "picks": {
+     "both": 1,
+     "one": 9,
+     "none": 30
+    },
+    "anchors": {
+     "both": 0,
+     "one": 0,
+     "none": 40
+    }
+   },
+   "cores_agree": true,
+   "retention_ownership_families": {
+    "both": 1,
+    "one": 9,
+    "none": 30
+   },
+   "core": {
+    "297000001": {
+     "family": "large_gpp",
+     "policy": "own_then_dup",
+     "core": [
+      "Charlie RW1 (CCC) 7.86 pts x 24.4%",
+      "Alpha C1 (AAA) 10.31 pts x 18.3%"
+     ]
+    }
+   },
+   "contests": [
+    {
+     "contest_id": "297000001",
+     "name": "NHL Synthetic Classic",
+     "family": "large_gpp",
+     "field_size": 5000,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "PRIOR"
+    }
+   ],
+   "entries": 40,
+   "statuses": {
+    "MODEL_STATUS": "PRIOR",
+    "FIELD_CALIBRATION": "PRIOR",
+    "PAYOUT_SOURCE": "PRIOR",
+    "RISK_BUDGET": "OK"
+   },
+   "lineups_sha": "8139aaa1c3db72cc",
+   "failed": [],
+   "slate": "bed",
+   "arm": "cloned",
+   "synthetic": true
+  },
+  {
+   "tag": "bed-cloned-s3",
+   "seed": 20261016,
+   "policy_mean": false,
+   "ok": true,
+   "seconds": 31.7,
+   "N": 40,
+   "M": 38,
+   "M_own": 38,
+   "M_dup": 0,
+   "D": 24,
+   "U": 3,
+   "counts_by_family": {
+    "large_gpp": {
+     "N": 40,
+     "M": 38,
+     "M_own": 38,
+     "M_dup": 0,
+     "D": 24,
+     "U": 3
+    }
+   },
+   "retention": {
+    "picks": {
+     "both": 2,
+     "one": 9,
+     "none": 29
+    },
+    "anchors": {
+     "both": 0,
+     "one": 34,
+     "none": 6
+    }
+   },
+   "cores_agree": true,
+   "retention_ownership_families": {
+    "both": 2,
+    "one": 9,
+    "none": 29
+   },
+   "core": {
+    "297000001": {
+     "family": "large_gpp",
+     "policy": "own_then_dup",
+     "core": [
+      "Echo LW1 (EEE) 8.54 pts x 22.1%",
+      "Alpha C1 (AAA) 10.35 pts x 18.2%"
+     ]
+    }
+   },
+   "contests": [
+    {
+     "contest_id": "297000001",
+     "name": "NHL Synthetic Classic",
+     "family": "large_gpp",
+     "field_size": 5000,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "PRIOR"
+    }
+   ],
+   "entries": 40,
+   "statuses": {
+    "MODEL_STATUS": "PRIOR",
+    "FIELD_CALIBRATION": "PRIOR",
+    "PAYOUT_SOURCE": "PRIOR",
+    "RISK_BUDGET": "OK"
+   },
+   "lineups_sha": "e92b8823afda5015",
+   "failed": [],
+   "slate": "bed",
+   "arm": "cloned",
+   "synthetic": true
+  },
+  {
+   "tag": "bed-cloned-s4",
+   "seed": 20261017,
+   "policy_mean": false,
+   "ok": true,
+   "seconds": 30.8,
+   "N": 40,
+   "M": 36,
+   "M_own": 36,
+   "M_dup": 0,
+   "D": 20,
+   "U": 2,
+   "counts_by_family": {
+    "large_gpp": {
+     "N": 40,
+     "M": 36,
+     "M_own": 36,
+     "M_dup": 0,
+     "D": 20,
+     "U": 2
+    }
+   },
+   "retention": {
+    "picks": {
+     "both": 3,
+     "one": 15,
+     "none": 22
+    },
+    "anchors": {
+     "both": 19,
+     "one": 15,
+     "none": 6
+    }
+   },
+   "cores_agree": true,
+   "retention_ownership_families": {
+    "both": 3,
+    "one": 15,
+    "none": 22
+   },
+   "core": {
+    "297000001": {
+     "family": "large_gpp",
+     "policy": "own_then_dup",
+     "core": [
+      "Bravo C1 (BBB) 10.28 pts x 18.1%",
+      "Bravo RW1 (BBB) 7.89 pts x 23.4%"
+     ]
+    }
+   },
+   "contests": [
+    {
+     "contest_id": "297000001",
+     "name": "NHL Synthetic Classic",
+     "family": "large_gpp",
+     "field_size": 5000,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "PRIOR"
+    }
+   ],
+   "entries": 40,
+   "statuses": {
+    "MODEL_STATUS": "PRIOR",
+    "FIELD_CALIBRATION": "PRIOR",
+    "PAYOUT_SOURCE": "PRIOR",
+    "RISK_BUDGET": "OK"
+   },
+   "lineups_sha": "ea53e40f0233cc17",
+   "failed": [],
+   "slate": "bed",
+   "arm": "cloned",
+   "synthetic": true
+  },
+  {
+   "tag": "bed-as-entered",
+   "seed": 20261013,
+   "policy_mean": false,
+   "ok": true,
+   "seconds": 17.6,
+   "N": 5,
+   "M": 4,
+   "M_own": 4,
+   "M_dup": 0,
+   "D": 1,
+   "U": 1,
+   "counts_by_family": {
+    "large_gpp": {
+     "N": 5,
+     "M": 4,
+     "M_own": 4,
+     "M_dup": 0,
+     "D": 1,
+     "U": 1
+    }
+   },
+   "retention": {
+    "picks": {
+     "both": 0,
+     "one": 1,
+     "none": 4
+    },
+    "anchors": {
+     "both": 0,
+     "one": 1,
+     "none": 4
+    }
+   },
+   "cores_agree": true,
+   "retention_ownership_families": {
+    "both": 0,
+    "one": 1,
+    "none": 4
+   },
+   "core": {
+    "297000001": {
+     "family": "large_gpp",
+     "policy": "own_then_dup",
+     "core": [
+      "Delta C1 (DDD) 10.56 pts x 18.9%",
+      "Bravo RW1 (BBB) 7.9 pts x 25.2%"
+     ]
+    }
+   },
+   "contests": [
+    {
+     "contest_id": "297000001",
+     "name": "NHL Synthetic Classic",
+     "family": "large_gpp",
+     "field_size": 5000,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "PRIOR"
+    }
+   ],
+   "entries": 5,
+   "statuses": {
+    "MODEL_STATUS": "PRIOR",
+    "FIELD_CALIBRATION": "PRIOR",
+    "PAYOUT_SOURCE": "PRIOR",
+    "RISK_BUDGET": "OK"
+   },
+   "lineups_sha": "e92e3af26665eb85",
+   "failed": [],
+   "slate": "bed",
+   "arm": "as_entered",
+   "synthetic": true
+  },
+  {
+   "tag": "bed-mean-policy",
+   "seed": 20261013,
+   "policy_mean": true,
+   "ok": true,
+   "seconds": 32.0,
+   "N": 0,
+   "M": 0,
+   "M_own": 0,
+   "M_dup": 0,
+   "D": 0,
+   "U": 0,
+   "counts_by_family": {},
+   "retention": {
+    "picks": {
+     "both": 0,
+     "one": 0,
+     "none": 0
+    },
+    "anchors": {
+     "both": 0,
+     "one": 0,
+     "none": 0
+    }
+   },
+   "cores_agree": true,
+   "retention_ownership_families": {
+    "both": 1,
+    "one": 11,
+    "none": 28
+   },
+   "core": {
+    "297000001": {
+     "family": "large_gpp",
+     "policy": "mean",
+     "core": [
+      "Delta C1 (DDD) 10.56 pts x 18.9%",
+      "Bravo RW1 (BBB) 7.9 pts x 25.2%"
+     ]
+    }
+   },
+   "contests": [
+    {
+     "contest_id": "297000001",
+     "name": "NHL Synthetic Classic",
+     "family": "large_gpp",
+     "field_size": 5000,
+     "PAYOUT_SOURCE": "PRIOR",
+     "FIELD_SIZE_SOURCE": "PRIOR"
+    }
+   ],
+   "entries": 40,
+   "statuses": {
+    "MODEL_STATUS": "PRIOR",
+    "FIELD_CALIBRATION": "PRIOR",
+    "PAYOUT_SOURCE": "PRIOR",
+    "RISK_BUDGET": "OK"
+   },
+   "lineups_sha": "f1e9c0783df7f161",
+   "failed": [],
+   "slate": "bed",
+   "arm": "mean",
+   "synthetic": true
+  }
+ ]
+}
