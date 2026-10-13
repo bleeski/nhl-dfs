@@ -150,6 +150,7 @@ from nhl_dfs.build import candidates as cand_mod  # noqa: E402
 from nhl_dfs.build import captain as cap_mod  # noqa: E402
 from nhl_dfs.build import objectives as ob  # noqa: E402
 from nhl_dfs.build import portfolio as pf  # noqa: E402
+from nhl_dfs.models import field as _field  # noqa: E402,F401  (bound before any test fakes candidates.generate: field.py binds it at import)
 from nhl_dfs.contracts.geometry import Mode  # noqa: E402
 from pool_builder import classic_pool, clone_entries, showdown_pool  # noqa: E402
 
@@ -342,6 +343,7 @@ def sd2_absent(tmp_path_factory):
     return _run(tmp_path_factory.mktemp("c23_absent"), LS2 / "DKSalaries.csv", LS2 / "DKEntries.template.csv", SD2_CLOCK, absent, spy), spy
 
 
+@pytest.mark.timeout(900)  # two whole runs in the fixtures (about 20 s on a Linux container)
 def test_off_publishes_the_same_showdown_picks_as_no_captain_block(sd2_off, sd2_absent):
     (off, spy_off), (absent, spy_abs) = sd2_off, sd2_absent
     assert off.ok and absent.ok and off.manifest["versions"][-1]["phase"] == "S"
@@ -361,7 +363,8 @@ def mini_on(tmp_path_factory):
     return _run(tmp, MINI_SD / "DKSalaries.csv", tmp / "DKEntries.csv", datetime(2026, 9, 28, 18, 0, tzinfo=timezone.utc), cfg)
 
 
-def test_with_both_switches_on_no_barred_goalie_is_captain_and_the_captain_cap_still_binds(mini_on):
+@pytest.mark.timeout(900)  # one whole 30-entry run in the fixture (about 22 s on a Linux container)
+def test_with_both_switches_on_no_barred_goalie_is_captain_and_the_captain_cap_holds(mini_on):
     from nhl_dfs.build import packet
 
     r = mini_on
@@ -378,13 +381,16 @@ def test_with_both_switches_on_no_barred_goalie_is_captain_and_the_captain_cap_s
     # The Captain count cap holds at selection levels 0 and 1 (levels 2 and up drop it): each Captain has at most `cap` entries placed there
     cap = s["caps"]["captain"]
     assert cap is not None and not any("captain cap raised" in n for n in s["caps"]["notes"])
-    level = {row["entry_id"]: row["cap_level"] for row in s["entries"]}
+    # the count cap applies to tournament entries only (portfolio.select: captain_n and its check sit under `eid in tournament`)
+    level = {row["entry_id"]: row["cap_level"] for row in s["entries"] if row["family"] != "cash"}
     held = {}
     for e, lu in lineups.items():
         if level.get(e, 9) <= 1:
             held[lu[0]] = held.get(lu[0], 0) + 1
     assert held and max(held.values()) <= cap
-    assert sec["portfolio"]["goalie_cpt_entries"] == sum(1 for lu in lineups.values() if lu[0] in barred) == 0
+    goalies = {g["person"] for g in sec["policy"]["goalie_gate"]["goalies"]}
+    assert set(sec["policy"]["goalie_gate"]["would_bar"]) == goalies  # with top_k 1 every goalie is barred on this bed
+    assert sum(1 for lu in lineups.values() if lu[0] in barred) == 0 == sec["portfolio"]["goalie_cpt_entries"]
 
 
 # ---- the experiment script's preregistered verdict and its run finder ----------------------------------------------

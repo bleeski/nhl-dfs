@@ -762,7 +762,7 @@ def showdown_pattern(contests: list[dict], exclude_dates: tuple[str, ...] = ()) 
     _, of = pool("field", "mean_cpt_own")
     if n1 < PATTERN_MIN_TOP1 or None in (g1, gf, o1, of):
         verdict = "TOO FEW"
-    elif gf - g1 >= PATTERN_GOALIE_GAP and of - o1 >= PATTERN_OWN_GAP:
+    elif round(gf - g1, 1) >= PATTERN_GOALIE_GAP and round(of - o1, 1) >= PATTERN_OWN_GAP:  # one-decimal inputs: 16.4 - 6.4 is 10
         verdict = "HOLDS"
     else:
         verdict = "NOT SHOWN"

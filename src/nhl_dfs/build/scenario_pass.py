@@ -279,12 +279,12 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
         rows = [work.by_role_id[r] for r in lu if r in work.by_role_id]
         if len(rows) != len(lu):
             continue
-        if barred and cap_mod.captain_barred(lu, barred):
-            gate_dropped += 1
-            continue
         key = lineup_key(rows, work.mode)
         if key not in seen:
             seen.add(key)
+            if barred and cap_mod.captain_barred(lu, barred):
+                gate_dropped += 1  # each distinct lineup once, whether it came from the bank, the provisional picks or both
+                continue
             cands.append(Candidate(tuple(lu), key, 0.0, tag))
     timings["discovery_s"] = round(time.perf_counter() - t, 3)
     timings["discovery_peak_mb"] = peak_mb()
@@ -454,13 +454,12 @@ def _captain_section(disc, by_entry, work, entries, contests, own_by, big_cid, c
     try:
         cfg = cap_mod.config(risk_cfg)
         contest_of = {e.entry_id: str(e.contest_id) for e in entries.entries}
-        tournament = {e.entry_id for e in entries.entries if contests[str(e.contest_id)].family != "cash"}
         share = {}
         for g in slate.games:
             lh, la = float(g.rates.lambda_home), float(g.rates.lambda_away)
             if lh + la > 0:
                 share[g.home], share[g.away] = lh / (lh + la), la / (lh + la)
-        lineups = [tuple(lu) for e, lu in sorted(by_entry.items()) if e in tournament]
+        lineups = [tuple(lu) for _, lu in sorted(by_entry.items())]  # flag 98: the slate's entries, every family
         out = {"policy": disc.get("captain") or {},
                "portfolio": cap_mod.portfolio_report(by_entry, work, contest_of, own_by, str(big_cid), caps.captain),
                "split": cap_mod.split_report(share, lineups, work, len(lineups), float(cfg.get("split_sleeve_max", 0.10)),

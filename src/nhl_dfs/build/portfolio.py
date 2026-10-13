@@ -33,6 +33,7 @@ first-place equity (their family utility).
 
 from __future__ import annotations
 
+import json
 import math
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
@@ -269,7 +270,9 @@ def _captain_policy(design: ob.ScenarioSet, pool, risk_cfg: Mapping, own: Mappin
     if pool.mode is not Mode.SHOWDOWN:
         return cap_mod.CaptainPolicy()
     try:
-        return cap_mod.policy(design, pool, risk_cfg, own)
+        p = cap_mod.policy(design, pool, risk_cfg, own)
+        json.dumps(p.report)  # the report rides in the manifest, which is plain json
+        return p
     except Exception as exc:
         c = cap_mod.config(risk_cfg)
         if (c.get("goalie_gate") or {}).get("enabled") or (c.get("leverage") or {}).get("enabled"):
