@@ -789,6 +789,9 @@ deferred:
   - item: "Showdown Captain report and the gate and leverage arms on the saved Showdown slates (B127, B49)"
     trigger: "Ben runs the PowerShell block in docs/experiments/captain_2026-10-13.md (scripts/standings_synthesis.py on the saved Showdown standings, then scripts/c23_captain.py on the saved Showdown runs), or attaches the Showdown standings exports to a session"
     backlog: [B127]
+  - item: "Line-specific promotion and replacement dressing when a DTD skater sits inside a simulated game (B128, after C24)"
+    trigger: "the first settle grade or replay that shows a sitting DTD skater's linemates or PP-unit mates under-forecast against the rest of his group, or the next simulator chunk that changes the dressing step, whichever comes first"
+    backlog: [B128]
   - item: "CI and merge cost of a cloud run's entered-record pull request (B106)"
     trigger: "Ben turns on Allow auto-merge in the repo settings, or the next change to .github/workflows/ci.yml, whichever comes first"
     backlog: [B106]
