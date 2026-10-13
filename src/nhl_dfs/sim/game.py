@@ -6,11 +6,16 @@ Simulate once per PERSON. Per scenario and per game, in this fixed order (one se
   1. a Gamma pace factor per team; PP opportunities per team;
   2. the game result from sim/resolve.py (regulation Poisson goals, equalizers and empty-net goals
      while a goalie is pulled, then overtime or a shootout): the SAME process the market fit inverts;
-  3. per team: dressed skaters (Bernoulli p_dress), a TOI multiplier, then every goal is allocated
-     to an on-ice unit (forward line + defense pair at even strength, a PP unit, or the team at
-     shorthanded), a scorer, and 0 to 2 distinct assisters, all weighted by the per-person rates in
-     the ParamTable and restricted to dressed people (a unit that fits no dressed skater degrades to
-     team-wide weights);
+  3. per team: dressed skaters (Bernoulli p_dress), a TOI multiplier, then (C24, backlog B14) each
+     skater in SlateSpec.participation (a DTD skater, play probability strictly between 0 and 1) plays
+     with that probability, drawn from his own seed stream; when he sits, his would-be ice time is
+     shared over the dressed skaters of his group (forwards or defense, phantom included) by one
+     factor, so the group's ice time is conserved exactly, and his would-be non-goal shots and blocks
+     by their own factors, so the team's are conserved in expectation (flags 101 to 104). Then every
+     goal is allocated to an on-ice unit (forward line + defense pair at even strength, a PP unit, or
+     the team at shorthanded), a scorer, and 0 to 2 distinct assisters, all weighted by the
+     per-person rates in the ParamTable and restricted to dressed people (a unit that fits no dressed
+     skater degrades to team-wide weights);
   4. non-goal shots per person ~ NB(mean * pace) and blocks ~ NB(mean * opponent pace), with the
      dispersion reduced so each person's marginal stays at C5's mu + phi mu^2; SOG = goals + non-goal
      shots, so a scorer always has SOG >= goals and a goalie's saves are exactly the opposing
@@ -28,6 +33,7 @@ credited with goals nobody else in the pool could have scored. Phantoms are neve
 
 from __future__ import annotations
 
+import zlib
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -40,6 +46,7 @@ from nhl_dfs.sim import resolve as rs
 from nhl_dfs.sim.market import GameRates, load_sim_config
 
 EV, PP, SH = 0, 1, 2
+PARTICIPATION_STREAM = 9  # C24 flag 104: SeedSequence([seed, purpose, chunk, game, 9, crc32(person_key)]), one per DTD skater
 
 
 @dataclass
@@ -57,6 +64,9 @@ class SlateSpec:
     mode: str = "classic"
     cfg: dict = field(default_factory=load_sim_config)
     model_cfg: dict = field(default_factory=load_model_config)
+    # C24: person_key -> play probability drawn inside the dressing step (skaters strictly between 0 and 1; see
+    # build/objectives.split_play). Empty: every draw is exactly what it was before C24.
+    participation: dict[str, float] = field(default_factory=dict)
 
 
 # -- preparation ---------------------------------------------------------------------------------------
@@ -98,6 +108,9 @@ class _Team:
     goalies: _Goalies
     n_listed: int = 0
     a_mult: np.ndarray = None  # (Ni, 3, 2) primary and secondary assist-weight multipliers from the pilot calibration
+    part_idx: np.ndarray = field(default_factory=lambda: np.zeros(0, np.int64))  # C24: team columns of DTD skaters
+    part_p: np.ndarray = field(default_factory=lambda: np.zeros(0))  # their play probabilities
+    part_salt: np.ndarray = field(default_factory=lambda: np.zeros(0, np.int64))  # crc32 of each person_key (his stream)
 
 
 def _rank_units(idx: list[int], key: np.ndarray, size: int) -> list[list[int]]:
@@ -155,7 +168,8 @@ def prior_scaled_rates(p, iterations: int = 4, lo: float = 0.2, hi: float = 5.0)
     return scaled(k)
 
 
-def _prep_team(code: str, params, col_of: dict, sim_cfg: dict, model_cfg: dict, var: float) -> _Team:
+def _prep_team(code: str, params, col_of: dict, sim_cfg: dict, model_cfg: dict, var: float,
+               participation: dict | None = None) -> _Team:
     persons = [p for p in params.persons.values() if p.team == code and p.group != "G"]
     persons.sort(key=lambda p: p.person_key)
     ns = len(persons)
@@ -234,7 +248,13 @@ def _prep_team(code: str, params, col_of: dict, sim_cfg: dict, model_cfg: dict, 
                  saved, blk, phi_saved, phi_blocks, is_f, rg, ra1, ra2,
                  m_f.argmax(axis=1), m_d.argmax(axis=1), m_pp.argmax(axis=1), m_f, m_d, m_pp, shares, goalies, n_listed=ns,
                  a_mult=np.ones((ni, 3, 2)))
-    _calibrate_assists(tp, sim_cfg)
+    _calibrate_assists(tp, sim_cfg)  # dressing only: the pilot never sees the C24 draw, so it cannot undo the transfer
+    part = [(i, float(participation[p.person_key]), zlib.crc32(p.person_key.encode())) for i, p in enumerate(persons)
+            if participation and 0.0 < float(participation.get(p.person_key, 1.0)) < 1.0]
+    if part:
+        tp.part_idx = np.array([x[0] for x in part], np.int64)
+        tp.part_p = np.array([x[1] for x in part], float)
+        tp.part_salt = np.array([x[2] for x in part], np.int64)
     return tp
 
 
@@ -261,7 +281,7 @@ def prepare(slate: SlateSpec, params, games: set[str] | None = None) -> Prep:
                 codes.append(c)
     var = float(slate.cfg["pace"]["var"])
     wanted = {c for g in slate.games if games is None or g.key in games for c in (g.home, g.away)}
-    teams = {c: _prep_team(c, params, col_of, slate.cfg, slate.model_cfg, var) for c in codes if c in wanted}
+    teams = {c: _prep_team(c, params, col_of, slate.cfg, slate.model_cfg, var, slate.participation) for c in codes if c in wanted}
     return Prep(slate, keys, is_g, teams, codes, var)
 
 
@@ -431,14 +451,53 @@ def _calibrate_assists(tp: _Team, sim_cfg: dict) -> None:
         tp.a_mult = np.clip(tp.a_mult * ratio ** float(c["pilot_step"]), float(c["mult_min"]), float(c["mult_max"]))
 
 
+def _plays(tp: _Team, n: int, seed: int, purpose_code: int, chunk: int, game: int) -> np.ndarray | None:
+    """C24: (n, k) bool, True where each DTD skater of the team plays; his own stream (flag 104), so the game's main
+    stream is untouched and his draws do not depend on who else is covered. None when the team has no DTD skater."""
+    if not tp.part_idx.size:
+        return None
+    cols = []
+    for p, salt in zip(tp.part_p, tp.part_salt):
+        g = np.random.Generator(np.random.PCG64(np.random.SeedSequence(
+            [int(seed), int(purpose_code), int(chunk), int(game), PARTICIPATION_STREAM, int(salt)])))
+        cols.append(g.random(n) < float(p))
+    return np.stack(cols, axis=1)
+
+
+def _sit_out(tp: _Team, dressed: np.ndarray, dm: np.ndarray, plays: np.ndarray):
+    """C24 (flag 103): a dressed DTD skater who does not play sits; his would-be dm (ice-time multiplier) goes to the
+    dressed skaters of his group (forwards or defense, the group's phantom included) by one factor per scenario, so the
+    group's sum of dm x (EV + PP + SH seconds) is exactly what it would have been with him in; his would-be non-goal shots
+    and blocks go the same way by their own factors, so the team's are conserved in expectation. Goals and assists need
+    nothing: the team's goal count is fixed and allocated over whoever dressed. Returns (dressed, dm_toi, dm_sog, dm_blk)."""
+    sit = np.zeros_like(dressed)
+    sit[:, tp.part_idx] = dressed[:, tp.part_idx] & ~plays
+    keep = dressed & ~sit
+    dm_keep = dm * keep
+    lost_dm = dm * sit
+    outs = []
+    for amount in (tp.toi.sum(axis=1), tp.saved, tp.blk):
+        m = dm_keep.copy()
+        for grp in (tp.is_f, ~tp.is_f):
+            kept = dm_keep[:, grp] @ amount[grp]
+            lost = lost_dm[:, grp] @ amount[grp]
+            f = np.where(kept > 0, (kept + lost) / np.where(kept > 0, kept, 1.0), 1.0)
+            m[:, grp] *= f[:, None]
+        outs.append(m)
+    return keep, outs[0], outs[1], outs[2]
+
+
 def _team_skaters(rng, tp: _Team, n: int, goals_by_state: dict, pace_own: np.ndarray, pace_opp: np.ndarray,
-                  sim_cfg: dict, var: float) -> dict:
+                  sim_cfg: dict, var: float, plays: np.ndarray | None = None) -> dict:
     ni = tp.scale.size
     dressed, dm = _presence(rng, tp, n, sim_cfg)
+    dm_sog = dm_blk = dm  # the same array when no DTD skater is covered: draws identical to before C24
+    if plays is not None:
+        dressed, dm, dm_sog, dm_blk = _sit_out(tp, dressed, dm, plays)
     out = {"goals": np.zeros((n, ni), np.int32), "assists": np.zeros((n, ni), np.int32), "sh": np.zeros((n, ni), np.int32)}
     _allocate(rng, tp, dm, goals_by_state, sim_cfg, out)
-    saved = _nb(rng, dm * tp.saved[None, :] * pace_own[:, None], tp.phi_saved[None, :])
-    blocks = _nb(rng, dm * tp.blk[None, :] * pace_opp[:, None], tp.phi_blocks[None, :])
+    saved = _nb(rng, dm_sog * tp.saved[None, :] * pace_own[:, None], tp.phi_saved[None, :])
+    blocks = _nb(rng, dm_blk * tp.blk[None, :] * pace_opp[:, None], tp.phi_blocks[None, :])
     out.update(dressed=dressed, saved=saved, blocks=blocks, dm=dm)
     return out
 
@@ -559,7 +618,8 @@ def simulate_chunk(prep: Prep, n: int, seed: int, purpose: str = "design", chunk
             n_pp = rng.binomial(reg, p_pp)
             n_sh = rng.binomial(reg - n_pp, np.minimum(1.0, p_sh / np.maximum(1e-9, 1.0 - p_pp)))
             counts = {EV: (reg - n_pp - n_sh) + extra_ev, PP: n_pp, SH: n_sh}
-            res[key] = _team_skaters(rng, tp, n, counts, pace_own, pace_opp, sim_cfg, prep.pace_var)
+            plays = _plays(tp, n, seed, cfg["purposes"][purpose], chunk, gi)
+            res[key] = _team_skaters(rng, tp, n, counts, pace_own, pace_opp, sim_cfg, prep.pace_var, plays)
         team_goals = {"h": d.reg_h + d.eq_h + d.en_h + ot_h, "a": d.reg_a + d.eq_a + d.en_a + ot_a}
         team_en = {"h": d.en_h, "a": d.en_a}
         beyond = d.tie

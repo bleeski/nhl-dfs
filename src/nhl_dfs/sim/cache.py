@@ -36,6 +36,9 @@ def spec_hash(slate: game_mod.SlateSpec, params, seed: int, purpose: str, n: int
         "games": [[g.key, g.home, g.away, g.game_type, asdict(g.rates)] for g in slate.games],
         "persons_sha256": persons_sha, "seed": int(seed), "purpose": purpose, "n": int(n),
     }
+    part = getattr(slate, "participation", None)
+    if part:  # C24: only when a DTD skater is drawn inside the game, so every other spec hashes as before
+        payload["participation"] = sorted((k, float(v)) for k, v in part.items())
     blob = json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
     return hashlib.sha256(blob).hexdigest()
 
