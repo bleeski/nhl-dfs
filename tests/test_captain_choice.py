@@ -409,7 +409,10 @@ def test_the_switch_verdict_is_the_preregistered_rule():
     up = _arm_runs([0.0110, 0.0113, 0.0107, 0.0111, 0.0108])  # d about +0.0010 (10%) in every seed
     assert c23.switch_verdict(o, up, "G")["verdict"] == "ACCEPT-TO-SHADOW"
     assert c23.switch_verdict(o, _arm_runs([0.0110, 0.0113, 0.0107, 0.0111, 0.0108], goalie=9), "L")["verdict"] == "INCONCLUSIVE"
-    assert c23.switch_verdict(o, _arm_runs([0.0110, 0.0113, 0.0107, 0.0111, 0.0108], budget="BREACHED"), "G")["verdict"] == "INCONCLUSIVE"
+    breach = "BREACHED(goalie in 26 of 30 lineups > 15; 11 entries relaxed the goalie/game cap)"  # risk_statuses' real format
+    assert c23.switch_verdict(o, _arm_runs([0.0110, 0.0113, 0.0107, 0.0111, 0.0108], budget=breach), "G")["verdict"] == "INCONCLUSIVE"
+    assert c23.switch_verdict(_arm_runs([0.0100, 0.0102, 0.0098, 0.0101, 0.0099], budget=breach),
+                              _arm_runs([0.0110, 0.0113, 0.0107, 0.0111, 0.0108], budget=breach), "G")["verdict"] == "ACCEPT-TO-SHADOW"
     assert c23.switch_verdict(o, _arm_runs([0.0099, 0.0101, 0.0097, 0.0100, 0.0098]), "G")["verdict"] == "REJECT"  # mean d below 0
     noisy = _arm_runs([0.0100, 0.0130, 0.0070, 0.0115, 0.0085])  # MDE above 10% of the mean
     assert c23.switch_verdict(noisy, up, "G")["reason"].startswith("MDE")
@@ -431,6 +434,7 @@ def test_the_run_finder_keeps_the_newest_showdown_parent_per_slate(tmp_path):
         d = tmp_path / name
         (d / "inputs").mkdir(parents=True)
         (d / "inputs" / "DKEntries.csv").write_text("x")
+        (d / "inputs" / "DKSalaries.csv").write_text("x")
         (d / "manifest.json").write_text(json.dumps({"mode": "showdown", "scenario": {"version": 3}, **m}))
 
     mk("a", slate_id="s1", created_utc="2026-10-05T20:00:00Z")
@@ -439,4 +443,8 @@ def test_the_run_finder_keeps_the_newest_showdown_parent_per_slate(tmp_path):
     mk("d", slate_id="s3", created_utc="2026-10-02T20:00:00Z")  # before --since
     mk("e", slate_id="s4", created_utc="2026-10-07T20:00:00Z", mode="classic")
     mk("f", slate_id="s5", created_utc="2026-10-08T20:00:00Z", scenario={})  # no scenario version published
+    mk("g", slate_id="s6", created_utc="2026-10-09T20:00:00Z")
+    (tmp_path / "g" / "inputs" / "DKSalaries.csv").unlink()  # no salary file: skipped, never a stop later
     assert [p.name for p in c23.find_runs(tmp_path, "2026-10-03")] == ["b"]
+    with pytest.raises(SystemExit):  # an empty --runs-root is an error, never a silent bed run
+        c23.main(["--out", str(tmp_path / "out"), "--runs-root", str(tmp_path / "none")])

@@ -126,6 +126,11 @@ def run_one(salary: Path, entries: Path, clock: datetime, scenario_n: dict | Non
     }
 
 
+def breached(run: dict) -> bool:
+    """RISK_BUDGET as scenario_pass.risk_statuses writes it: OK, NOT_EVALUATED or BREACHED(<reasons>)."""
+    return str(run.get("risk_budget") or "").startswith("BREACHED")
+
+
 def switch_verdict(o_runs: list[dict], a_runs: list[dict], arm: str) -> dict:
     """The preregistered per-slate rule for one switch (G or L) against O, paired by seed."""
     if not o_runs or len(o_runs) != len(a_runs) or any(not r["ok"] or r["metric"] is None for r in o_runs + a_runs):
@@ -138,7 +143,7 @@ def switch_verdict(o_runs: list[dict], a_runs: list[dict], arm: str) -> dict:
     mean_d = statistics.fmean(d)
     se_d = statistics.stdev(d) / math.sqrt(n) if n > 1 else float("inf")
     pos = sum(x > 0 for x in d)
-    budget_ok = not any(a["risk_budget"] == "BREACHED" and b["risk_budget"] != "BREACHED" for a, b in zip(a_runs, o_runs))
+    budget_ok = not any(breached(a) and not breached(b) for a, b in zip(a_runs, o_runs))
     g_a = sum((r["portfolio"] or {}).get("goalie_cpt_entries", 0) for r in a_runs)
     g_o = sum((r["portfolio"] or {}).get("goalie_cpt_entries", 0) for r in o_runs)
     goalie_ok = arm != "L" or g_a <= g_o
@@ -185,6 +190,11 @@ def saved_inputs(src: Path, out: Path) -> tuple[Path, Path, datetime, str, dict]
     return dst / "inputs" / "DKSalaries.csv", dst / "inputs" / "DKEntries.csv", clock, src.name, man
 
 
+def commit_of() -> str | None:
+    head = os.popen(f'git -C "{REPO}" rev-parse HEAD').read().strip()
+    return head or None
+
+
 def find_runs(root: Path, since: str) -> list[Path]:
     """The newest parent Showdown run per slate id, created on or after `since`, that published a scenario version."""
     best: dict[str, tuple[str, Path]] = {}
@@ -195,7 +205,8 @@ def find_runs(root: Path, since: str) -> list[Path]:
             continue
         created = str(man.get("created_utc") or "")
         if (man.get("mode") != "showdown" or man.get("parent_run_id") or created[:10] < since
-                or not (man.get("scenario") or {}).get("version") or not (d / "inputs" / "DKEntries.csv").exists()):
+                or not (man.get("scenario") or {}).get("version") or not (d / "inputs" / "DKEntries.csv").exists()
+                or not (d / "inputs" / "DKSalaries.csv").exists()):
             continue
         sid = str(man.get("slate_id") or d.name)
         if sid not in best or created > best[sid][0]:
@@ -207,15 +218,27 @@ def run_slate_arms(name: str, salary: Path, entries: Path, clock: datetime, scen
                    synthetic: bool, done: dict, results: list[dict]) -> dict:
     from pool_builder import clone_entries
 
+    setup = {"commit": commit_of(), "pythonhashseed": os.environ.get("PYTHONHASHSEED"), "scenario_n": json.dumps(scenario_n)}
+    stale = [k for k, r in done.items() if r.get("slate") == name and any(r.get(x) != v for x, v in setup.items())]
+    if stale:  # a resume after `git pull`, in a new shell or at other counts: never mix setups
+        raise SystemExit(f"{name}: {len(stale)} saved run(s) in {out / 'results.json'} came from another commit, PYTHONHASHSEED or "
+                         f"scenario counts ({setup}); use a new --out folder")
     cloned = out / f"{name}_DKEntries_cloned{N_CLONED}.csv"
     clone_entries(entries, cloned, N_CLONED)
 
     def go(arm: str, seed: int, tag: str) -> dict:
         key = f"{name}-{tag}"
-        if key in done and done[key].get("ok"):
+        if key in done and done[key].get("ok") and all(done[key].get(k) == v for k, v in setup.items()):
             print(f"{key}: already done, skipped", flush=True)
             return done[key]
-        r = run_one(salary, cloned, clock, scenario_n, out, key, seed, arm) | {"slate": name, "synthetic": synthetic, "key": key}
+        try:
+            r = run_one(salary, cloned, clock, scenario_n, out, key, seed, arm)
+        except Exception as exc:  # rule step 1: a failed run makes its slate NO VERDICT; the study goes on
+            r = {"tag": key, "arm": arm, "seed": seed, "ok": False, "metric": None, "error": f"{type(exc).__name__}: {str(exc)[:200]}",
+                 "risk_budget": None, "portfolio": None, "would_bar": None, "barred_roles": None, "goalie_ranks": None,
+                 "gate_dropped": None, "split": None, "lineups": {}, "lineups_sha": None, "contests": [], "seconds": None,
+                 "p_top1_goalie_cpt": None, "n_goalie_cpt": 0, "p_top1_skater_cpt": None, "n_skater_cpt": 0}
+        r |= {"slate": name, "synthetic": synthetic, "key": key, **setup}
         done[key] = r
         results.append(r)
         p = r["portfolio"] or {}
@@ -289,8 +312,13 @@ def main(argv=None) -> int:
     if not 1 <= args.seeds <= len(SEEDS):
         ap.error(f"--seeds takes 1 to {len(SEEDS)} (the preregistered seeds)")
     real = list(args.saved_run) + (find_runs(args.runs_root, args.since) if args.runs_root else [])
+    if args.runs_root and not real:
+        ap.error(f"--runs-root {args.runs_root}: no saved Showdown parent run on or after {args.since} with a published scenario "
+                 "version and both input files; nothing was run (the bed runs only without --runs-root and --saved-run)")
     if args.small and real:
         ap.error("--small is for the bed; real slates run the shipping scenario counts")
+    if real and args.seeds != len(SEEDS):
+        ap.error(f"real slates run the preregistered {len(SEEDS)} seeds")
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
     roots = set_roots(out)
@@ -299,6 +327,8 @@ def main(argv=None) -> int:
     guard.install_guards(out)
     listing = os.popen("tasklist" if os.name == "nt" else "ps -eo pid,cmd").read().splitlines()
     others = [x.strip() for x in listing if ("python" in x.lower() or "pytest" in x.lower()) and "c23_captain" not in x]
+    if os.name == "nt":  # tasklist prints no command lines: the list includes this script's own python.exe
+        others = others[1:] if others else others
     print(f"other python processes at start: {len(others)} {others[:3]}; PYTHONHASHSEED={os.environ.get('PYTHONHASHSEED')}", flush=True)
     try:
         done = {r["key"]: r for r in json.loads((out / "results.json").read_text(encoding="utf-8")).get("runs", []) if r.get("key")}
