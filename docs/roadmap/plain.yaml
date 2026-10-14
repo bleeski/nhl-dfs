@@ -56,6 +56,8 @@ asks:
 
 updates:
   - date: 2026-10-13
+    text: C24 finished on your machine. A questionable skater's minutes now go to his teammates in the games he sits instead of vanishing, priced once, and tested on the Sept 29 and Sept 30 slates. It also showed that two identical runs can pick different lineups while other heavy programs run on the computer (backlog B98). Next up is C25, a clean calibration report.
+  - date: 2026-10-13
     text: C22 (keep the chalk core) and C23 (Showdown Captains) finished in cloud sessions, tested only on made-up data, so both ship switched off until the real-slate test runs on your machine. Next up is C24, day-to-day players inside the simulation.
   - date: 2026-10-12
     text: C53 finished, so late swap now reads the file DraftKings gives you after the first lock and every upload file version has its own name. C54 added RotoWire as a second goalie source. C50 learned real contest sizes from your entry history.
@@ -358,6 +360,8 @@ chunks:
     what: When a questionable player sits in a simulated game, his ice time and chances go to his teammates instead of him simply scoring zero.
     why: Today a scratch only zeros the player. In real hockey his linemates and power-play partners play more when he sits.
     matters: Prices day-to-day players and their teammates correctly as both risk and leverage, on any slate with a questionable skater. It ranks low among the winning items because the problem is reasoned out, not yet seen in data.
+    result: Done Oct 13. A questionable skater now sits out inside about 15% of simulated games and his linemates pick up his minutes. On the Sept 29 and Sept 30 slates each team gained exactly what its questionable player lost; for example Caufield and Suzuki score about 0.8 DraftKings points more in the games Demidov sits.
+    caveat: Measured on two real slates only. Its effect on which lineups get picked could not be separated from ordinary random variation, and the timings were taken while other projects' tests were running.
   C25:
     title_seen: Clean calibration constants, the co-ceiling cause, and the 3+ point tail preregistration
     name: Recheck how well the simulator matches real games

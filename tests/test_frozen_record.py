@@ -101,11 +101,14 @@ def test_the_scenario_pass_freezes_indicators_and_play_probabilities(mini_run):
     assert not (pts[bad] % SHOOTOUT_GOAL_TENTHS).any() and bad.mean() < 0.001
     assert np.array_equal(f[:, skaters, ix["started"]], f[:, skaters, ix["dressed"]])
     assert not (f[:, goalies, ix["started"]] & ~f[:, goalies, ix["dressed"]]).any()  # started implies in net
+    assert part["format"] == 2  # C24: the draws carry a DTD skater's sit-out (here Jake DeBrusk, DK DTD), so the record says so
     for j, k in enumerate(got.person_keys):  # the saved probability is what the draws show, within Monte Carlo error
-        p = part["persons"][k]["p_sim"]
+        rec = part["persons"][k]
+        p = rec["p_sim"] * rec["draw"]  # C24 changed this expectation from p_sim alone: a sitting DTD skater is not dressed
         share = f[:, j, ix["started"]].mean()
         assert abs(share - p) <= 4 * np.sqrt(p * (1 - p) / n) + 1.5 / n, (k, p, share)
-        assert part["persons"][k]["p_play"] == pytest.approx(p * part["persons"][k]["mask"], abs=1e-5)
+        assert rec["p_play"] == pytest.approx(rec["p_sim"] * rec["draw"] * rec["mask"], abs=1e-5)
+    assert part["persons"]["jake debrusk|VAN|F"]["draw"] == 0.85 and part["persons"]["jake debrusk|VAN|F"]["mask"] == 1.0
     assert set(part["goalies"]) == {got.person_keys[j] for j in goalies}
     assert all(v["source"] for v in part["goalies"].values())
 

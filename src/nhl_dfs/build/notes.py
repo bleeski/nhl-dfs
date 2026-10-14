@@ -237,9 +237,15 @@ def _scenario_lines(s: dict[str, Any]) -> list[str]:
     ]
     out += [f"  - {x}" for x in s.get("odds", []) + s.get("games", [])]
     part = s.get("participation", {})
-    out.append(f"- Participation: {len(part.get('persons', []))} QUESTIONABLE (DTD) person(s) play in "
-               f"{part.get('questionable_play_prob', 1):.0%} of scenarios, priced once here (no ranking haircut on top); "
-               "their minutes are not handed to teammates.")
+    if part.get("in_simulation") is not None:  # C24
+        out.append(f"- Participation: {len(part.get('persons', []))} QUESTIONABLE (DTD) person(s) priced once (no ranking "
+                   f"haircut on top): {len(part['in_simulation'])} skater(s) sit out inside the simulated game at their play "
+                   "probability, and their minutes, shots and blocks go to the teammates who dressed; "
+                   f"{len(part.get('masked') or [])} person(s) (goalies, or a play probability of 0) are masked after it.")
+    else:
+        out.append(f"- Participation: {len(part.get('persons', []))} QUESTIONABLE (DTD) person(s) play in "
+                   f"{part.get('questionable_play_prob', 1):.0%} of scenarios, priced once here (no ranking haircut on top); "
+                   "their minutes are not handed to teammates.")
     fg = s.get("field_growth") or {}
     if fg:
         out.append("- Field: " + "; ".join(f"{fam} {v['draws']} draws" + (f" ({v['distinct']} distinct, grown by {v['grown_by']} in "

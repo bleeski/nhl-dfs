@@ -4,8 +4,11 @@ The C8 scenario pass simulates in memory. So that late swap and refresh can scor
 same scenario objective, the pass also writes runs/<id>/scenario/:
 
 - selection/ and referee/: the first `keep` scenarios of each stream as chunk_XXXX.npy, (size, P)
-  int32 base tenths per PERSON, UNMASKED (the DTD participation mask is applied at use, once, from
-  the probabilities of that moment; persisting a masked array would price DTD twice);
+  int32 base tenths per PERSON, never masked (the participation mask is applied at use, once, from
+  the probabilities of that moment; persisting a masked array would price it twice). From C24 the
+  draws themselves CARRY the participation of the DTD skaters drawn inside the simulated game (they
+  sat out there and their minutes went to teammates): the participation record says who (`draw`),
+  and `in_draws` is the one place that tells a reader never to mask those persons again;
 - selection/flags_XXXX.npy and referee/flags_XXXX.npy (backlog B25, B28; optional, absent in older caches):
   the same draws' indicators, sim/score.FLAG_NAMES (dressed, started, then one per DK bonus), packed along
   the draw axis: (F, P, ceil(size / 8)) uint8, np.packbits(bitorder="little"); read with `Loaded.flags`;
@@ -15,7 +18,9 @@ same scenario objective, the pass also writes runs/<id>/scenario/:
 - contests.json: each contest's payout curve (EXACT or declared PRIOR) exactly as C8 used it;
 - meta.json `participation` (B26; optional): each person's play probability as the draws priced it (dress or
   start probability from the applied ParamTable, the participation mask, their product) and each goalie's start
-  probability with its source (rotation, Daily Faceoff state, override);
+  probability with its source (rotation, Daily Faceoff state, override). Record format 2 (C24, flag 105) adds
+  `draw`, the in-simulation play probability the draws carry (1.0 when none), and p_play = p_sim x draw x mask;
+  format 1 (older caches) has no `draw` and settles exactly as before;
 - fields.json: the field lineups and keys per family, opponents per contest, ownership and
   duplicate counts, FIELD_CALIBRATION; field specs are rebuilt deterministically at the scenario
   count in use (a sampled field's per-scenario draws depend on that count; recorded).
@@ -43,17 +48,34 @@ PURPOSES = ("selection", "referee")
 
 def game_hashes(slate, params) -> dict[str, str]:
     """game key -> hash of what determines that game's draws: simulator and model configs, the game's
-    fitted rates, and every ParamTable column of the persons on its two teams."""
+    fitted rates, every ParamTable column of the persons on its two teams and (C24, flag 105) its DTD
+    skaters' in-simulation play probabilities, counted only when the game has one, so every other game
+    hashes as before."""
     from nhl_dfs.sim.cache import VERSION
 
     frame = params.to_frame().sort_values("person_key").reset_index(drop=True)
     cfg = json.dumps({"cfg": slate.cfg, "model_cfg": slate.model_cfg, "version": VERSION}, sort_keys=True, default=str)
+    part = getattr(slate, "participation", None) or {}
     out = {}
     for g in slate.games:
         sub = frame[frame["team"].isin([g.home, g.away])].reset_index(drop=True)
         rows = pd.util.hash_pandas_object(sub, index=False).to_numpy().tobytes() + "|".join(sub.columns).encode()
         spec = json.dumps([g.key, g.home, g.away, g.game_type, asdict(g.rates)], sort_keys=True, default=str)
-        out[g.key] = hashlib.sha256(cfg.encode() + spec.encode() + rows).hexdigest()
+        mine = sorted((k, float(v)) for k, v in part.items() if k in params.persons and params.persons[k].team in (g.home, g.away))
+        drawn = json.dumps(mine).encode() if mine else b""
+        out[g.key] = hashlib.sha256(cfg.encode() + spec.encode() + rows + drawn).hexdigest()
+    return out
+
+
+def in_draws(meta: dict, resim_teams=frozenset(), fresh: dict | None = None) -> dict[str, float]:
+    """C24 (flag 101): person_key -> the in-simulation play probability the draws in use already carry, so the mask
+    never prices them again. Cached columns carry what the cache's participation record says (`draw` below 1; nobody
+    in a cache made before C24); columns of re-simulated teams carry `fresh`, the participation they were re-simulated
+    with. Every reader of cached draws (late swap, refresh, the C10 controller, studies) goes through here."""
+    persons = (meta.get("participation") or {}).get("persons") or {}
+    out = {k: float(v["draw"]) for k, v in persons.items()
+           if float(v.get("draw", 1.0)) < 1.0 and k.split("|")[1] not in resim_teams}
+    out.update({k: float(v) for k, v in (fresh or {}).items() if k.split("|")[1] in resim_teams})
     return out
 
 
@@ -75,10 +97,11 @@ def goalie_source(roles, team: str, person_key: str) -> tuple[str, str | None]:
     return "rotation", state
 
 
-def participation_record(params, play: dict | None, roles=None) -> dict:
+def participation_record(params, play: dict | None, roles=None, in_sim: dict | None = None) -> dict:
     """B26: what the draws priced, per person: the dress (skater) or start (goalie) probability of the applied
     ParamTable (the simulator's Bernoulli), the participation mask (1.0 when none) and their product; per goalie
-    the start probability with its source. Settle grades these saved values."""
+    the start probability with its source. Settle grades these saved values. in_sim (C24, flag 105): the persons
+    the draws carry (sat out inside the simulated game, never masked); given, the record is format 2 with `draw`."""
     play = play or {}
     persons, goalies = {}, {}
     for k, pp in sorted(params.persons.items()):
@@ -89,13 +112,24 @@ def participation_record(params, play: dict | None, roles=None) -> dict:
             base = float(pp.opportunity.p_dress)
         else:
             continue
-        mask = float(play.get(k, 1.0))
-        persons[k] = {"group": g, "p_sim": round(base, 6), "mask": round(mask, 6), "p_play": round(base * mask, 6)}
+        if in_sim is None:
+            mask = float(play.get(k, 1.0))
+            persons[k] = {"group": g, "p_sim": round(base, 6), "mask": round(mask, 6), "p_play": round(base * mask, 6)}
+        else:
+            draw = float(in_sim.get(k, 1.0))
+            mask = 1.0 if k in in_sim else float(play.get(k, 1.0))
+            persons[k] = {"group": g, "p_sim": round(base, 6), "draw": round(draw, 6), "mask": round(mask, 6),
+                          "p_play": round(base * draw * mask, 6)}
         if g == "G":
             src, state = goalie_source(roles, pp.team, k)
             goalies[k] = {"team": pp.team, "p_start": round(base, 6), "source": src, "state": state}
-    return {"format": 1, "persons": persons, "goalies": goalies,
-            "note": "p_sim is the simulator's dress or start probability (UNMASKED draws); p_play = p_sim x mask"}
+    if in_sim is None:
+        return {"format": 1, "persons": persons, "goalies": goalies,
+                "note": "p_sim is the simulator's dress or start probability (UNMASKED draws); p_play = p_sim x mask"}
+    return {"format": 2, "persons": persons, "goalies": goalies,
+            "note": "p_sim is the simulator's dress or start probability; draw is the play probability drawn inside the "
+                    "simulated game (C24: the cached draws carry it, never mask it again); mask is applied at use; "
+                    "p_play = p_sim x draw x mask"}
 
 
 def _contest_json(c: ob.Contest) -> dict:

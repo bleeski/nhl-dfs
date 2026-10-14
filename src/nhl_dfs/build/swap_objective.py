@@ -16,9 +16,12 @@ RUN_NOTES `OBJECTIVE=`), never silent.
 Roles (backlog B9, B11): the ParamTable is built once, roles.merge then roles.apply_state are called
 exactly once on it (RoleModel), and RoleState.confirmed_at() goes to sim.slate.build_slate.
 Participation is priced once per person: a person whose p_play < 1 (QUESTIONABLE, conflict) takes
-the scenario mask (and the provisional haircut) at the RoleState p_play instead of C8's 0.85, unless
+the scenario pricing (and the provisional haircut) at the RoleState p_play instead of C8's 0.85, unless
 apply_state already lowered his dressing or start probability (his absence from a projected lineup is
-then already priced; the mask is not stacked on top).
+then already priced; nothing is stacked on top). From C24 a DTD skater's pricing is inside the draws
+(he sat out in the simulated game, objectives.split_play): cached columns carry it per the cache's
+participation record, re-simulated games per the split of this moment (scenario_cache.in_draws), and
+the mask prices only the rest (goalies, a play probability of 0, and every person of a pre-C24 cache).
 """
 
 from __future__ import annotations
@@ -297,6 +300,12 @@ class ScenarioObjective:
             q = float(self.fam_cfg["selection"]["questionable_play_prob"])
             play = {pool.by_role_id[r].person_key: q for r, (p, _) in st.items() if p is Participation.QUESTIONABLE}
             notes.append(f"scenario objective without a role state: cached draws, DTD masked at {q:g}")
+        # C24 (flag 101): who the draws in use already carry (cached columns per the cache's record, re-simulated teams per
+        # the participation they were re-simulated with); the mask prices only the rest, so nobody is priced twice
+        resim_teams = frozenset(c for g in self.slate.games if g.key in self.resim for c in (g.home, g.away)) if self.resim else frozenset()
+        carried = scache.in_draws(cache.meta, resim_teams, self.slate.participation if self.slate is not None else None)
+        if carried:
+            notes.append(f"participation carried inside the draws for {len(carried)} skater(s), not masked again")
         self.sets = {}
         kept: dict[str, dict] = {}
         from nhl_dfs.sim.score import FLAG_NAMES
@@ -334,12 +343,14 @@ class ScenarioObjective:
             if persist:  # refresh: the child run carries the updated draws
                 kept[purpose] = scache.save_base(persist_to, purpose, base, n[purpose], chunk, flags=fl)
             del fl
-            if play:
-                mask = ob.play_mask(n[purpose], keys_all, play, cache.seed, int(cache.meta["purposes"][purpose]["code"]))
+            if any(k not in carried and v < 1.0 for k, v in play.items()):
+                mask = ob.play_mask(n[purpose], keys_all, play, cache.seed, int(cache.meta["purposes"][purpose]["code"]),
+                                    in_sim=carried)
                 base = np.where(mask, base, 0).astype(np.int32)
             ids, cols = role_map_for(pool, keys_all)
             self.sets[purpose] = ob.ScenarioSet(ids, np.ascontiguousarray(base[:, cols]), purpose, cache.seed)
-        self.record["participation_masked"] = len(play)
+        self.record["participation_masked"] = sum(1 for k in play if k not in carried)
+        self.record["participation_in_draws"] = len(carried)
         if len(kept) == len(scache.PURPOSES):
             info = scache.save(persist_to, purposes=kept, person_keys=keys_all, slate=self.slate, params=self.table,
                                seed=cache.seed, chunk_size=chunk, contests=cache.contests,
@@ -347,7 +358,8 @@ class ScenarioObjective:
                                own_by=cache.own_by, dup_by=cache.dup_by,
                                field_cal=cache.meta.get("field_calibration", "PRIOR"),
                                model_status=self.table.source().value, play_prob=play,
-                               participation=scache.participation_record(self.table, play, rm.roles if rm is not None else None))
+                               participation=scache.participation_record(self.table, play, rm.roles if rm is not None else None,
+                                                                         in_sim=carried))
             self.record["persisted"] = info
         self.record["build_s"] = round(time.perf_counter() - t, 3)
         self._fields: dict[tuple[str, str], tuple[SortedField, ob.FieldSpec]] = {}
@@ -366,6 +378,9 @@ class ScenarioObjective:
             self.slate, self.table = None, None
             return set(), set()
         slate, lines = build_slate(work, rm.table, snapshot, now=now, confirmed_at=rm.roles.confirmed_at())
+        # C24: the same split as the run's (scenario_pass), so a game whose DTD skaters and probabilities did not change hashes
+        # as cached and is not re-simulated; a re-simulated game draws its DTD skaters inside the game
+        slate.participation, _ = ob.split_play(rm.play_prob, rm.table)
         reused = []
         for g in slate.games:  # odds were not re-fetched: keep the parent's MARKET price rather than drop to MODEL
             d = self.cache.meta.get("game_rates", {}).get(g.key)
