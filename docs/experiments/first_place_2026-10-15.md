@@ -102,3 +102,80 @@ is fitted or used as a threshold.
 ## Result
 
 (appended below this line after the runs; the text above is not edited)
+
+### Part 1: the origin/master replays (2026-10-15, before any C55 objective code was committed)
+
+Runs: master-1 and master-2 at seed 20261015 and master-b at seed 20261016, on a clean export of origin/master 3ea1c4a (the
+script prints where nhl_dfs was imported from; every run named the export), PYTHONHASHSEED=0, the script as committed in 2ebe002.
+Another project's test suite (mlb-dfs, `tools/audit.py --run-tests`) ran throughout: 2 to 4 other python commands at each start,
+recorded per run in `first_place_2026-10-15_results.json`. Writes refused 0 and network attempts blocked 0 in every run; every run
+published version 3 and also listed "phase B: DK draftables unavailable" and "history refresh: FAILED" (network steps the pinned
+replay does not serve). The C55 switch code was written in the working tree while these ran; it could not reach them (they import
+the 3ea1c4a export) and it was committed after this section.
+
+**Correction to the description above (written before any number).** Today's code does not price these contests at 5,000: the
+replays read the contest facts rows (C50) and priced every contest at its history field size (FIELD_SIZE_SOURCE=HISTORY) with the
+PRIOR power curve on the given pool and paid places. Those rows come from standings of the same contest series (2 or 3 contests
+between 2026-09-30 and 2026-10-09 each), the replayed night included, so the sizes are in-sample. The bar's wording ("against that
+contest's selection field") applies unchanged.
+
+| Contest | Field size used (real entrants) | Opponents / distinct sampled lineups | First prize / pool | Top-1% places / share of pool |
+|---|---:|---|---:|---:|
+| 09-29 $1K Daily Dollar | 1,189 (1,189) | 1,160 / 1,160, weighted | $102.33 / $1,000 (10.2%) | 11 / 29.4% |
+| 09-30 $6K Hip Check | 7,134 (7,134) | 7,108 / 4,991, weighted | $450.52 / $6,000 (7.5%) | 71 / 32.1% |
+| 09-30 $1.5K Quarter Jukebox | 7,134 (6,854) | 7,132 / 4,991, weighted | $129.37 / $1,500 (8.6%) | 71 / 35.4% |
+| 09-30 $750 Daily Dollar | 891 (891) | 890 drawn per scenario from 4,991 | $85.70 / $750 (11.4%) | 8 / 29.8% |
+| 09-30 $5K mini-MAX | 11,890 (10,750) | 11,889 / 4,991, weighted | $419.40 / $5,000 (8.4%) | 118 / 38.0% |
+
+Hip Check, Jukebox and mini-MAX share one sampled field, so their exact first-place figures are identical: five contests, three
+distinct fields. Cloning to 30 entries put 29 in the 09-29 Daily Dollar (the 30th is the Double Up, cash) and 26 in the Hip Check.
+
+**Part A (flag 108), master-1, exact estimate:** the median SE / value of the 20 candidates with the highest first-place figure
+(372 to 386 candidates per slate), at the first 20,000 / 8,000 / 4,000 selection scenarios, with first-place finishes among those
+20 (minimum / median / maximum) and the same median for the smoothed estimate and for today's figure (the top-1% payout).
+
+| Contest | Exact 20,000 / 8,000 / 4,000 | Finishes at 20,000 (at 4,000) | Smoothed | Today's top-1% figure |
+|---|---|---|---|---|
+| 09-29 Daily Dollar | **0.128** / 0.193 / 0.262 | 55 / 61 / 103 (12 / 15 / 23) | 0.090 / 0.137 / 0.195 | 0.061 / 0.097 / 0.136 |
+| 09-30 Hip Check | **0.242** / 0.353 / 0.447 | 15 / 17 / 30 (4 / 5 / 9) | 0.190 / 0.283 / 0.385 | 0.101 / 0.161 / 0.246 |
+| 09-30 Quarter Jukebox | **0.242** / 0.353 / 0.447 | 15 / 17 / 30 (4 / 5 / 9) | 0.190 / 0.286 / 0.389 | 0.104 / 0.162 / 0.254 |
+| 09-30 Daily Dollar | **0.110** / 0.166 / 0.242 | 73 / 83 / 123 (15 / 17 / 26) | 0.081 / 0.126 / 0.181 | 0.059 / 0.092 / 0.128 |
+| 09-30 mini-MAX | **0.242** / 0.353 / 0.447 | 15 / 17 / 30 (4 / 5 / 9) | 0.225 / 0.333 / 0.429 | 0.130 / 0.201 / 0.303 |
+
+- **Part A passes at 20,000 in every contest**, narrowly: the largest median is 0.2424 against the bar of 0.25. master-2 gave the
+  same figures to the fourth decimal (same candidates, same draws). The seed control (master-b, information only) gave 0.127,
+  0.219, 0.219, 0.104 and 0.219, also under the bar; the pass sits about 0.01 to 0.03 under it.
+- **It fails at 8,000 and at 4,000** on the three large 09-30 fields (0.353 and 0.447). Under flag 110 both late-swap paths keep the
+  top-1% goal (`late_swap.full_goal: top1pct`, `fast_goal: top1pct`) if the switch ships ON.
+- The smoothed estimate passes and fails exactly where the exact one does, so it decides nothing here (flag 109); its top 20 share
+  17 to 19 candidates with the exact top 20.
+- Known biases, in the direction that flatters first place: the top 20 are partly lucky draws (stated above), and on the three
+  large 09-30 fields the engine samples 4,991 distinct lineups for 7,108 to 11,889 opponents, so a lineup has to beat only the best
+  of 4,991 to finish first. The smoothed figure uses N = opponents, so part of its gap to the exact one there is this cap. Sampling
+  a full-size field is C35's.
+
+**Noise pair and seed control.** master-1 and master-2 chose the same 30 lineups on both slates with byte-identical selection
+draws, despite the other project's load; master-b changed 30 of 30 on both (its draws differ by design).
+
+**Part B reference.** Under today's goal, at the chosen knob, 24 of 29 large_gpp picks on 09-29 and 23 of 30 on 09-30 were decided
+inside the tie band (47 of 59, 0.80; the seed control 52 of 59). Part B fails only when first place's share is more than double
+today's, which cannot happen above 0.50: **on these slates Part B cannot fail.** The rule is left as committed (Ben's default reads
+that way); the formal Part B comparison is made on the C55 tree in part 2. Finding: most large_gpp picks are already settled by the
+ownership order inside the band, not by the goal's value (backlog row filed with this chunk).
+
+**Winning scores (flag 112, information only, never a fit).** The best field lineup's score per selection scenario against the
+real winning score:
+
+| Contest | Simulated median (10th to 90th percentile) | Real winning score |
+|---|---|---:|
+| 09-29 Daily Dollar | 145.8 (120.5 to 177.4) | 189.5 |
+| 09-30 Hip Check, Quarter Jukebox, mini-MAX (one field) | 157.4 (132.1 to 189.4) | 173.7, 172.0, 179.4 |
+| 09-30 Daily Dollar | 147.4 (123.2 to 178.3) | 167.1 |
+
+The real winner scored above the simulated median in all five contests and above the 90th percentile once (09-29). Each is one
+real night, so this is consistent with B15's weak-at-the-top field and does not measure it.
+
+**Timings** (another project's tests running): whole replays 126.9 and 130.8 s (master-1), 103.7 and 131.8 s (master-2), 107.1
+and 123.1 s (master-b), against C24's 114 and 154 s on record; master-1 simulation seconds design / selection / referee 7.8 / 9.5
+/ 12.6 (09-29) and 4.0 / 5.2 / 4.3 (09-30), against 7.4 / 12.1 / 11.4 and 3.1 / 4.6 / 5.0 on record. The script's own figures took
+7.6 and 73.2 s after each replay.
