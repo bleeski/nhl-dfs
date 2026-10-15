@@ -179,3 +179,62 @@ real night, so this is consistent with B15's weak-at-the-top field and does not 
 and 123.1 s (master-b), against C24's 114 and 154 s on record; master-1 simulation seconds design / selection / referee 7.8 / 9.5
 / 12.6 (09-29) and 4.0 / 5.2 / 4.3 (09-30), against 7.4 / 12.1 / 11.4 and 3.1 / 4.6 / 5.0 on record. The script's own figures took
 7.6 and 73.2 s after each replay.
+
+### Part 2: the C55 tree, and the decision (2026-10-15)
+
+Runs on clean exports of 8b85bc8 (the switch code, committed after part 1): c55-top-a with `objectives.goal: top1pct` at seed
+20261015, then c55-fp-a and c55-fp-b with `goal: first_place` at seeds 20261015 and 20261016. One other project's python command was
+running at each start. Writes refused 0, network blocked 0, every run published.
+
+**Switch-off equality gate (flag 111, step 3): passed.** c55-top-a chose master-1's 30 lineups on both slates (0 of 30 changed) with
+byte-identical selection draws. The mini slate through the whole scenario pass published byte-identical files from the 3ea1c4a export
+and from the 8b85bc8 export with goal top1pct (sha256 bae60c54a54d2d99c0935d28c2895934782f12ea4d6852ddf6b4f2e18f6b56f2 both, and again
+on a second 3ea1c4a run). A first comparison against the repo's own working tree differed (3078fe16...); that tree reads the repo's
+untracked data folders, which a clean export does not have, so export was compared with export.
+
+**Part B (flag 108): passed.** Large_gpp picks at the chosen knob decided inside the tie band: top1pct 47 of 59 (0.797), first_place
+51 of 59 (0.864); the bar fails only above 1.593. As stated in part 1, it could not fail on these slates.
+
+**Decision, by the rule committed before any number: Part A (exact) and Part B pass, so the switch ships ON** (`config/risk.yaml`
+`objectives.goal: first_place`). Part A failed at 8,000 and at 4,000, so both late-swap paths keep the top-1% goal
+(`config/runtime.yaml` `late_swap.full_goal: top1pct`, `fast_goal: top1pct`) and print it. The smoothed estimate decided nothing.
+
+**Before and after (flag 112, information): the portfolio on the referee draws at the chosen knob.** Same seed, so the same referee
+draws for both goals; the standard error of each difference was not computed (the independent SEs are about 0.002 for the Daily
+Dollar's 7.9% and 0.001 for the Hip Check's 2.0%, so these differences are about 1 to 1.5 independent SEs).
+
+| Slate, seed | Goal | Knob | P(lose >= 80%) | E[payout] | Utility / fees | Top-1% utility / fees | Big contest: P(cash) sum, first-place equity sum |
+|---|---|---:|---:|---:|---:|---:|---|
+| 09-29, 20261015 | top1pct | 0 | 0.0028 | $46.96 | 0.711 (top-1%) | 0.674 | Daily Dollar (29): 10.08, 7.89% |
+| 09-29, 20261015 | first_place | 0 | 0.0012 | $45.73 | 0.305 (first place) | 0.661 | 9.78, 7.78% |
+| 09-29, 20261016 | top1pct (master-b) | 0.25 | 0.0031 | $46.42 | 0.707 | n/a | 9.96, 8.09% |
+| 09-29, 20261016 | first_place | 0.25 | 0.0018 | $43.50 | 0.305 | 0.624 | 9.31, 7.70% |
+| 09-30, 20261015 | top1pct | 0.25 | 0.0120 | $47.56 | 0.971 | 0.971 | Hip Check (26): 8.28, 2.01% |
+| 09-30, 20261015 | first_place | 1.0 | 0.0077 | $45.70 | 0.343 | 0.918 | 8.23, 1.86% |
+| 09-30, 20261016 | top1pct (master-b) | 0.5 | 0.0126 | $48.33 | 1.033 | n/a | 7.98, 2.21% |
+| 09-30, 20261016 | first_place | 0 | 0.0158 | $46.99 | 0.390 | 0.994 | 7.88, 2.20% |
+
+Fees $30.00 (09-29) and $28.00 (09-30). The single-entry contests on 09-30 moved both ways: Quarter Jukebox (2 entries) first-place
+equity 0.075% to 0.170% and 0.110% to 0.170%; 09-30 Daily Dollar 0.684% to 0.515% and 0.477% to 0.690%; mini-MAX unchanged at seed
+20261015 (same lineup) and 0.100% to 0.045% at 20261016.
+
+- **Headline caveat: the first-place goal did not raise first-place equity on fresh draws.** In the two big contests (29 and 26 of
+  the 30 entries) the first-place portfolios' first-place equity on the referee draws was equal or slightly lower at both seeds, and
+  E[payout] and the P(cash) sums dipped, as B112 predicted. The pattern points to overfitting to the selection draws, the risk B129
+  named: on the selection draws the first-place portfolios' utility was 3 to 6% above what the same portfolios scored on the referee
+  draws (ratios 0.97 and 0.94 at seed 20261015, 0.95 and 0.94 at 20261016), while the top-1% portfolios held (0.99, 1.01, 1.00,
+  1.02). A candidate with 15 to 30 first-place finishes is picked partly for lucky wins that do not repeat. Two slates, in-sample
+  field sizes, a PRIOR field: this is a caveat, not a measured loss. Backlog B132 holds the bounded follow-up (a held-out selection
+  split or shrinkage, judged on C51's real results); BEN flag 113 records that the switch is ON by the preregistered rule and how
+  to turn it off.
+- **The knob moved under first place**, as the card warned (a smaller utility makes the same kappa weigh the risk term more): 09-30
+  went from 0.25 to 1.0 at seed 20261015 and from 0.5 to 0 at seed 20261016; 09-29 kept 0 and 0.25. P(lose >= 80%) stayed at most
+  0.0158 against the budget's 0.60 in every run. The move confounds the comparison above; it is reported, not retuned.
+- **Lineups changed:** 27 of 30 on both slates between the goals at seed 20261015 (24 and 28 at 20261016), against 30 of 30 for the
+  seed control alone: read against that control, the count says nothing about the goal (flag 111).
+- **The QA controller** scores on 8,000 scenarios (`late_swap.full_scenarios`) with the run's goal, so with the switch ON it judges
+  first place where Part A failed (0.353 on 09-30). Flag 110 covers late swap only and was not extended after the fact; QA's band is
+  SE-based, so it will accept fewer changes rather than riskier ones. Backlog B131.
+
+**Timings** (one other project's python running): c55-top-a 85.0 and 113.9 s, c55-fp-a 97.8 and 116.7 s, c55-fp-b 102.1 and
+125.3 s; selection 27.1 to 53.9 s, the same range as origin/master's 30.6 to 57.4 s, so the first-place kernel adds no visible cost.
