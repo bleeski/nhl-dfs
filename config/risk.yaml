@@ -85,6 +85,12 @@ selection:
 
 # Scenario objectives (build/objectives.py)
 objectives:
+  # The first goal (C55, BEN flags 107 to 112, docs/experiments/first_place_2026-10-15.md). first_place: large_gpp and small_field
+  # entries are chosen for their first-place dollars (tie-adjusted share of first x the first prize); top1pct: large_gpp for the
+  # payout from top-1% finishes and small_field for the payout, origin/master's goal (also what a missing key means). wta, cash,
+  # satellite and top_n keep their goals either way; the washout goal (kappa, the budget, the caps) is the same under both.
+  # ON only if the preregistered bar passes on the saved 09-29 and 09-30 runs.
+  goal: top1pct
   top_pct: 0.01                  # large GPP tail region: the top 1% of the field size
   max_distinct: 5000             # at most this many distinct field lineups per contest
   sampled_max_opponents: 1000    # fewer opponents than this: draw the actual opponents per scenario

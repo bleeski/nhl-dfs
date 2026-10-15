@@ -164,8 +164,12 @@ def _sample(v: RunView, n: int, locked: dict) -> list[dict]:
         return max(c.values(), default=0)
 
     picks: list[tuple[str, str]] = []
+    if (v.m.get("scenario") or {}).get("goal") == "first_place":  # C55: the goal's own figure, comparable across families
+        tail = ("highest first-place equity", lambda e: -float(rows.get(e, {}).get("first_place_equity", 0.0) or 0.0))
+    else:  # origin/master's rule: its rows never held exp_payout_top1pct, so it always read the family value
+        tail = ("highest tail", lambda e: -float(rows.get(e, {}).get("value", 0.0) or 0.0))
     rules = [
-        ("highest tail", lambda e: -float(rows.get(e, {}).get("exp_payout_top1pct", rows.get(e, {}).get("value", 0.0)) or 0.0)),
+        tail,
         ("highest duplicate risk", lambda e: -float(rows.get(e, {}).get("dup", 0.0) or 0.0)),
         ("most contrarian", lambda e: float(rows.get(e, {}).get("own_sum_pct", 0.0) or 0.0)),
         ("most concentrated", lambda e: -team_max(e)),
@@ -253,12 +257,15 @@ def _top(d: dict, n: int) -> dict:
 
 def acceptance(risk_cfg: dict, qa_cfg: dict, fam_cfg: dict) -> dict:
     """The metrics and rules a proposal is judged by, declared before any proposal exists."""
-    from nhl_dfs.build.objectives import FAMILY_OBJECTIVE
+    from nhl_dfs.build.objectives import family_objective, goal_of
 
     tb = risk_cfg["tiebreak"]
+    first = goal_of(risk_cfg) == "first_place"  # C55: the tail metric follows the goal; top-1% stays as information
     return {
-        "family_objective": dict(FAMILY_OBJECTIVE),
-        "tail_metric": "exp_payout_top1pct", "safety_metric": "p_lose80 (portfolio)",
+        **({"goal": "first_place"} if first else {}),
+        "family_objective": family_objective(risk_cfg),
+        "tail_metric": "first_place_equity" if first else "exp_payout_top1pct", "safety_metric": "p_lose80 (portfolio)",
+        **({"information_metrics": ["exp_payout_top1pct", "p_top1pct"]} if first else {}),
         "strategic_rule": (f"legal; no pinned cell; risk budget held; paired selection and referee draws; the family objective "
                            f"gains more than max({tb['band_pct']:g} x value, {tb['se_mult']:g} x paired SE); the tail and safety "
                            "metrics do not get worse beyond their SE"),

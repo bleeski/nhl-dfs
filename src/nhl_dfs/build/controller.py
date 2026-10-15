@@ -14,7 +14,8 @@ accepts or rejects, and it alone decides whether another round may run:
 - strategic: `swap` (one entry, one role for another) or `exclude` (a person out of every open cell, each
   entry repaired). Requires legality, the risk budget, and on paired draws (the same selection draws before
   and after, then this round's own referee block) a family-utility gain beyond the tie band with no loss in
-  the tail (top-1% payout) or safety (portfolio P(lose >= 80%)) metric beyond its standard error. No
+  the tail (top-1% payout; first-place dollars under goal first_place, C55) or safety (portfolio P(lose >= 80%)) metric
+  beyond its standard error. No
   scenario cache: rejected ("no scenarios to compare on"). Under FIELD_CALIBRATION=PRIOR an accepted
   change is recorded as an unvalidated modeled improvement.
 - Rounds: 1 by default; 2 and 3 only after the previous round accepted a correctness repair; never inside
@@ -315,8 +316,11 @@ def evaluate(so, before: dict, after: dict, changed: set[str], contest_of: dict,
     entries are edited. The 3% band is anchored on the edited entries' own utility before (the size of what is
     being changed: whole-contest utility can be 150 times larger and would swamp a one-entry gain); its standard
     error is the paired standard error of the aggregate change. The tail test is that paired change against its
-    own paired standard error."""
+    own paired standard error. The tail is the top-1% payout, or the first-place dollars when `objectives.goal` is
+    first_place (C55); the top-1% change is then still reported, as information."""
     from nhl_dfs.build import tiebreak
+
+    tail_kind = "first_place" if ob.goal_of(risk_cfg) == "first_place" else "top1pct"
 
     touched = sorted({contest_of[e] for e in changed})
     others = sorted({contest_of[e] for e in before} - set(touched))
@@ -331,12 +335,14 @@ def evaluate(so, before: dict, after: dict, changed: set[str], contest_of: dict,
         for cid, (eids, m) in _portfolio(so, before, contest_of, purpose, [c for c in others if c in so.cache.contests]).items():
             if m is not None:
                 base_pay = base_pay + m.payout_cents.astype(np.int64).sum(axis=1)
-        tot, util, edited, top = {}, {}, {}, {}
+        tot, util, edited, top, info = {}, {}, {}, {}, {}
         for side, lus in (("before", before), ("after", after)):
             joint = _portfolio(so, lus, contest_of, purpose, touched)
             try:
-                pay_t, util_t, top_t = ob.own_totals(joint)
+                pay_t, util_t, top_t = ob.own_totals(joint, tail=tail_kind)
                 _, edited_t, _ = ob.own_totals(joint, only=changed)
+                if tail_kind != "top1pct":
+                    info[side] = ob.own_totals(joint)[2]
             except ValueError:
                 return False, {"reason": "the touched contests hold no entries to compare"}
             tot[side], util[side], edited[side], top[side] = np.asarray(base_pay + pay_t), util_t, edited_t, top_t
@@ -358,6 +364,10 @@ def evaluate(so, before: dict, after: dict, changed: set[str], contest_of: dict,
                          "tail_gain": round(tail_gain, 4), "tail_gain_se": round(tail_se, 4),
                          "p_lose80_before": round(p["before"], 4), "p_lose80_after": round(p["after"], 4),
                          "p_lose80_limit": limit, "gain_ok": gain_ok, "tail_ok": tail_ok, "safety_ok": bool(safe_ok)}
+        if info:  # C55: under goal first_place the tail above is first-place dollars; the top-1% change is information
+            figs[purpose].update({"tail_metric": tail_kind,
+                                  "top1pct_before": round(float(info["before"].mean() / 100.0), 4),
+                                  "top1pct_after": round(float(info["after"].mean() / 100.0), 4)})
         ok = ok and gain_ok and tail_ok and bool(safe_ok)
         if not ok:
             break

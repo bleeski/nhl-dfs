@@ -18,14 +18,19 @@ count (field size minus the user's entries in that contest). A field with fewer 
 `sampled_max_opponents` instead draws its actual opponents per scenario from the sampled lineups
 (seeded), because a 9-opponent WTA cannot be represented by fractional weights.
 
-Family objectives (the metric selection maximizes, higher is better):
-    large_gpp    exp_payout_top1pct  expected payout from finishes inside the top 1% ($)
-    small_field  exp_payout          expected payout under the full curve ($)
-    wta          first_place_equity  tie-adjusted share of first place
+Family objectives (the metric selection maximizes, higher is better), under `objectives.goal` (C55, BEN flags 107 to 112):
+    large_gpp    first_place_equity  goal first_place: tie-adjusted share of first place; its utility is that share x the first
+                                     prize, floored to the cent (`first_place_cents`)
+                 exp_payout_top1pct  goal top1pct: expected payout from finishes inside the top 1% ($)
+    small_field  first_place_equity  goal first_place, as large_gpp
+                 exp_payout          goal top1pct: expected payout under the full curve ($)
+    wta          first_place_equity  tie-adjusted share of first place (either goal)
     cash         p_clear_line        tie-adjusted probability of finishing inside the cash line
     satellite    p_seat              tie-adjusted seats won; the ticket's face value is kept apart
     top_n        p_top_n             tie-adjusted probability of a top-N finish in a "Top N Win $X" contest (C47; its
                                      own entries are chosen together for P(at least one in the top N), flag 70)
+A config without `objectives.goal` is the top1pct goal, origin/master's code path. The top-1% figures are computed and reported
+under either goal (`Metrics.row`, `PortfolioMetrics.top1pct_utility`).
 Every figure is a scenario estimate: it carries its Monte Carlo standard error, PAYOUT_SOURCE,
 OUTCOME_CALIBRATION and FIELD_CALIBRATION, and a PRIOR payout makes it an uncalibrated scenario
 proxy, never a measured fact.
@@ -56,7 +61,38 @@ FAMILY_OBJECTIVE = {
     "cash": "p_clear_line",
     "satellite": "p_seat",
     "top_n": "p_top_n",
-}
+}  # the top1pct goal's map, origin/master's; `family_objective(cfg)` gives the map of cfg's goal
+GOALS = ("first_place", "top1pct")
+FIRST_PLACE_FAMILIES = ("large_gpp", "small_field")  # C55 (flag 107): the families whose goal `objectives.goal` changes
+
+
+def goal_of(cfg: dict) -> str:
+    """C55: a risk config's `objectives.goal`; without the key it is top1pct, origin/master's goal."""
+    return str((cfg.get("objectives") or {}).get("goal", "top1pct"))
+
+
+def with_goal(cfg: dict, goal: str) -> dict:
+    """A shallow copy of cfg whose `objectives.goal` is `goal` (late swap's own goal, flag 110)."""
+    if goal not in GOALS:
+        raise ValueError(f"goal must be one of {GOALS} (got {goal!r})")
+    return {**cfg, "objectives": {**(cfg.get("objectives") or {}), "goal": goal}}
+
+
+def family_objective(cfg: dict) -> dict[str, str]:
+    """The metric selection maximizes, per family, under cfg's goal: FAMILY_OBJECTIVE, with large_gpp and small_field on
+    first_place_equity under goal first_place (C55, flag 107)."""
+    out = dict(FAMILY_OBJECTIVE)
+    if goal_of(cfg) == "first_place":
+        out.update({f: "first_place_equity" for f in FIRST_PLACE_FAMILIES})
+    return out
+
+
+def first_place_cents(G: np.ndarray, E: np.ndarray, first: int) -> np.ndarray:
+    """C55: first-place dollars per scenario in cents: the first prize split evenly among the entries tied for first and rounded
+    down, first // (E + 1), where nothing scores above (G == 0), else 0. Integer arithmetic, so `_evaluate` and `PayCurve.pay_util`
+    give the same cents; two own entries tied for first get first // 2 each, never the whole prize twice."""
+    E = np.asarray(E).astype(np.int64)
+    return np.where(np.asarray(G) == 0, int(first) // (E + 1), 0).astype(np.int64)
 
 
 def load_risk_config(path: Path = RISK_YAML) -> dict:
@@ -114,6 +150,8 @@ def validate_risk_config(cfg: dict) -> None:
         raise ValueError("risk.yaml objectives.top_pct must be in (0, 1)")
     if int(o.get("max_distinct", 0)) < 1 or int(o.get("max_distinct", 0)) > 5000:
         raise ValueError("risk.yaml objectives.max_distinct must be in [1, 5000]")
+    if "goal" in o and o["goal"] not in GOALS:
+        raise ValueError(f"risk.yaml objectives.goal must be one of {', '.join(GOALS)}")
 
 
 # -- exact tie arithmetic --------------------------------------------------------------------------
@@ -519,6 +557,7 @@ class Metrics:
     utility_cents: np.ndarray  # (S, K) int32 family utility per scenario (the dollars the family objective values)
     top_k: int = 0
     top_payout_cents: np.ndarray | None = None  # (S, K) int32 payout from finishes inside the top 1%, per scenario (C18)
+    first_cents: np.ndarray | None = None  # (S, K) int32 first-place dollars in cents, every family (C55, `first_place_cents`)
 
     def row(self, k: int) -> dict:
         """JSON-ready figures for candidate k (dollars and probabilities with their standard errors)."""
@@ -530,7 +569,8 @@ class Metrics:
                 "first_place_equity": r(self.first_place_equity[k], 5), "first_place_equity_se": r(self.first_place_equity_se[k], 5),
                 "p_clear_line": r(self.p_clear_line[k]), "p_clear_line_se": r(self.p_clear_line_se[k]),
                 "p_seat": r(self.p_seat[k]), "p_seat_se": r(self.p_seat_se[k]),
-                "exp_ticket_value": r(self.exp_ticket_value[k]), "top1pct_positions": self.top_k}
+                "exp_ticket_value": r(self.exp_ticket_value[k]), "top1pct_positions": self.top_k,
+                "exp_payout_top1pct": r(self.exp_payout_top1pct[k]), "exp_payout_top1pct_se": r(self.exp_payout_top1pct_se[k])}
 
 
 def _chunk_rows(n: int, per_row_bytes: int, cap_mb: float) -> int:
@@ -641,9 +681,12 @@ def _evaluate(S: int, K: int, per_row_bytes: int, block, contest: Contest, cfg: 
     first = int(contest.prizes_cents[0]) if contest.paid else 0
     face = contest.ticket_face_cents or 0
     step = _chunk_rows(S, per_row_bytes, float(o["memory_cap_mb"]))
+    goals = family_objective(cfg)
+    fp = goal_of(cfg) == "first_place" and contest.family in FIRST_PLACE_FAMILIES
     pay = np.zeros((S, K), np.int32)
     util = np.zeros((S, K), np.int32)
     topd = np.zeros((S, K), np.int32)
+    fpc = np.zeros((S, K), np.int32)
     top = np.zeros((S, K), np.float32)
     eq = np.zeros((S, K), np.float32)
     clear = np.zeros((S, K), np.float32)
@@ -662,7 +705,10 @@ def _evaluate(S: int, K: int, per_row_bytes: int, block, contest: Contest, cfg: 
         eq[a:b] = (G == 0) / T
         clear[a:b] = np.clip(line - G, 0, T) / T
         seat[a:b] = (seatp[hi] - seatp[lo]) / T
-        if fam == "large_gpp":
+        fpc[a:b] = first_place_cents(G, E, first)
+        if fp:  # C55: goal first_place, large_gpp and small_field
+            util[a:b] = fpc[a:b]
+        elif fam == "large_gpp":
             util[a:b] = topd[a:b]
         elif fam == "wta":
             util[a:b] = np.floor(eq[a:b] * first)
@@ -680,13 +726,13 @@ def _evaluate(S: int, K: int, per_row_bytes: int, block, contest: Contest, cfg: 
         "p_seat": (seat.mean(axis=0), _se(seat, S)),
     }
     vals["p_top_n"] = vals["p_clear_line"]  # a top_n table pays every place to N, so its cash line is N (C47)
-    name = FAMILY_OBJECTIVE[fam]
+    name = goals[fam]
     return Metrics(
         contest.contest_id, fam, S, name, vals[name][0], vals[name][1],
         vals["exp_payout"][0], vals["exp_payout"][1], vals["exp_payout_top1pct"][0], vals["exp_payout_top1pct"][1],
         (pay > 0).mean(axis=0), top.mean(axis=0), _se(top, S), vals["first_place_equity"][0], vals["first_place_equity"][1],
         vals["p_clear_line"][0], vals["p_clear_line"][1], vals["p_seat"][0], vals["p_seat"][1],
-        seat.mean(axis=0) * face / 100.0, pay, util, top_k, topd)
+        seat.mean(axis=0) * face / 100.0, pay, util, top_k, topd, fpc)
 
 
 def _stack(ms: list[Metrics]) -> Metrics:
@@ -697,7 +743,7 @@ def _stack(ms: list[Metrics]) -> Metrics:
     kw = {f: cat(f) for f in ("objective", "objective_se", "exp_payout", "exp_payout_se", "exp_payout_top1pct",
                               "exp_payout_top1pct_se", "p_cash", "p_top1pct", "p_top1pct_se", "first_place_equity",
                               "first_place_equity_se", "p_clear_line", "p_clear_line_se", "p_seat", "p_seat_se",
-                              "exp_ticket_value", "payout_cents", "utility_cents", "top_payout_cents")}
+                              "exp_ticket_value", "payout_cents", "utility_cents", "top_payout_cents", "first_cents")}
     return Metrics(m0.contest_id, m0.family, m0.n_scenarios, m0.objective_name, top_k=m0.top_k, **kw)
 
 
@@ -706,7 +752,7 @@ def _stack(ms: list[Metrics]) -> Metrics:
 class PayCurve:
     """A contest's prefix arrays, built once: the selection fill's payout and utility kernel."""
 
-    def __init__(self, ct: Contest, top_pct: float):
+    def __init__(self, ct: Contest, top_pct: float, goal: str = "top1pct"):
         self.ct = ct
         self.L = ct.field_size
         self.cash = ct.prefix(ct.prizes_cents)
@@ -714,6 +760,7 @@ class PayCurve:
         self.top_k = max(1, int(math.floor(top_pct * self.L)))
         self.first = int(ct.prizes_cents[0]) if ct.paid else 0
         self.face = ct.ticket_face_cents or 0
+        self.first_place = goal == "first_place" and ct.family in FIRST_PLACE_FAMILIES  # C55: `goal_of(risk_cfg)`
 
     def pay_util(self, G: np.ndarray, E: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """(payout cents, family utility cents) for rank blocks G, E (own copies included)."""
@@ -722,7 +769,9 @@ class PayCurve:
         hi, lo = np.minimum(G + T, self.L), np.minimum(G, self.L)
         pay = (self.cash[hi] - self.cash[lo]) // T
         fam = self.ct.family
-        if fam == "large_gpp":
+        if self.first_place:  # the same integer kernel as `_evaluate`
+            util = first_place_cents(G, T - 1, self.first)
+        elif fam == "large_gpp":
             util = (self.cash[np.minimum(G + T, self.top_k)] - self.cash[np.minimum(G, self.top_k)]) // T
         elif fam == "wta":
             util = np.floor((G == 0) / T * self.first).astype(np.int64)
@@ -909,11 +958,14 @@ class PortfolioMetrics:
     per_entry: dict[str, dict]
     tickets_value: float
     per_contest: dict[str, dict] = field(default_factory=dict)  # top_n contests only: top_n_figures (C47)
+    top1pct_utility: float = 0.0  # C55: the top-1% payout summed over entries / fees, information under goal first_place
+    top1pct_utility_se: float = 0.0
 
     def record(self) -> dict:
         return {k: getattr(self, k) for k in ("n_scenarios", "fees", "exp_payout", "exp_payout_se", "p_zero_payout",
                                               "p_net_loss", "p_lose80", "p_lose80_se", "es5", "tail_utility",
-                                              "tail_utility_se", "recovery_quantiles", "concentration", "tickets_value")}
+                                              "tail_utility_se", "recovery_quantiles", "concentration", "tickets_value",
+                                              "top1pct_utility", "top1pct_utility_se")}
 
 
 def return_stats(payout_cents: np.ndarray, fees_cents: int, util_cents: np.ndarray | None = None) -> dict:
@@ -994,11 +1046,13 @@ def joint_by_contest(assignment: Mapping[str, Sequence[str]], contests: Mapping[
     return out
 
 
-def own_totals(joint: Mapping[str, tuple[list[str], "Metrics | None"]], only=None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Per-scenario (payout, utility, top-1% payout) cents summed over the user's entries in these contests' joint
-    metrics: every entry, or only those named in `only`. A contest's own entries are one account (an entry's finish
-    counts every other entry), so the change from one portfolio to another is the difference of these totals, never
-    of the edited entries alone (C18, B56, R05)."""
+def own_totals(joint: Mapping[str, tuple[list[str], "Metrics | None"]], only=None,
+               tail: str = "top1pct") -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Per-scenario (payout, utility, tail) cents summed over the user's entries in these contests' joint metrics: every
+    entry, or only those named in `only`. The tail is the top-1% payout, or the first-place dollars with tail "first_place"
+    (C55: the QA controller's tail under that goal). A contest's own entries are one account (an entry's finish counts
+    every other entry), so the change from one portfolio to another is the difference of these totals, never of the edited
+    entries alone (C18, B56, R05)."""
     pay = util = top = None
     for eids, m in joint.values():
         if m is None:
@@ -1006,7 +1060,8 @@ def own_totals(joint: Mapping[str, tuple[list[str], "Metrics | None"]], only=Non
         idx = [j for j, e in enumerate(eids) if only is None or e in only]
         if not idx:
             continue
-        p, u, t = (a[:, idx].astype(np.int64).sum(axis=1) for a in (m.payout_cents, m.utility_cents, m.top_payout_cents))
+        tail_cents = m.first_cents if tail == "first_place" else m.top_payout_cents
+        p, u, t = (a[:, idx].astype(np.int64).sum(axis=1) for a in (m.payout_cents, m.utility_cents, tail_cents))
         pay, util, top = (p, u, t) if pay is None else (pay + p, util + u, top + t)
     if pay is None:
         raise ValueError("no entries in these contests' joint metrics")
@@ -1026,6 +1081,7 @@ def portfolio_metrics(assignment: Mapping[str, Sequence[str]], contests: Mapping
     S = scenarios.n
     total_pay = np.zeros(S, np.int64)
     total_util = np.zeros(S, np.int64)
+    total_top = np.zeros(S, np.int64)
     per_entry: dict[str, dict] = {}
     pay_by_entry: dict[str, np.ndarray] = {}
     tickets = 0.0
@@ -1043,10 +1099,13 @@ def portfolio_metrics(assignment: Mapping[str, Sequence[str]], contests: Mapping
             tickets += float(m.exp_ticket_value[j])
         total_pay += m.payout_cents.sum(axis=1)
         total_util += m.utility_cents.sum(axis=1)
+        total_top += m.top_payout_cents.astype(np.int64).sum(axis=1)
     fees = int(sum(fees_cents.get(e, 0) for e in assignment))
     st = return_stats(total_pay, fees, total_util)
+    top = total_top / max(1, fees)
     conc = exposure.concentration(assignment, pool, fees_cents, scenarios, pay_by_entry)
     return PortfolioMetrics(S, fees / 100.0, st["exp_payout"], st["exp_payout_se"], st["p_zero_payout"], st["p_net_loss"],
                             st["p_lose80"], st["p_lose80_se"], st["es5"], st["tail_utility"], st["tail_utility_se"],
-                            st["recovery_quantiles"], conc, per_entry, tickets, per_contest)
+                            st["recovery_quantiles"], conc, per_entry, tickets, per_contest, float(top.mean()),
+                            float(top.std() / math.sqrt(S)))
 

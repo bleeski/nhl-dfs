@@ -29,6 +29,13 @@ Frontier: one portfolio per knob setting (five kappas, config/risk.yaml), each m
 highest tail utility with P(lose >= 80%) and the fee concentrations inside the budget, else the
 least-risk point, recorded. Monotonicity in the knob is not assumed. WTA entries are allocated by
 first-place equity (their family utility).
+
+The goal (C55, BEN flags 107 to 112, `config/risk.yaml` `objectives.goal`): with first_place the family utility of a
+large_gpp or small_field entry is its first-place dollars (the tie-adjusted share of first place x the first prize, cents,
+`objectives.first_place_cents`), so "tail utility" on the frontier is the portfolio's first-place utility / fees and the
+top-1% utility is carried beside it as information (`FrontierPoint.top1pct_utility`); with top1pct (or no key) it is
+origin/master's top-1% payout and expected payout. The risk term, the knobs, the budget and the caps are the same under
+either goal; a smaller utility makes the same kappa weigh the risk term more.
 """
 
 from __future__ import annotations
@@ -105,6 +112,7 @@ class FrontierPoint:
     kappas: list[float] = field(default_factory=list)  # every knob that produced this portfolio
     goalie_lineups_max: int = 0  # most entries holding one goalie
     game_lineups_max: int | None = None  # most entries sharing a primary game (multi-game slates)
+    top1pct_utility: float | None = None  # C55: the top-1% payout / fees, information when the goal is first place
 
     def record(self) -> dict:
         return {k: (round(v, 5) if isinstance(v, float) else v) for k, v in self.__dict__.items()}
@@ -345,7 +353,7 @@ def _greedy(kappa: float, order: list, entry_contest: Mapping[str, str], fees: M
     placed (never prizes that cannot be paid together). Returns (choices, relaxations, pay_total)."""
     S, K = cand_scores.shape
     tp = float(risk_cfg["objectives"]["top_pct"])
-    curves = {cid: _Curve(st.contest, tp) for cid, st in states.items()}
+    curves = {cid: _Curve(st.contest, tp, ob.goal_of(risk_cfg)) for cid, st in states.items()}
     cap_mb = float(risk_cfg["objectives"]["memory_cap_mb"]) * mem_share
     step = ob._chunk_rows(S, K * 160, cap_mb)  # ~20 temporaries x 8 bytes
     n_in = Counter(entry_contest[e] for e in order)
@@ -552,7 +560,7 @@ def _frontier_point(kappa: float, by_entry: dict, contests_eval: dict, scen: ob.
         reasons.append(f"game primary in {game_top} of {n} lineups > {budget.game_lineups_max}")
     return FrontierPoint(kappa, pm.tail_utility, pm.tail_utility_se, pm.p_lose80, pm.p_lose80_se, pm.exp_payout, gmax,
                          game_max, cap_max, not reasons, False, reasons, goalie_lineups_max=g_top,
-                         game_lineups_max=game_top), pm
+                         game_lineups_max=game_top, top1pct_utility=pm.top1pct_utility), pm
 
 
 def lineup_counts(by_entry: Mapping[str, Sequence[str]], pool, role_mean: Mapping[str, float]) -> tuple[Counter, Counter]:
@@ -704,7 +712,7 @@ def screen(states: Mapping[str, _ContestState], candidates: Sequence[Candidate],
     for cid, st in states.items():
         if not n_in.get(cid):
             continue
-        cv = _Curve(st.contest, tp)
+        cv = _Curve(st.contest, tp, ob.goal_of(risk_cfg))
         su = np.zeros(K)
         step = ob._chunk_rows(S, K * 80, float(risk_cfg["objectives"]["memory_cap_mb"]))
         for a in range(0, S, step):

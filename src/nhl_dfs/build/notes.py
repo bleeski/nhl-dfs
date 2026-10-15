@@ -258,14 +258,23 @@ def _scenario_lines(s: dict[str, Any]) -> list[str]:
         out.append(f"| {c['contest_id']} {c['name']} | {c['family']} ({c['family_source']}) | {_payout_cell(c)} | {_size_cell(c)} "
                    f"| {c['fee']:.2f} | {c['paid_positions']} / {c['cash_line']} | {c['first_prize']:.2f} | {c['field']} |")
     out += [x for x in (_top_n_line(c) for c in s.get("contests", [])) if x]
+    first = s.get("goal") == "first_place"  # C55: the frontier's utility is first-place dollars; top-1% stays as information
+    if first:
+        out += ["", "- GOAL=first_place: large_gpp and small_field entries are chosen for their first-place dollars (tie-adjusted "
+                "share of first x the first prize); wta, cash, satellite and top_n keep their goals; the washout goal (knob, budget, "
+                "caps) is unchanged. The top-1% figures below are information, no longer selected on (C55)."]
     out += ["", "Frontier (selection scenarios; dominated points removed; knobs that chose the same portfolio share a row):", "",
-            "| Knobs (kappa) | Tail utility / fees | P(lose >= 80% of fees) | E[payout] $ | Max goalie fee share | Max game fee share "
-            "| Max Captain fee share | Most lineups on one goalie / game | Inside budget |", "|---|---:|---:|---:|---:|---:|---:|---:|---|"]
+            ("| Knobs (kappa) | First-place utility / fees | Top-1% utility / fees (information) " if first else
+             "| Knobs (kappa) | Tail utility / fees ")
+            + "| P(lose >= 80% of fees) | E[payout] $ | Max goalie fee share | Max game fee share "
+            "| Max Captain fee share | Most lineups on one goalie / game | Inside budget |",
+            "|---|---:|" + ("---:|" if first else "") + "---:|---:|---:|---:|---:|---:|---|"]
     for p in s.get("frontier", []):
         ks = ", ".join(f"{k:g}" for k in (p.get("kappas") or [p["kappa"]]))
         g = "n/a" if p.get("game_share_max") is None else f"{p['game_share_max']:.2f}"
         cp = "n/a" if p.get("captain_share_max") is None else f"{p['captain_share_max']:.2f}"
-        out.append(f"| {ks} | {_pm(p['tail_utility'], p['tail_utility_se'])} | {_pm(p['p_lose80'], p['p_lose80_se'])} "
+        top = (f" {p['top1pct_utility']:.3f} |" if p.get("top1pct_utility") is not None else " n/a |") if first else ""
+        out.append(f"| {ks} | {_pm(p['tail_utility'], p['tail_utility_se'])} |{top} {_pm(p['p_lose80'], p['p_lose80_se'])} "
                    f"| {p['exp_payout']:.2f} | {p['goalie_share_max']:.2f} | {g} | {cp} | {p.get('goalie_lineups_max', '?')} / "
                    f"{'n/a' if p.get('game_lineups_max') is None else p['game_lineups_max']} | "
                    f"{'yes' if p['feasible'] else 'no: ' + '; '.join(p['reasons'])} |")
@@ -289,7 +298,10 @@ def _scenario_lines(s: dict[str, Any]) -> list[str]:
         out += ["", "Portfolio (referee scenarios; R(s) = sum of payouts - fees):", "",
                 f"- Fees ${pf['fees']:.2f}; E[payout] ${_pm(pf['exp_payout'], pf['exp_payout_se'], 2)}; P(zero payout) {pf['p_zero_payout']:.3f}; "
                 f"P(net loss) {pf['p_net_loss']:.3f}; P(lose >= 80% of fees) {_pm(pf['p_lose80'], pf['p_lose80_se'])}; "
-                f"worst-5% expected shortfall ${pf['es5']:.2f}; tail utility / fees {_pm(pf['tail_utility'], pf['tail_utility_se'])}; "
+                f"worst-5% expected shortfall ${pf['es5']:.2f}; " + ("first-place utility / fees" if first else "tail utility / fees")
+                + f" {_pm(pf['tail_utility'], pf['tail_utility_se'])}; "
+                + (f"top-1% utility / fees (information) {_pm(pf['top1pct_utility'], pf['top1pct_utility_se'])}; "
+                   if first and "top1pct_utility" in pf else "") +
                 f"tickets (not cash) ${pf.get('tickets_value', 0):.2f}.",
                 "- Recovery (payout / fees) quantiles: " + ", ".join(f"{k} {v}" for k, v in pf.get("recovery_quantiles", {}).items()),
                 "- Fee share by goalie: " + ", ".join(f"{k} {v:.2f}" for k, v in list(conc.get("goalie", {}).items())[:4]),
@@ -325,6 +337,8 @@ def _objective_lines(m: dict[str, Any]) -> list[str]:
            f"- OBJECTIVE={o['kind']} (requested {o.get('requested', 'auto')}; order scenario, provisional, baseline)"]
     for f in o.get("fallbacks", []):
         out.append(f"- {f['from']} not used: {f['reason']}")
+    if o.get("goal"):  # C55 (flag 110): the goal the scenario objective scored repairs by
+        out.append(f"- GOAL={o['goal']['goal']}: {o['goal']['why']}")
     out.append(f"- LIVE_STATUS={live.get('LIVE_STATUS', 'NO_SNAPSHOT')}: {live.get('reason', 'no standings snapshot')}")
     if news.get("roles_news_state"):
         out.append(f"- ROLES_NEWS_STATE={news['roles_news_state']} (Daily Faceoff lines and goalies; NEWS_STATE above is DK status coverage)")
