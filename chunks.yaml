@@ -844,6 +844,9 @@ deferred:
   - item: "QA's goal at its own scenario count (B131)"
     trigger: "the first QA round on a real slate with objectives.goal first_place, or the next session that touches build/controller.py"
     backlog: [B131]
+  - item: "Tests that write into the real runs/ and outputs/ (B133)"
+    trigger: "the next session that touches build/refresh.py, build/late_swap.py or tests/conftest.py, or the next full local suite that moves runs/ or outputs/"
+    backlog: [B133]
 flag_recommendations:
   2: "Record Ben's 2026-10-02 answer in the flags table: 40% goalie and game fee share with the LINEUPS fallback (done in this plan); C27 fixes the feasibility test behind it."
   3: "Replace the placeholder mix with the observed one (5 to 10 entries per slate, 1 to 2 per contest, fees $0.10 to $1, 20-max and 150-max GPPs plus Showdown) so family priors and C21's sleeve sizes fit what Ben plays."

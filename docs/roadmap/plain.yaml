@@ -41,6 +41,12 @@ goals:
     blurb: Bookkeeping, measurement and cleanup, ordered by value against effort.
 
 asks:
+  - id: first-place-goal
+    chunks: [C55]
+    since: 2026-10-15
+    question: Keep aiming each lineup at first place, or go back to the top 1% until the real-results replay (C51) has checked it?
+    why: The engine passed the test it was given before any number (it can tell lineups apart on first place with 20,000 simulated nights), so first place is switched on. But on a second, independent set of simulated nights, the first-place lineups did not win their contest more often than the top 1% lineups on Sept 29 or Sept 30, and they cashed a little less. The likely reason is that a lineup that wins only 15 to 30 of 20,000 simulated nights gets picked partly for lucky wins.
+    recommendation: Keep it on for now, since that is the rule you set, and let C51 settle it on real results. If you would rather wait, a session can set it back in one line (objectives goal top1pct in config/risk.yaml); nothing else changes.
   - id: repo-privacy
     chunks: [C48]
     since: 2026-10-10
@@ -55,6 +61,8 @@ asks:
     recommendation: Ask Claude in a local session to walk you through the copy-and-paste PowerShell block in docs/experiments/chalk_core_2026-10-13.md (goalie leverage, stack size, chalk core). The Showdown Captain block (docs/experiments/captain_2026-10-13.md) also needs saved Showdown runs from Oct 3 on, and as of Oct 13 your machine has none because those slates ran in the cloud, so for now it can only check the Captain pattern in your Oct 2 results. Nothing changes your lineups unless a test passes and you agree.
 
 updates:
+  - date: 2026-10-15
+    text: C55 finished on your machine. Big tournaments and small fields now aim at first place, because the engine passed the test set before any number on the Sept 29 and Sept 30 slates. Late swap still uses the top 1%, because with its fewer simulated nights first place was too noisy. On fresh simulated nights the first-place lineups did not win more often on those two slates and cashed a little less, so treat the change as unproven until the real-results replay (C51). Next up is C25.
   - date: 2026-10-14
     text: You changed the first of your two goals. Each lineup will aim at first place in its own contest instead of large prizes in general, and avoiding a washed-out night stays the second goal. The top band of the queue now reads that way, and the new C55 is next up. It first checks on the Sept 29 and Sept 30 slates whether first place can be measured reliably, then switches big tournaments and small fields. Cash, Booster and satellite contests keep their goal. The Classic replay (C51) will now also compare aiming at first place with aiming at the top 1%.
   - date: 2026-10-13
@@ -376,6 +384,8 @@ chunks:
     what: Each tournament and small-field lineup is picked for its chance to win its own contest outright, instead of its chance to land in the top 1% or its average payout. Avoiding a washed-out night stays the second goal, unchanged. Cash, Booster and satellite contests keep their goal, because first place there pays the same as any cashing spot.
     why: You asked for it on Oct 14. Today only winner-take-all contests aim at first place. Winning outright is rare, so the engine first measures on the Sept 29 and Sept 30 slates whether it can tell lineups apart on it, and how far its simulated winning scores sit from the real ones. If it cannot, the switch stays off and you get the numbers.
     matters: A lineup built to win outright is often not the one built to finish in the top 1%. The cost is fewer cashes. Classic already cashed less often than expected under the top 1% aim (23 times in 136 against 32 expected), and aiming at first place will cash less often still. The Classic replay (C51) will check the trade against real results.
+    result: Done Oct 15, switched on. With 20,000 simulated nights the engine could tell lineups apart on first place in all five tournaments of Sept 29 and Sept 30 (the test set before any number, passed narrowly). Big tournaments and small fields now aim at first place; cash, Booster and satellite contests are unchanged, and late swap still aims at the top 1% because with its 4,000 or 8,000 nights first place was too noisy. The top 1% numbers are still shown. The risk of losing most of the night's fees stayed tiny either way (at most 1.6% against your 60% limit), and the first-place lineups cashed slightly less.
+    caveat: On a second, independent set of simulated nights the first-place lineups did not win their contest more often than the top 1% lineups did (Sept 29 Daily Dollar 7.8% against 7.9% for 29 entries; Sept 30 Hip Check 1.9% against 2.0% for 26 entries). Two slates only, contest sizes taken from those same contests, no small-field contest on either slate. The real-results replay (C51) is the test that counts.
   C41:
     title_seen: Selection robust to field ownership error (low, base and high ownership)
     name: Lineups that hold up if the ownership forecast is off
