@@ -31,8 +31,8 @@ goals:
     name: A file DraftKings accepts
     blurb: Comes before everything else. A slate with no legal file, or a file DraftKings rejects, wins nothing.
   win:
-    name: Win big prizes
-    blurb: Anything that helps win large prizes in the contests you enter. Stacks, goalie choice, ownership against the field, Showdown Captains, and choosing lineups for each contest's prize table.
+    name: Win first place
+    blurb: Anything that raises your chance of finishing first in each contest you enter. Your goal since Oct 14; before that it was winning large prizes in general. Stacks, goalie choice, ownership against the field, Showdown Captains, and choosing lineups for each contest's prize table.
   washout:
     name: Avoid a washed-out night
     blurb: Stops the whole portfolio from failing together. One goalie, game or line carrying too much, and dead or stranded entries.
@@ -55,6 +55,8 @@ asks:
     recommendation: Ask Claude in a local session to walk you through the copy-and-paste PowerShell block in docs/experiments/chalk_core_2026-10-13.md (goalie leverage, stack size, chalk core). The Showdown Captain block (docs/experiments/captain_2026-10-13.md) also needs saved Showdown runs from Oct 3 on, and as of Oct 13 your machine has none because those slates ran in the cloud, so for now it can only check the Captain pattern in your Oct 2 results. Nothing changes your lineups unless a test passes and you agree.
 
 updates:
+  - date: 2026-10-14
+    text: You changed the first of your two goals. Each lineup will aim at first place in its own contest instead of large prizes in general, and avoiding a washed-out night stays the second goal. The top band of the queue now reads that way, and the new C55 is next up. It first checks on the Sept 29 and Sept 30 slates whether first place can be measured reliably, then switches big tournaments and small fields. Cash, Booster and satellite contests keep their goal. The Classic replay (C51) will now also compare aiming at first place with aiming at the top 1%.
   - date: 2026-10-13
     text: C24 finished on your machine. A questionable skater's minutes now go to his teammates in the games he sits instead of vanishing, priced once, and tested on the Sept 29 and Sept 30 slates. It also showed that two identical runs can pick different lineups while other heavy programs run on the computer (backlog B98). Next up is C25, a clean calibration report.
   - date: 2026-10-13
@@ -290,7 +292,7 @@ chunks:
   C51:
     title_seen: Classic replay, the objective's picks against the projection's and exp_payout's on the real contest, Showdown as the control (measurement)
     name: Replay Classic slates to find the right way to choose lineups
-    what: Replays finished Classic slates against the real contest results and compares three ways of choosing lineups (the current method, highest projection, highest expected payout), with Showdown as the comparison because it is doing well.
+    what: Replays finished Classic slates against the real contest results and compares four ways of choosing lineups (aim at first place, aim at the top 1%, highest projection, highest expected payout), with Showdown as the comparison because it is doing well.
     why: Classic cashed 23 times in 136 entries against 32 expected and put none of 135 tournament entries in the top 1%. The current method counts only top-1% prizes, while the contests checked pay only 26 to 40% of their prize money to the top 1%.
     matters: This tells us whether the Classic engine is aiming at the wrong target. Several Classic tuning ideas wait on its answer.
     waiting: 5 finished Classic slates, each with downloaded results and the engine's saved lineup pool. The Sept 29 and Sept 30 slates qualify. You switch it on when the count is met.
@@ -368,6 +370,12 @@ chunks:
     what: Redoes the simulator's accuracy check on clean data, finds out why linemates' shared big nights look off, and writes the test plan for 3+ point games.
     why: The first check (Sept 29) used league numbers that included the very games it was tested on, so its warnings are not reliable yet.
     matters: Tournaments are won on ceilings. This confirms whether the simulator undersells them before anyone tunes it, and it unlocks C13. No tuning happens here.
+  C55:
+    title_seen: "First-place equity as each contest's goal (large GPP and small field), the washout goal unchanged"
+    name: Aim each lineup at first place
+    what: Each tournament and small-field lineup is picked for its chance to win its own contest outright, instead of its chance to land in the top 1% or its average payout. Avoiding a washed-out night stays the second goal, unchanged. Cash, Booster and satellite contests keep their goal, because first place there pays the same as any cashing spot.
+    why: You asked for it on Oct 14. Today only winner-take-all contests aim at first place. Winning outright is rare, so the engine first measures on the Sept 29 and Sept 30 slates whether it can tell lineups apart on it, and how far its simulated winning scores sit from the real ones. If it cannot, the switch stays off and you get the numbers.
+    matters: A lineup built to win outright is often not the one built to finish in the top 1%. The cost is fewer cashes. Classic already cashed less often than expected under the top 1% aim (23 times in 136 against 32 expected), and aiming at first place will cash less often still. The Classic replay (C51) will check the trade against real results.
   C41:
     title_seen: Selection robust to field ownership error (low, base and high ownership)
     name: Lineups that hold up if the ownership forecast is off

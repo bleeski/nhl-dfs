@@ -1,8 +1,8 @@
 # Machine-readable dependency graph and queue for BUILD_CHUNKS.md. Read by tools/next_chunk.py (built in C0a; queue fields and
 # --render-queue added 2026-10-03). File order is the rank: NEXT is the first chunk whose dependencies are DONE and that is neither
 # DONE, GATED nor BLOCKED on a [BEN] flag. Status lives in BUILD_STATUS.md, never here. checks run from the repo root; all must exit 0.
-# Queue fields (Ben's priority rule, BUILD_CHUNKS.md "Queue"): band 0 legal file, 1 win large prizes, 2 prevent portfolio
-# washouts, 3 everything else; size S under 100 changed lines, M 100 to 500, L 500 to 1,500 (XL must be split); effort is the
+# Queue fields (Ben's priority rule, BUILD_CHUNKS.md "Queue"): band 0 legal file, 1 first-place equity in each contest (Ben
+# 2026-10-14; until then win large prizes), 2 prevent portfolio washouts, 3 everything else; size S under 100 changed lines, M 100 to 500, L 500 to 1,500 (XL must be split); effort is the
 # reading load; breakpoint is the first committable hand-off point; needs lists the [BEN] flags that block a start; backlog and
 # findings are the BACKLOG.md rows and review ids the chunk carries; impact is the rationale with its evidence named and judgment
 # labeled. The archive behind the band-1 figures is one week of standings (17 contests); every such figure is thin.
@@ -414,6 +414,19 @@ chunks:
     findings: []
     checks:
       - pytest -m c24 -q
+  - id: C55
+    title: First-place equity as each contest's goal (large GPP and small field), the washout goal unchanged
+    depends: [C18]
+    marker: c55
+    band: 1
+    size: M
+    effort: "high: build/objectives.py FAMILY_OBJECTIVE, _evaluate and PayCurve.pay_util (the utility branches), build/portfolio.py (_frontier_point, choose, docstring), build/swap_objective.py (reads FAMILY_OBJECTIVE), build/packet.py 168 and 256 to 261, build/notes.py (frontier and footnotes), config/risk.yaml objectives, scripts/c17_replay.py (write guard), the saved 09-29 and 09-30 runs and their standings, plan section 7"
+    breakpoint: "the preregistration, then the resolution measurement on the saved 09-29 and 09-30 runs (first-place finishes per candidate, SE over mean, picks decided inside the band, for the exact and one smoothed estimate), each committed before any objective change; then the switch and the utility branches with tests; then the late-swap, QA packet and RUN_NOTES readers"
+    impact: "Band 1, Ben's instruction (2026-10-14): his first goal becomes first-place equity in each contest; the second (avoid a portfolio washout: P(lose >= 80% of fees), the knob, the budget, the caps) is unchanged. Today large_gpp entries are chosen by payout from top-1% finishes and small_field entries by payout under the whole curve (build/objectives.py FAMILY_OBJECTIVE); only wta aims at first place. Risks, measured first: first place is rare, so the estimate is noisy (arithmetic: a fair-share lineup in a 5,000-entry field wins about 4 of 20,000 selection scenarios; late swap scores 4,000), and a weak sampled field inflates this figure most (B15: 0.18%, 9x fair share; B12; C35 bounds the field part). B112 (thin) points the other way: Classic cashed 23 times in 136 against 32.2 expected under the top-1% goal, and first place cashes less often still; C51's four-arm replay is the real-results check. Ranked first among startable chunks because Ben called it a priority; C41 and C42 measure against the selection goal, so they depend on it."
+    backlog: [B129]
+    findings: []
+    checks:
+      - pytest -m c55 -q
   - id: C25
     title: Clean calibration constants, the co-ceiling cause, and the 3+ point tail preregistration
     depends: [C6]
@@ -429,7 +442,7 @@ chunks:
       - pytest -m c25 -q
   - id: C41
     title: Selection robust to field ownership error (low, base and high ownership)
-    depends: [C19]
+    depends: [C19, C55]
     marker: c41
     band: 1
     size: M
@@ -441,7 +454,7 @@ chunks:
       - pytest -m c41 -q
   - id: C42
     title: Improvement pass after the greedy fill (experiment)
-    depends: [C18]
+    depends: [C18, C55]
     marker: c42
     band: 1
     size: M
@@ -838,3 +851,4 @@ flag_recommendations:
   19: "Default taken: the delivery message names the refresh command and the lock time; no cloud scheduled routine is created until Ben registers one (B77, C43)."
   20: "Default taken: a first publish with no predecessor is never blocked for EDIT_STOP cells (it warns) and never changes cells of a game that has started; with a predecessor, pinned cells are diffed against it (B53, C14)."
   67: "Make the repo private: one setting closes B113 and keeps the bank (flag 66) and the facts table (flag 65) off the public web; a post-lock push needs a chunk, and a cloud container can be reclaimed before the slate locks, which would lose the record."
+  107: "Keep the default: first place pays more than other places only in tiered tables (large GPP, small field, WTA); in a cash, satellite or Top N contest first place pays the same as any paid place. Let C55 ship once its noise check passes rather than wait for C51's real-results replay, which can still overturn it."
