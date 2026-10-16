@@ -144,3 +144,51 @@ blocked 0. One other python command (besides the instrument's own pair) was runn
 - `config/ownership.yaml` `field.error_band.classic`: t_low 1.6818, t_high 0.3693 (the geometric means), the report switched on for
   the replays; flag 122's cost bar decides whether it stays on.
 - The decision replays use each pool's own t (09-29: 1.6818 and 0.3856; 09-30: 1.6818 and 0.3536), as flag 120 says.
+
+### Part 2: the decision replays (2026-10-16)
+
+Runs, in this order, on clean exports, PYTHONHASHSEED=0, seed 20261015, both saved runs with entries cloned to 30
+(`ownership_band_2026-10-16_results.json`): master-off (origin/master cd4b587, no report), c41-off and c41-on (037a6dd, the report
+off and on; c41-on then scored the four preregistered fields against its own selection). Writes refused 0 and network attempts
+blocked 0 in every run; every run published version 3 and listed "phase B: DK draftables unavailable" and "history refresh: FAILED"
+(network steps the pinned replay does not serve). The machine was idle for master-off; the mlb-dfs test suite (from 14:34) and an
+nba-dfs process (from 14:40) ran during c41-off and c41-on.
+
+**Selection unchanged.** master-off and c41-off chose the same 30 lineups on both slates (0 of 30 changed) from byte-identical
+selection draws, at the same knobs (0 on 09-29, 1.0 on 09-30); c41-on chose the same lineups as c41-off. The C41 code moves no pick.
+
+**The rule (flag 121): the spread moves a pick.** Large_gpp anchor flips at the chosen knob, each entry scored with the base fill's
+earlier picks in place:
+
+| Slate | Low | High | Control + 1 | Control + 2 | Larger alternative against larger control |
+|---|---:|---:|---:|---:|---|
+| 09-29 (29 picks, knob 0) | 18 | 29 | 19 | 23 | 29 > 23 |
+| 09-30 (30 picks, knob 1.0) | 17 | 21 | 16 | 19 | 21 > 19 |
+
+On both slates the larger of the low and high counts exceeds the larger control, so by the rule written before any number the spread
+moves a pick. The margins are thin (6 and 2 picks), and against the stated bias (low and high reuse the base field's uniforms, which
+leans toward "no move").
+
+Reported, never used to decide:
+
+- **The controls are the larger finding.** A field drawn again at t = 1 with another seed (realized slope 1.00, MAE 0.3 to 0.5 points
+  against base, the most-owned player within 0.7 points) moved 16 to 23 of about 30 anchors and 21 to 25 picks. A full `select()`
+  under a control field changed 25 to 29 of the 30 lineups and moved the knob once (09-29 control + 2: 0.5). Most large_gpp picks
+  on these slates depend on which sample of the field was drawn, before any ownership error.
+- Pick flips (the tie order included): 09-29 low 25, high 26, controls 21 and 21; 09-30 low 21, high 27, controls 22 and 25. Free
+  refills from scratch changed 25 to 29 entries under every field. Full `select()` knobs: 09-29 low 0.25, high 0, controls 0 and
+  0.5; 09-30 low 0.25, high 0.5, controls 0.25 and 0.25 (base 0 and 1.0).
+- Tie criterion (B130): on 09-29 one SE set the band's width for all 29 large_gpp picks; on 09-30 the 3% floor set it for 11 and
+  one SE for 19.
+- Spread (first-place dollars against the field alone, max minus min over base, low and high; paired z): 09-29 Daily Dollar, 386
+  candidates, median $0.118, max $0.796, median z 3.9, 92% above z 2; 09-30, 372 candidates in each of the four contests, median
+  $0.026 to $0.090, max $0.23 to $0.81, median z 1.6 to 2.9, 35% to 78% above z 2. The cash contest's payout spread is $0.42
+  median at z 50: a cash line moves with any change in the field.
+- Realized fields: as in part 1 (low 0.7432 and 0.7551, high 1.3635 and 1.3737 against base); controls 1.0003 and 0.9953 (09-29),
+  1.0078 and 0.9980 (09-30).
+
+**The report's cost (flag 122): the report ships OFF.** Wall time of the in-run report at 30 entries: 85.8 s (09-29) and 133.3 s
+(09-30), against the 60 s bar; added peak memory 48 MB and 94 MB against the report-off run, inside the 1 GB bar. The times were
+taken with two other projects' processes running (the advisor's condition for this measurement was an idle machine), so they are
+inflated; 09-30 would have to fall by more than half to pass, so the measurement was not repeated. `field.error_band.report` ships
+false; turning it on is one line, and it then adds about 1.5 to 2 minutes to a 30-entry run.
