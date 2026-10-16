@@ -192,3 +192,25 @@ Reported, never used to decide:
 taken with two other projects' processes running (the advisor's condition for this measurement was an idle machine), so they are
 inflated; 09-30 would have to fall by more than half to pass, so the measurement was not repeated. `field.error_band.report` ships
 false; turning it on is one line, and it then adds about 1.5 to 2 minutes to a 30-entry run.
+
+### Part 3: the switch's design (flag 123), written 2026-10-16 before any switch code or switch replay
+
+Part 2's rule fired, so flag 121 asks for `config/risk.yaml` `selection.ownership_band` (false), "one contest book per field, the
+mean of the three scores". The preregistration left these choices open; they are fixed here, before the code, and reviewed by the
+advisor tool:
+
+- **Score.** Per scenario, the candidate's step utility and its lose-80% indicator are averaged over three fills' contest books
+  (`objectives.OwnContest`, one per field: base, low, high), each with its own running portfolio payout. score = that mean utility
+  minus kappa x fees x the mean indicator; its SE is taken from the per-scenario average, so it is paired across the fields.
+- **Candidates.** The union of the three fields' screens.
+- **Tie order inside the band.** The base field's ownership and duplicate measure (the forecast the run publishes).
+- **Placing.** The pick is placed in all three books; the caps and counts are the base fill's.
+- **The knob.** The frontier, the joint recount and `choose` stay on the base field: the switch changes the fill only.
+- **Fields.** Low and high at the config's t (1.6818 and 0.3693), as a real run would build them, before selection; their build
+  time lands before the S publish and is measured.
+- **Off.** With the switch off no extra field is built and `keep_prepared` stays false; the mini run's published bytes are pinned
+  equal with and without the key, and master-against-tree lineups are compared again.
+- **Its replay** (information only, no bar: it ships OFF and adoption waits on C51): lineups changed, switch on against off, read
+  beside the control range of part 2 (a field redrawn at t = 1 changed 25 to 29 of 30 lineups through a full select); E[payout],
+  first-place equity sums and P(lose >= 80%) on the referee draws under base, low and high (referee-purpose field specs, salt
+  `cid|referee`), with SEs.

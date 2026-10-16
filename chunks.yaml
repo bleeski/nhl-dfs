@@ -838,9 +838,6 @@ deferred:
   - item: "First-place goal overfitting the selection draws (B132)"
     trigger: "C51's four-arm replay reads the first-place arm against real results, or Ben answers flag 113 (keep the first-place goal or go back to top1pct)"
     backlog: [B132]
-  - item: "A tie criterion that can bind (B130)"
-    trigger: "the next chunk that preregisters a selection change measured on the saved runs (C41, C42), or Ben asks why the ownership order settles most picks"
-    backlog: [B130]
   - item: "QA's goal at its own scenario count (B131)"
     trigger: "the first QA round on a real slate with objectives.goal first_place, or the next session that touches build/controller.py"
     backlog: [B131]
@@ -862,6 +859,9 @@ deferred:
   - item: "A Showdown ownership band (B138)"
     trigger: "Ben asks for the Showdown spread, or a second graded Showdown forecast is settled"
     backlog: [B138]
+  - item: "Picks that move with the field's own sample (B139)"
+    trigger: "the next chunk that changes selection or the field (C42 is the next selection experiment), or Ben asks why two runs of one slate pick different lineups"
+    backlog: [B139]
 flag_recommendations:
   2: "Record Ben's 2026-10-02 answer in the flags table: 40% goalie and game fee share with the LINEUPS fallback (done in this plan); C27 fixes the feasibility test behind it."
   3: "Replace the placeholder mix with the observed one (5 to 10 entries per slate, 1 to 2 per contest, fees $0.10 to $1, 20-max and 150-max GPPs plus Showdown) so family priors and C21's sleeve sizes fit what Ben plays."
