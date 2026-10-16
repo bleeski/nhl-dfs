@@ -12,7 +12,7 @@
   "2026-04-16"
  ],
  "n_scenarios": 1500,
- "created_utc": "2026-10-16T15:35:15.636590+00:00",
+ "created_utc": "2026-10-16T15:55:05.240375+00:00",
  "coverage": {
   "games": 79,
   "skaters_observed": 2844,
@@ -251,7 +251,107 @@
   "control_pairs": 8639,
   "control_observed": 131,
   "control_expected": 82.80501103246468,
-  "control_ratio": 1.5820298598672962
+  "control_ratio": 1.5820298598672962,
+  "linemates": {
+   "TT": {
+    "model_line": true,
+    "actual_line": true,
+    "pairs": 826,
+    "games": 79,
+    "joint_observed": 36,
+    "joint_expected": 47.78721657943679,
+    "joint_ratio": 0.7533395451094568,
+    "joint_lo": 0.539980160512741,
+    "joint_hi": 0.9694429190607462,
+    "marginal_observed": 212,
+    "marginal_expected": 188.8916599643651,
+    "marginal_ratio": 1.122336476051904,
+    "adjusted_ratio": 0.598059798199763,
+    "adjusted_lo": 0.4739735260228674,
+    "adjusted_hi": 0.7479295810601879,
+    "dropped_resamples": 0,
+    "eligible": true
+   },
+   "TF": {
+    "model_line": true,
+    "actual_line": false,
+    "pairs": 666,
+    "games": 78,
+    "joint_observed": 8,
+    "joint_expected": 32.02439047235882,
+    "joint_ratio": 0.24980959456215202,
+    "joint_lo": 0.1178914160925227,
+    "joint_hi": 0.3932799321385407,
+    "marginal_observed": 129,
+    "marginal_expected": 136.39663403386655,
+    "marginal_ratio": 0.9457711395427104,
+    "adjusted_ratio": 0.2792781763849572,
+    "adjusted_lo": 0.15738829276328223,
+    "adjusted_hi": 0.4088012032784537,
+    "dropped_resamples": 0,
+    "eligible": true
+   },
+   "FT": {
+    "model_line": false,
+    "actual_line": true,
+    "pairs": 970,
+    "games": 79,
+    "joint_observed": 26,
+    "joint_expected": 9.447149538978428,
+    "joint_ratio": 2.752152899954151,
+    "joint_lo": 1.7049609570825617,
+    "joint_hi": 3.8762816052680065,
+    "marginal_observed": 161,
+    "marginal_expected": 165.62737730576706,
+    "marginal_ratio": 0.9720615191700803,
+    "adjusted_ratio": 2.912628239052936,
+    "adjusted_lo": 2.177582959100098,
+    "adjusted_hi": 3.712748712470101,
+    "dropped_resamples": 0,
+    "eligible": false
+   },
+   "FF": {
+    "model_line": false,
+    "actual_line": false,
+    "pairs": 7605,
+    "games": 79,
+    "joint_observed": 102,
+    "joint_expected": 72.99673024818925,
+    "joint_ratio": 1.397322861629548,
+    "joint_lo": 0.9101621242565113,
+    "joint_hi": 1.9235149118281945,
+    "marginal_observed": 1574,
+    "marginal_expected": 1455.4553772385061,
+    "marginal_ratio": 1.0814484762744243,
+    "adjusted_ratio": 1.1947721714227262,
+    "adjusted_lo": 0.9413800227263016,
+    "adjusted_hi": 1.4452383216016913,
+    "dropped_resamples": 0,
+    "eligible": true
+   }
+  },
+  "cause": {
+   "rule": "flag 115",
+   "seed": [
+    20260929,
+    25
+   ],
+   "n_boot": 2000,
+   "min_expected": 10.0,
+   "join_floor": 0.9,
+   "pairs": 10138,
+   "matched": 10067,
+   "match_rate": 0.9929966462813178,
+   "unmatched": {
+    "pairs": 71,
+    "model_same": 7
+   },
+   "causes": [
+    "within-line correlation too strong"
+   ],
+   "verdict": "named: within-line correlation too strong",
+   "excess_not_confined_to_lines": false
+  }
  },
  "team": {
   "obs_mean": 3.0316455696202533,
@@ -275,8 +375,9 @@
   {
    "kind": "co_ceiling",
    "what": "model-line pairs, both 2+ points",
-   "detail": "observed/expected 0.55 within model lines, 1.58 across model lines. Hypothesis, not established: the rank-built model lines do not identify actual linemates; the same ratios are also consistent with within-line correlation in the simulation being too strong",
-   "value": 0.5496727611356133
+   "detail": "observed/expected 0.55 within model lines, 1.58 across model lines. Cause test against actual linemates (flag 115): named: within-line correlation too strong",
+   "value": 0.5496727611356133,
+   "cause": "named: within-line correlation too strong"
   },
   {
    "kind": "constants",
@@ -290,7 +391,7 @@
   "persons with no history use position priors (PRIOR); the calibration includes them",
   "team SOG-to-goal correlation is higher in the simulation than in history (score effects are not modeled)"
  ],
- "wall_s": 279.2974181000027,
+ "wall_s": 223.98516790001304,
  "constants": {
   "seasons": [
    20242025,
