@@ -11,9 +11,11 @@ from __future__ import annotations
 import math
 import statistics
 from collections import defaultdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Iterable, Mapping
+from typing import Iterable, Mapping, Sequence
 
+import numpy as np
 import yaml
 
 from nhl_dfs.contracts.geometry import Mode, PoolRow
@@ -121,6 +123,15 @@ def validate_ownership_config(cfg: dict) -> None:
         raise ValueError(f"ownership field needs a {DEFAULT_FAMILY!r} mixture")
     _validate_classic_mixtures(fld, behaviors)
     _validate_classic_mixtures(fld, behaviors, "classic_mixtures_team5")
+    eb = fld.get("error_band")
+    if eb is not None:  # C41 (flag 122): optional as a whole
+        if not isinstance(eb.get("report"), bool):
+            raise ValueError("field.error_band.report must be true or false")
+        for k, v in (eb.get("classic") or {}).items():
+            if v is not None and not float(v) > 0:
+                raise ValueError(f"field.error_band.classic.{k} must be positive or null")
+        if eb["report"] and any((eb.get("classic") or {}).get(k) is None for k in ("t_low", "t_high")):
+            raise ValueError("field.error_band.report needs classic.t_low and classic.t_high")
     buckets = (cfg.get("dup_proxy") or {}).get("salary_left_buckets") or []
     if not buckets or buckets[-1].get("max_left") is not None:
         raise ValueError("dup_proxy.salary_left_buckets must end with max_left: null")
@@ -301,3 +312,86 @@ def utilities(
 
 def log_floor(pct: float, floor_pct: float) -> float:
     return math.log(max(pct, floor_pct) / 100.0)
+
+
+# -- the ownership error band (C41, flag 119; docs/experiments/ownership_band_2026-10-16.md) ----------------------------
+
+@dataclass(frozen=True)
+class GradedRow:
+    """One role of one graded contest: the frozen forecast's ownership and the actual, in percent of lineups."""
+    forecast_run: str
+    contest_id: str
+    family: str
+    mode: str
+    role_id: str
+    pred_pct: float
+    actual_pct: float
+
+
+@dataclass(frozen=True)
+class ContestBand:
+    forecast_run: str
+    contest_id: str
+    family: str
+    mode: str
+    n_roles: int
+    mae: float  # whole pool: learn.grade_ownership.grade's mae_all
+    mae_popular: float  # over the actual top 20: grade's mae_popular
+    slope: float  # concentration_slope(forecast, actual)
+    residual_sd: float  # percentage points: what the slope leaves per role
+
+
+@dataclass(frozen=True)
+class ErrorBand:
+    contests: tuple[ContestBand, ...]
+    pooled: dict[str, dict]  # forecast run -> {"mode", "contests", "slope"} over its contests of the pooled families
+    beta_low: dict[str, float]  # mode -> the smallest pooled slope among that mode's forecasts
+    beta_high: dict[str, float]  # mode -> 1 / beta_low (the mirror in log space)
+
+    def record(self) -> dict:
+        return {"contests": [asdict(c) for c in self.contests], "pooled": self.pooled, "beta_low": self.beta_low,
+                "beta_high": self.beta_high}
+
+
+def concentration_slope(pred: Sequence[float], actual: Sequence[float]) -> float:
+    """OLS slope of actual on pred, both as deviations from their own means: 1 when the actual field is as concentrated as the
+    forecast, below 1 flatter, above 1 chalkier. nan when pred does not vary."""
+    p, a = np.asarray(pred, float), np.asarray(actual, float)
+    dp, da = p - p.mean(), a - a.mean()
+    ss = float((dp * dp).sum())
+    return float((dp * da).sum() / ss) if ss > 0 else float("nan")
+
+
+def error_band(rows: Iterable[GradedRow], families: Sequence[str] = ("large_gpp",)) -> ErrorBand:
+    """The ownership error band from graded forecasts (C41, flag 119). Per contest: the whole-pool MAE and the MAE over the actual
+    top 20 with learn.grade_ownership.grade's arithmetic (roles in role-id order), the concentration slope and the residual sd. Per
+    forecast: the slope pooled over its contests of `families` (the sum of cross products over the sum of squares, each contest's
+    deviations from its own means). beta_low per mode is the smallest pooled slope among that mode's forecasts, beta_high its
+    mirror 1 / beta_low."""
+    by: dict[tuple[str, str], list[GradedRow]] = defaultdict(list)
+    for r in rows:
+        by[(r.forecast_run, r.contest_id)].append(r)
+    out: list[ContestBand] = []
+    sums: dict[str, list] = {}
+    for (frun, cid), rs in sorted(by.items()):
+        rs = sorted(rs, key=lambda r: r.role_id)
+        p = np.array([r.pred_pct for r in rs])
+        a = np.array([r.actual_pct for r in rs])
+        err = np.abs(p - a)
+        top = np.argsort(-a)[:20]
+        dp, da = p - p.mean(), a - a.mean()
+        ss = float((dp * dp).sum())
+        slope = float((dp * da).sum() / ss) if ss > 0 else float("nan")
+        head = rs[0]
+        out.append(ContestBand(frun, cid, head.family, head.mode, len(rs), round(float(err.mean()), 3),
+                               round(float(err[top].mean()), 3), round(slope, 4), round(float((da - slope * dp).std()), 3)))
+        if head.family in families and ss > 0:
+            s = sums.setdefault(frun, [head.mode, [], 0.0, 0.0])
+            s[1].append(cid)
+            s[2] += float((dp * da).sum())
+            s[3] += ss
+    pooled = {f: {"mode": m, "contests": cids, "slope": round(xy / xx, 4)} for f, (m, cids, xy, xx) in sorted(sums.items())}
+    low: dict[str, float] = {}
+    for v in pooled.values():
+        low[v["mode"]] = min(low.get(v["mode"], math.inf), v["slope"])
+    return ErrorBand(tuple(out), pooled, low, {m: round(1.0 / b, 4) for m, b in low.items()})

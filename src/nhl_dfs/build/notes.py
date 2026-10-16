@@ -217,6 +217,47 @@ def _top_n_line(c: dict) -> str:
             "publish ranked these entries on projected mean.")
 
 
+def _band_lines(b: dict[str, Any], most: int = 20) -> list[str]:
+    """C41 (flag 122): the ownership band report: the low and high fields, each candidate's tail spread in summary, and every
+    entry whose pick would move, by name."""
+    if b.get("skipped"):
+        return [f"- Ownership band (C41): {b['skipped']}."]
+    if b.get("error"):
+        return [f"- Ownership band (C41): the report failed ({b['error']}); the published file is unaffected."]
+    band, fields = b.get("band") or {}, b.get("fields") or {}
+
+    def fld(label: str) -> str:
+        f = fields.get(label)
+        if not f:
+            return f"{label} not built"
+        fam = (f.get("families") or {}).get("large_gpp") or next(iter((f.get("families") or {}).values()), {})
+        return (f"{label} (noise x{f['temperature']:g}): slope against base {fam.get('slope_vs_base')}, MAE {fam.get('mae_vs_base')} "
+                f"points, most-owned player {fam.get('top_base')}% -> {fam.get('top_alt')}%")
+
+    out = [f"- {b['label']}. Band (flag 119): slope {band.get('beta_low')} to {band.get('beta_high')} around the forecast; "
+           + "; ".join(fld(x) for x in ("low", "high")) + f"; {b.get('seconds')} s."]
+    for cid, sp in (b.get("spread") or {}).items():
+        out.append(f"- Tail spread, contest {cid} ({sp['family']}: {sp.get('utility', sp['goal'])} against the field alone, max "
+                   f"minus min over base, low and high): {sp['candidates']} candidates, median ${sp['median_spread']:.4f}, max "
+                   f"${sp['max_spread']:.4f}, "
+                   f"median paired z {sp['median_z']}, {sp['share_z_over_2']:.0%} above z 2 (every candidate in "
+                   f"{b.get('file')}).")
+    for label, p in (b.get("picks") or {}).items():
+        out.append(f"- Picks at knob {b.get('chosen_kappa'):g} under {label}: {p['pick_flips']} of {p['entries']} would change, "
+                   f"{p['anchor_flips']} with the band's anchor moving (large_gpp: {p['large_gpp_pick_flips']} picks and "
+                   f"{p['large_gpp_anchor_flips']} anchors of {p['large_gpp_picks']}); its screen added {p['added_by_alt_screen']} "
+                   "candidate(s). Each entry is scored with the earlier entries' base picks in place.")
+    flips = b.get("flips") or []
+    for f in flips[:most]:
+        out.append(f"  - {f['entry_id']} ({f['contest_id']}, {f['field']}{', anchor moved' if f['anchor_moved'] else ''}): "
+                   f"out {', '.join(f['out'])}; in {', '.join(f['in'])}")
+    if len(flips) > most:
+        out.append(f"  - and {len(flips) - most} more in {b.get('file')}")
+    for n in b.get("notes") or []:
+        out.append(f"- Ownership band note: {n}")
+    return out
+
+
 def _scenario_lines(s: dict[str, Any]) -> list[str]:
     """C8 section. Every payout figure is a scenario estimate with its Monte Carlo standard error and
     the three evidence states; a PRIOR payout curve makes it an uncalibrated scenario proxy."""
@@ -321,6 +362,8 @@ def _scenario_lines(s: dict[str, Any]) -> list[str]:
                    f"| {_pm(e['first_place_equity'], e['first_place_equity_se'], 5)} | {_pm(e['p_clear_line'], e['p_clear_line_se'])} "
                    f"| {_pm(e['p_seat'], e['p_seat_se'])} | {e['own_sum_pct']:.1f} | {e['dup']:.2f} ({e['dup_measure']}) "
                    f"| {e['candidate_family']} | {e['dtd_players']} |")
+    if s.get("ownership_bands"):
+        out += [""] + _band_lines(s["ownership_bands"])
     out += ["", "OUTCOME_CALIBRATION=UNVALIDATED: the C6 calibration flags the simulated 3+ point tail as thin (backlog B6), so "
             "top-1% and first-place figures are labeled scenario estimates with their Monte Carlo error; 20,000 scenarios "
             "cannot give precise massive-field win rates. None of these figures is a measured ROI, EV or ruin probability."]

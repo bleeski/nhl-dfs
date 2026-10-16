@@ -315,10 +315,37 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
     sec["budget"] = budget.__dict__
 
     # selection, then the referee figures
+    from nhl_dfs.models import ownership as own_mod
+
+    own_cfg_band = (prov or {}).get("own_cfg") or own_mod.load_ownership_config()
+    band_spec, band_why = band_specs(own_cfg_band, work.mode)  # C41
+    band_sel = None
+    if (risk_cfg.get("selection") or {}).get("ownership_band"):  # C41 (flag 123): off by default; adoption waits on C51
+        c41 = ((own_cfg_band.get("field") or {}).get("error_band") or {}).get("classic") or {}
+        if work.mode is Mode.CLASSIC and c41.get("t_low") and c41.get("t_high"):
+            t = time.perf_counter()
+            band_sel = {}
+            for label, temp in (("high", float(c41["t_high"])), ("low", float(c41["t_low"]))):
+                fb_alt, _ = band_fields(work, proj, contexts, fb, own_n, prov, st, risk_cfg, seed, scenario_n or {}, temperature=temp)
+                band_sel[label] = ({cid: ob.field_spec(fb_alt.fields[contests_mod.field_family(ctx.family)].lineups,
+                                                       fb_alt.fields[contests_mod.field_family(ctx.family)].keys,
+                                                       ctx.field_size - own_n[cid], risk_cfg, n_scenarios=sets["selection"].n,
+                                                       seed=seed, salt=f"{cid}|selection") for cid, ctx in contexts.items()},
+                                   {cid: fb_alt.marginals[cid].own for cid in contexts},
+                                   {cid: fb_alt.marginals[cid].dup_counts for cid in contexts})
+                del fb_alt
+            timings["ownership_band_fields_s"] = round(time.perf_counter() - t, 3)
+            sec["selection_ownership_band"] = {"on": True, "t_low": c41["t_low"], "t_high": c41["t_high"],
+                                               "seconds": timings["ownership_band_fields_s"]}
+        else:
+            sec["selection_ownership_band"] = {"on": False, "why": "Classic only, with calibrated t_low and t_high"}
+    if band_sel is not None and band_spec is not None:  # one field against a band-averaged selection would misread every pick
+        band_spec, band_why = None, "SKIPPED (the selection already scores on the band: config/risk.yaml selection.ownership_band)"
     t = time.perf_counter()
     sel = pf.select(cands, sets["selection"], fields["selection"], contests, entries, caps, budget, seed=seed, pool=work,
                     fam_cfg=fam_cfg, risk_cfg=risk_cfg, own_by_contest=own_by, dup_by_contest=dup_by,
-                    field_cal=field_cal, fees_cents=fees, rule_families=rule_fams)
+                    field_cal=field_cal, fees_cents=fees, rule_families=rule_fams, keep_prepared=band_spec is not None,
+                    band_fields=band_sel)
     timings["selection_s"] = round(time.perf_counter() - t, 3)
     timings["selection_peak_mb"] = peak_mb()
     by_entry = {e: arrange_util(lu, work, starts) for e, lu in sel.by_entry.items()}
@@ -398,15 +425,31 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
         m["statuses"]["DELIVERY_STATUS"] = DeliveryStatus.DEGRADED_REVIEW.value
     m["worked"].append(f"scenario pass published v{vs['version']} ({sets['selection'].n} selection and "
                        f"{sets['referee'].n} referee scenarios, PAYOUT_SOURCE={payout_overall}, knob {sel.chosen_kappa:g})")
+    # C41 (flags 119 to 122): the ownership band report, after the file is published; it reads only and never costs the file
+    if band_spec is None:
+        sec["ownership_bands"] = {"skipped": band_why}
+        return
+    t = time.perf_counter()
+    try:
+        sec["ownership_bands"] = ownership_bands(
+            run=run, work=work, proj=proj, contexts=contexts, fb=fb, own_n=own_n, prov=prov, st=st, risk_cfg=risk_cfg,
+            fam_cfg=fam_cfg, seed=seed, override=scenario_n or {}, sel=sel, scen=sets["selection"], contests=contests, caps=caps,
+            field_cal=field_cal, specs=band_spec)
+    except Exception as exc:
+        sec["ownership_bands"] = {"error": f"{type(exc).__name__}: {str(exc)[:160]}"}
+        messages.append(f"ownership band report failed ({type(exc).__name__}); the published file is unaffected")
+    sel.prepared = None
+    timings["ownership_bands_s"] = round(time.perf_counter() - t, 3)
 
 
-def _grow_fields(work, proj, contexts, fb, own_n, prov, st, risk_cfg, seed, override: dict):
+def _grow_fields(work, proj, contexts, fb, own_n, prov, st, risk_cfg, seed, override: dict, *, temperature: float = 1.0):
     """A GPP field's upper tail needs about as many distinct lineups as opponents: a 300-draw field
     weighted up to 5,000 has the top score of 300 entries, which made a $1 GPP look worth $7 on the
     first real run. Grow large_gpp and small_field fields to min(target, opponents) draws with the
     same behaviors (a new seed), join them to the provisional draws, and read ownership and duplicate
     counts off the joined field, so field and ownership stay one object. Cash (a mid-field line) and
-    WTA (a handful of opponents) keep the provisional field."""
+    WTA (a handful of opponents) keep the provisional field. temperature (C41): every behavior's noise scale
+    (`models.field.scaled_behaviors`); 1.0 is today's field."""
     from nhl_dfs.build.provisional import FieldBuild
     from nhl_dfs.models import contests as contests_mod
     from nhl_dfs.models import field as field_mod
@@ -432,16 +475,16 @@ def _grow_fields(work, proj, contexts, fb, own_n, prov, st, risk_cfg, seed, over
         if feats is None:  # the table the first draws came from (C17: it carries the odds, lines and news), else a plain one
             feats = fb.feats if fb.feats is not None else ownership.feature_table(work, proj, None, cfg=own_cfg, statuses=statuses)
         util = ownership.perceived(work, proj, feats, ownership.family_weights(own_cfg, fam))
+        beh = field_mod.scaled_behaviors(field_mod.behaviors_for_pool(fam, work, own_cfg), temperature)
         t = time.perf_counter()
         extra, sampler = None, "milp"
         if g.get("sampler") == "fast" and work.mode is Mode.CLASSIC:
             from nhl_dfs.models import field_fast
 
-            extra = field_fast.sample_fast(work, util, field_mod.behaviors_for_pool(fam, work, own_cfg), need - have, seed + 9001, fam,
-                                           proj=proj, feats=feats, cfg=own_cfg)
+            extra = field_fast.sample_fast(work, util, beh, need - have, seed + 9001, fam, proj=proj, feats=feats, cfg=own_cfg)
             sampler = "fast" if extra is not None else "milp (pool not in the compact Classic form)"
         if extra is None:
-            extra = field_mod.sample_parallel(work, work.mode, util, field_mod.behaviors_for_pool(fam, work, own_cfg), need - have,
+            extra = field_mod.sample_parallel(work, work.mode, util, beh, need - have,
                                               seed + 9001, fam, proj=proj, feats=feats, cfg=own_cfg,
                                               time_limit_s=float(g["time_limit_s"]), workers=int(g["workers"]),
                                               sub_size=int(g["sub_size"]), mip_rel_gap=g.get("mip_rel_gap"))
@@ -455,6 +498,172 @@ def _grow_fields(work, proj, contexts, fb, own_n, prov, st, risk_cfg, seed, over
                        "sampler": sampler, "mip_rel_gap": g.get("mip_rel_gap") if sampler.startswith("milp") else None,
                        "detail": extra.detail, "shape_mix": field_mod.shape_report(joined, work, own_cfg)}
     return FieldBuild(fields, margs, fb.elapsed_s, fb.feats, fb.inputs), report
+
+
+def band_fields(work, proj, contexts, fb, own_n, prov, st, risk_cfg, seed: int, override: dict, *, temperature: float):
+    """C41 (flag 120): the run's field rebuilt at a temperature and a seed by the same two steps as the base field: the
+    provisional draws (`provisional.build_fields` at `seed`, on the base field's feature table, own_cfg and statuses) and the
+    growth draws (`_grow_fields`, seed + 9001). Temperature 1.0 at the run's seed gives the base field draw for draw.
+    Returns (FieldBuild, growth report)."""
+    from nhl_dfs.build import provisional as prov_mod
+    from nhl_dfs.models import ownership
+
+    own_cfg = (prov or {}).get("own_cfg") or ownership.load_ownership_config()
+    statuses = (prov or {}).get("statuses") or {rid: p for rid, (p, _) in st.items() if rid in work.by_role_id}
+    first = prov_mod.build_fields(work, proj, contexts, seed=seed, statuses=statuses, own_cfg=own_cfg, inputs=fb.inputs,
+                                  feats=fb.feats, temperature=temperature)
+    return _grow_fields(work, proj, contexts, first, own_n, prov, st, risk_cfg, seed, override, temperature=temperature)
+
+
+def band_specs(own_cfg: dict, mode: Mode) -> tuple[list[tuple[str, float, int]] | None, str | None]:
+    """C41 (flag 122): the report's alternative fields from config/ownership.yaml field.error_band, as (label, temperature, seed
+    shift), or (None, why not)."""
+    eb = (own_cfg.get("field") or {}).get("error_band") or {}
+    if mode is not Mode.CLASSIC:
+        return None, "SKIPPED (C41 calibrated Classic only)"
+    if not eb.get("report"):
+        return None, "report off (config/ownership.yaml field.error_band.report)"
+    c = eb.get("classic") or {}
+    if c.get("t_low") is None or c.get("t_high") is None:
+        return None, "no calibrated temperatures (config/ownership.yaml field.error_band.classic t_low, t_high)"
+    return [("low", float(c["t_low"]), 0), ("high", float(c["t_high"]), 0)], None
+
+
+def _names(pool, role_ids) -> list[str]:
+    """Name and team: two players can share a name (Sebastian Aho of CAR and of NYI)."""
+    return sorted(f"{pool.by_role_id[r].name} ({pool.by_role_id[r].team})" for r in role_ids)
+
+
+def _plain(a: np.ndarray, digits: int) -> list:
+    """A float array as a json list: rounded, a non-finite value (a change identical in every scenario has no z) as null."""
+    return [round(float(v), digits) if np.isfinite(v) else None for v in a]
+
+
+def ownership_bands(*, run, work, proj, contexts, fb, own_n, prov, st, risk_cfg, fam_cfg, seed: int, override: dict, sel, scen,
+                    contests, caps, field_cal, specs: list[tuple[str, float, int]], free: bool = False,
+                    write: bool = True, budget_s: float | None = None, hook=None) -> dict:
+    """C41 (flags 119 to 122): the spread report. For each (label, temperature, seed shift) the field is rebuilt
+    (`band_fields`, built and freed one at a time) and `portfolio.band_report` scores it against the base selection `sel`
+    (select(..., keep_prepared=True)) on the selection scenarios. Reads only. Writes every candidate's figures to
+    runs/<id>/scenario/ownership_bands.json and returns the summary the manifest keeps. budget_s replaces the config's
+    time_limit_s; hook(label, fields, own_by, dup_by), when given, sees each alternative field before it is freed (the C41
+    instrument's full select)."""
+    from nhl_dfs.models import contests as contests_mod
+    from nhl_dfs.models import field as field_mod
+    from nhl_dfs.models import ownership
+
+    t0 = time.perf_counter()
+    peak0 = peak_mb()
+    own_cfg = (prov or {}).get("own_cfg") or ownership.load_ownership_config()
+    eb = (own_cfg.get("field") or {}).get("error_band") or {}
+    budget = float(budget_s if budget_s is not None else eb.get("time_limit_s", 300))
+    base_own = {fam: field_mod.marginals(f, work, 1).own for fam, f in fb.fields.items()}
+    keys = None
+    by_key = {c.key: c.role_ids for c in sel.prepared.candidates}
+    fields_rec, reports, notes = {}, {}, []
+    for label, temp, shift in specs:
+        if time.perf_counter() - t0 > budget:
+            notes.append(f"{label}: not built (time budget {budget:g} s spent)")
+            continue
+        t = time.perf_counter()
+        fb_alt, grown = band_fields(work, proj, contexts, fb, own_n, prov, st, risk_cfg, seed + shift, override,
+                                    temperature=temp)
+        fams = {}
+        for fam, f in fb_alt.fields.items():
+            own = field_mod.marginals(f, work, 1).own
+            roles = sorted(base_own[fam])
+            b, a = [base_own[fam][r] for r in roles], [own[r] for r in roles]
+            top = max(roles, key=lambda r: (base_own[fam][r], r))
+            fams[fam] = {"draws": f.n, "distinct": len(set(f.keys)),
+                         "slope_vs_base": round(ownership.concentration_slope(b, a), 4),
+                         "mae_vs_base": round(sum(abs(x - y) for x, y in zip(b, a)) / len(roles), 3),
+                         "top_role": top, "top_base": round(base_own[fam][top], 2), "top_alt": round(own[top], 2)}
+        fields_alt, own_alt, dup_alt = {}, {}, {}
+        for cid, ctx in contexts.items():
+            f = fb_alt.fields[contests_mod.field_family(ctx.family)]
+            fields_alt[cid] = ob.field_spec(f.lineups, f.keys, ctx.field_size - own_n[cid], risk_cfg, n_scenarios=scen.n,
+                                            seed=seed, salt=f"{cid}|selection")
+            own_alt[cid], dup_alt[cid] = fb_alt.marginals[cid].own, fb_alt.marginals[cid].dup_counts
+        del fb_alt
+        rep = pf.band_report(sel, fields_alt, own_alt, dup_alt, scen, contests, caps, pool=work, fam_cfg=fam_cfg,
+                             risk_cfg=risk_cfg, field_cal=field_cal, free=free)
+        if hook is not None:
+            hook(label, fields_alt, own_alt, dup_alt)
+        del fields_alt, own_alt, dup_alt
+        keys = rep.pop("keys")
+        reports[label] = rep
+        fields_rec[label] = {"temperature": temp, "seed_shift": shift, "families": fams, "growth": {
+            fam: {k: v for k, v in g.items() if k in ("draws", "distinct", "seconds", "sampler")} for fam, g in grown.items()},
+            "seconds": round(time.perf_counter() - t, 2)}
+    # spread: low and high against base, per candidate and contest with entries
+    spread = {}
+    lo, hi = reports.get("low"), reports.get("high")
+    if lo and hi:
+        for cid, pl in lo["per_contest"].items():
+            ph = hi["per_contest"][cid]
+            d = np.vstack([pl["d"], ph["d"]])
+            se = np.vstack([pl["d_se"], ph["d_se"]])
+            sp = np.maximum(d.max(axis=0), 0.0) - np.minimum(d.min(axis=0), 0.0)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                z = np.where(se > 0, np.abs(d) / se, np.where(d != 0, np.inf, 0.0)).max(axis=0)
+            spread[cid] = {"family": pl["family"], "goal": pl["goal"], "utility": pl["utility"], "spread": sp, "z": z,
+                           "base": pl["base"], "base_se": pl["base_se"]}
+    # flips, per alternative field
+    picks, flips = {}, []
+    order = sel.prepared.order
+    for label, rep in reports.items():
+        ent = rep["entries"]
+        gpp = [e for e in order if ent[e]["family"] == "large_gpp"]
+        picks[label] = {"entries": len(order), "pick_flips": sum(ent[e]["pick_flip"] for e in order),
+                        "anchor_flips": sum(ent[e]["anchor_flip"] for e in order), "large_gpp_picks": len(gpp),
+                        "large_gpp_pick_flips": sum(ent[e]["pick_flip"] for e in gpp),
+                        "large_gpp_anchor_flips": sum(ent[e]["anchor_flip"] for e in gpp),
+                        "added_by_alt_screen": rep["added_by_alt_screen"]}
+        if free:
+            picks[label]["free_flips"] = sum(ent[e]["free_flip"] for e in order)
+        for e in order:
+            x = ent[e]
+            if x["pick_flip"]:
+                b, a = set(by_key[x["base_key"]]), set(by_key[x["alt_key"]])
+                flips.append({"entry_id": e, "contest_id": x["contest_id"], "family": x["family"], "field": label,
+                              "anchor_moved": x["anchor_flip"], "out": _names(work, b - a), "in": _names(work, a - b)})
+    terms = Counter(pf.band_term(sel.choices[e], risk_cfg) for e in order
+                    if sel.choices[e].family == "large_gpp")
+    pick_rows = {}
+    for e in order:
+        ch = sel.choices[e]
+        sp = spread.get(ch.contest_id)
+        if sp is not None:
+            k = sel.prepared.keep[ch.cand]
+            pick_rows[e] = {"spread": round(float(sp["spread"][k]), 4), "z": _plain(sp["z"][k:k + 1], 2)[0],
+                            "base": round(float(sp["base"][k]), 4), "base_se": round(float(sp["base_se"][k]), 4)}
+    summary_spread = {}
+    for cid, sp in spread.items():
+        z = sp["z"][np.isfinite(sp["z"])]
+        summary_spread[cid] = {"family": sp["family"], "goal": sp["goal"], "utility": sp["utility"],
+                               "candidates": int(len(sp["spread"])),
+                               "median_spread": round(float(np.median(sp["spread"])), 4),
+                               "max_spread": round(float(sp["spread"].max()), 4),
+                               "median_z": round(float(np.median(z)), 2) if len(z) else None,
+                               "share_z_over_2": round(float((sp["z"] > 2).mean()), 3)}
+    path = None
+    if write and keys is not None:
+        rows = {"keys": keys, "in_base_screen": next(iter(reports.values()))["in_base_screen"],
+                "families": next(iter(reports.values()))["families"],
+                "by_field": {label: {cid: {k: _plain(v, 5) for k, v in pc.items() if isinstance(v, np.ndarray)}
+                                     for cid, pc in rep["per_contest"].items()} for label, rep in reports.items()},
+                "spread": {cid: {"spread": _plain(sp["spread"], 5), "z": _plain(sp["z"], 3)} for cid, sp in spread.items()},
+                "entries": {label: rep["entries"] for label, rep in reports.items()}}
+        path = run.path / "scenario" / "ownership_bands.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(rows, allow_nan=False), encoding="utf-8")
+    c = eb.get("classic") or {}
+    return {"label": "C41 ownership band, report only (FIELD_CALIBRATION=PRIOR; selection unchanged)",
+            "band": {k: c.get(k) for k in ("beta_low", "beta_high", "t_low", "t_high")} | {"source": eb.get("source")},
+            "fields": fields_rec, "picks": picks, "flips": flips, "spread": summary_spread, "pick_spread": pick_rows,
+            "band_terms_large_gpp": dict(terms), "chosen_kappa": sel.chosen_kappa, "notes": notes,
+            "file": path.relative_to(run.path).as_posix() if path else None,
+            "seconds": round(time.perf_counter() - t0, 2), "peak_mb_before": peak0, "peak_mb_after": peak_mb()}
 
 
 def _captain_section(disc, by_entry, work, entries, contests, own_by, big_cid, caps, slate, risk_cfg, gate_dropped) -> dict:

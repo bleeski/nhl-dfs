@@ -62,6 +62,8 @@ asks:
 
 updates:
   - date: 2026-10-16
+    text: C41 finished on your machine. Ownership forecasts have been chalkier than the real field every time we checked. Testing picks against a flatter and a chalkier field showed the miss can change picks, but redrawing the same field changes most picks as well, so that close-call problem is now its own backlog item (B139) ahead of the next selection test (C42). Lineups are unchanged; the new report and the new selection option are both off. Next up is C42.
+  - date: 2026-10-16
     text: C25 finished on your machine. Re-measuring the league averages without the test nights changed nothing that matters. The linemate check found that the engine ties real linemates' big nights together too tightly when it groups them right, and misses real linemates when it splits them; you chose to keep the recorded result, so the second finding goes to C13 as a description, not a named cause. The plan to test a hot-line boost is written down before any code, and it predicts the boost would make the first problem worse. Lineups are unchanged. Next up is C41.
   - date: 2026-10-15
     text: C55 finished on your machine. Big tournaments and small fields now aim at first place, because the engine passed the test set before any number on the Sept 29 and Sept 30 slates. Late swap still uses the top 1%, because with its fewer simulated nights first place was too noisy. On fresh simulated nights the first-place lineups did not win more often on those two slates and cashed a little less, so treat the change as unproven until the real-results replay (C51). Next up is C25.
@@ -396,6 +398,8 @@ chunks:
     what: Tests lineups against lower-owned and higher-owned versions of the field, not just the single best guess.
     why: Player ownership forecasts miss by about 4 points on average, and team stack shares missed by 20 points on Sept 30.
     matters: A lineup that only works if the forecast is exactly right can be badly placed in reality. If it would change which lineups are picked, it waits on C51's answer.
+    result: Done Oct 16. All three graded forecasts (Sept 29 and Sept 30) were chalkier than the real field; on Sept 30 the players we forecast at 10% or more were owned about a quarter less than forecast. The engine now builds a flatter and a chalkier version of the field sized to that miss, and on the Sept 29 and Sept 30 slates (30 entries) it checked which picks change. By the test written before any number, the ownership miss changes picks, narrowly (29 against 23 and 21 against 19). The bigger finding is that simply drawing the same field again changes most picks too (16 to 23 of about 30), so many picks on these slates are close calls the engine cannot separate. A way to pick lineups that hold up across all three fields is built but switched off, and waits on C51. The new report is switched off too, because it adds 1.5 to 2 minutes to a 30-entry run. Lineups are unchanged.
+    caveat: Two slates and a field model that is still a starting guess. The switched-off option did not clearly help on fresh simulated nights (within about one standard error either way). The time cost was measured while other programs ran on the computer.
   C42:
     title_seen: Improvement pass after the greedy fill (experiment)
     name: A second pass to improve the lineup set

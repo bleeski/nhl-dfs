@@ -1,0 +1,50 @@
+{
+ "195958173": {
+  "family": "large_gpp",
+  "forecast_run": "20260929-222125-classic",
+  "graded_run": "20260929-222125-classic",
+  "mode": "classic"
+ },
+ "196048725": {
+  "family": "large_gpp",
+  "forecast_run": "20260930-013521-showdown",
+  "graded_run": "20260930-013521-showdown",
+  "mode": "showdown"
+ },
+ "196048727": {
+  "family": "large_gpp",
+  "forecast_run": "20260930-013521-showdown",
+  "graded_run": "20260930-013521-showdown",
+  "mode": "showdown"
+ },
+ "196050215": {
+  "family": "large_gpp",
+  "forecast_run": "20260930-013521-showdown",
+  "graded_run": "20260930-013521-showdown",
+  "mode": "showdown"
+ },
+ "196218433": {
+  "family": "large_gpp",
+  "forecast_run": "20260930-214909-classic",
+  "graded_run": "20260930-233424-classic",
+  "mode": "classic"
+ },
+ "196218434": {
+  "family": "large_gpp",
+  "forecast_run": "20260930-214909-classic",
+  "graded_run": "20260930-233424-classic",
+  "mode": "classic"
+ },
+ "196218438": {
+  "family": "large_gpp",
+  "forecast_run": "20260930-214909-classic",
+  "graded_run": "20260930-233424-classic",
+  "mode": "classic"
+ },
+ "196228907": {
+  "family": "large_gpp",
+  "forecast_run": "20260930-214909-classic",
+  "graded_run": "20260930-233424-classic",
+  "mode": "classic"
+ }
+}
