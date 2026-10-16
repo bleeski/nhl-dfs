@@ -317,11 +317,33 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
     # selection, then the referee figures
     from nhl_dfs.models import ownership as own_mod
 
-    band_spec, band_why = band_specs((prov or {}).get("own_cfg") or own_mod.load_ownership_config(), work.mode)  # C41
+    own_cfg_band = (prov or {}).get("own_cfg") or own_mod.load_ownership_config()
+    band_spec, band_why = band_specs(own_cfg_band, work.mode)  # C41
+    band_sel = None
+    if (risk_cfg.get("selection") or {}).get("ownership_band"):  # C41 (flag 123): off by default; adoption waits on C51
+        c41 = ((own_cfg_band.get("field") or {}).get("error_band") or {}).get("classic") or {}
+        if work.mode is Mode.CLASSIC and c41.get("t_low") and c41.get("t_high"):
+            t = time.perf_counter()
+            band_sel = {}
+            for label, temp in (("high", float(c41["t_high"])), ("low", float(c41["t_low"]))):
+                fb_alt, _ = band_fields(work, proj, contexts, fb, own_n, prov, st, risk_cfg, seed, scenario_n or {}, temperature=temp)
+                band_sel[label] = ({cid: ob.field_spec(fb_alt.fields[contests_mod.field_family(ctx.family)].lineups,
+                                                       fb_alt.fields[contests_mod.field_family(ctx.family)].keys,
+                                                       ctx.field_size - own_n[cid], risk_cfg, n_scenarios=sets["selection"].n,
+                                                       seed=seed, salt=f"{cid}|selection") for cid, ctx in contexts.items()},
+                                   {cid: fb_alt.marginals[cid].own for cid in contexts},
+                                   {cid: fb_alt.marginals[cid].dup_counts for cid in contexts})
+                del fb_alt
+            timings["ownership_band_fields_s"] = round(time.perf_counter() - t, 3)
+            sec["selection_ownership_band"] = {"on": True, "t_low": c41["t_low"], "t_high": c41["t_high"],
+                                               "seconds": timings["ownership_band_fields_s"]}
+        else:
+            sec["selection_ownership_band"] = {"on": False, "why": "Classic only, with calibrated t_low and t_high"}
     t = time.perf_counter()
     sel = pf.select(cands, sets["selection"], fields["selection"], contests, entries, caps, budget, seed=seed, pool=work,
                     fam_cfg=fam_cfg, risk_cfg=risk_cfg, own_by_contest=own_by, dup_by_contest=dup_by,
-                    field_cal=field_cal, fees_cents=fees, rule_families=rule_fams, keep_prepared=band_spec is not None)
+                    field_cal=field_cal, fees_cents=fees, rule_families=rule_fams, keep_prepared=band_spec is not None,
+                    band_fields=band_sel)
     timings["selection_s"] = round(time.perf_counter() - t, 3)
     timings["selection_peak_mb"] = peak_mb()
     by_entry = {e: arrange_util(lu, work, starts) for e, lu in sel.by_entry.items()}

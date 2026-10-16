@@ -228,6 +228,30 @@ def test_an_alternative_field_that_moves_the_anchor_is_named_with_the_pick():
     assert pc["d"][ib] == pytest.approx(0.9 - 0.98 * 1.8, abs=0.06)  # b: half of first every time, from first in 98%
 
 
+def test_the_band_average_with_the_base_field_twice_is_the_one_field_fill():
+    pool, a, b, f, scen, caps, ct, own, sel = _flip_case()
+    twice = pf.select([a, b], scen, {"C": one_field(f)}, ct, [E("e1", "C")], caps, pf.RiskBudget(1.0, None, None, None),
+                      seed=1, pool=pool, fam_cfg=FAM, risk_cfg=RISK, own_by_contest={"C": own},
+                      band_fields={"low": ({"C": one_field(f)}, {"C": own}, {}), "high": ({"C": one_field(f)}, {"C": own}, {})})
+    assert twice.by_entry == sel.by_entry and twice.chosen_kappa == sel.chosen_kappa
+    x, y = twice.choices["e1"], sel.choices["e1"]
+    assert (x.key, x.anchor_key) == (y.key, y.anchor_key)
+    # (u + u + u) / 3 is u only to rounding: the averaged path is its own arithmetic; the switch-off path is the original code
+    assert (x.score, x.score_se, x.band) == pytest.approx((y.score, y.score_se, y.band), rel=1e-12, abs=1e-6)
+    assert twice.screened["ownership_band"] == {"fields": ["high", "low"], "added_by_band_screens": 0}
+    assert [(p.kappa, p.tail_utility) for p in twice.frontier] == [(p.kappa, p.tail_utility) for p in sel.frontier]
+
+
+def test_the_band_average_picks_the_lineup_that_holds_up_in_both_fields():
+    pool, a, b, f, scen, caps, ct, own, sel = _flip_case()
+    band = pf.select([a, b], scen, {"C": one_field(f)}, ct, [E("e1", "C")], caps, pf.RiskBudget(1.0, None, None, None),
+                     seed=1, pool=pool, fam_cfg=FAM, risk_cfg=RISK, own_by_contest={"C": own},
+                     band_fields={"high": ({"C": one_field(b)}, {"C": own}, {})})
+    # a: 1.8 against f, 0.72 against b (mean 1.26); b: 1.764 and 0.9 (mean 1.332): b holds up and is outside a's band
+    assert sel.choices["e1"].key == a.key and band.choices["e1"].key == b.key
+    assert band.choices["e1"].score == pytest.approx((0.98 * 1.8 + 0.9) / 2, abs=0.05)
+
+
 def test_the_band_term_says_whether_the_floor_or_the_se_set_the_width():
     ch = pf.Choice("e", "C", "large_gpp", 0, "k", "central", 1.0, 0.01, 0.03, 0, 0.0, 0.0, "proxy", 0, "k", 0.0, 0.0, 1.0, 0.01)
     assert pf.band_term(ch, RISK) == "floor"  # 0.03 x 1.0 above 1.0 x 0.01
@@ -266,11 +290,15 @@ def mini_runs(tmp_path_factory):
     from nhl_dfs.build.run import run_slate
 
     small = {"design": 300, "selection": 800, "referee": 800, "field_target": 400}
-    real = ownership.load_ownership_config
+    real, real_risk = ownership.load_ownership_config, ob.load_risk_config
+    switch = copy.deepcopy(RISK)
+    switch["selection"]["ownership_band"] = True
     out = {}
     try:
-        for name, cfg in (("off", _own_cfg(False, None, None)), ("on", _own_cfg(True, 2.0, 0.5)), ("one", _own_cfg(True, 1.0, 1.0))):
+        for name, cfg in (("off", _own_cfg(False, None, None)), ("on", _own_cfg(True, 2.0, 0.5)), ("one", _own_cfg(True, 1.0, 1.0)),
+                          ("switch", _own_cfg(False, 2.0, 0.5))):
             ownership.load_ownership_config = lambda path=ownership.OWNERSHIP_YAML, cfg=cfg: copy.deepcopy(cfg)
+            ob.load_risk_config = (lambda path=ob.RISK_YAML: copy.deepcopy(switch)) if name == "switch" else real_risk
             tmp = tmp_path_factory.mktemp(f"c41_{name}")
             r = run_slate(*mini_pair("classic"), offline=True, baseline_only=False, scenario=True, scenario_n=small,
                           out_root=tmp / "runs", outputs_root=tmp / "outputs",
@@ -279,16 +307,30 @@ def mini_runs(tmp_path_factory):
             files = sorted((tmp / "outputs").rglob("DKEntries.csv"))
             out[name] = (r, files[-1].read_bytes() if files else None)
     finally:
-        ownership.load_ownership_config = real
+        ownership.load_ownership_config, ob.load_risk_config = real, real_risk
     return out
 
 
+@pytest.mark.timeout(900)  # four whole offline scenario passes in the module fixture
+def test_the_switch_off_by_default_and_on_it_scores_on_the_band(mini_runs):
+    assert RISK["selection"]["ownership_band"] is False
+    off = mini_runs["off"][0].manifest["scenario"]
+    assert "selection_ownership_band" not in off and "ownership_band" not in off["discovery"]["screened"]
+    r, data = mini_runs["switch"]
+    sec = r.manifest["scenario"]
+    assert data is not None and sec["selection_ownership_band"]["on"] is True
+    assert sec["selection_ownership_band"]["t_low"] == 2.0 and sec["timings"]["ownership_band_fields_s"] > 0
+    assert sec["discovery"]["screened"]["ownership_band"]["fields"] == ["high", "low"]
+
+
+@pytest.mark.timeout(900)  # four whole offline scenario passes in the module fixture
 def test_the_report_never_changes_the_published_file(mini_runs):
     off, on, one = (mini_runs[k][1] for k in ("off", "on", "one"))
     assert off is not None and off == on == one
     assert mini_runs["off"][0].manifest["scenario"]["ownership_bands"]["skipped"].startswith("report off")
 
 
+@pytest.mark.timeout(900)  # four whole offline scenario passes in the module fixture
 def test_the_report_prints_the_spread_and_names_the_picks(mini_runs):
     r = mini_runs["on"][0]
     b = r.manifest["scenario"]["ownership_bands"]
@@ -309,6 +351,7 @@ def test_the_report_prints_the_spread_and_names_the_picks(mini_runs):
         assert f"{f['entry_id']} ({f['contest_id']}, {f['field']}" in notes
 
 
+@pytest.mark.timeout(900)  # four whole offline scenario passes in the module fixture
 def test_temperature_one_in_a_run_rebuilds_the_base_field_exactly(mini_runs):
     b = mini_runs["one"][0].manifest["scenario"]["ownership_bands"]
     for label in ("low", "high"):

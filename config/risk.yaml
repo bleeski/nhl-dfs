@@ -82,6 +82,11 @@ selection:
   screen_per_family: 3
   screen_per_goalie: 2           # each goalie's best kept too, so the goalie cap has choices (B36)
   threads: 5
+  # C41 (BEN flags 121 and 123, docs/experiments/ownership_band_2026-10-16.md): true scores every Classic candidate on the
+  # average of the base field and the low and high ownership fields (config/ownership.yaml field.error_band), per scenario,
+  # with the union of the three screens; the knob stays on the base field. Built because the band moved picks by the
+  # preregistered rule; it ships off and its adoption waits on C51's reading of the Classic objective (B112).
+  ownership_band: false
 
 # Scenario objectives (build/objectives.py)
 objectives:

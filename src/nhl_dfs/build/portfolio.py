@@ -371,7 +371,7 @@ def _greedy(kappa: float, order: list, entry_contest: Mapping[str, str], fees: M
             candidates: Sequence[Candidate], states: dict, caps: exposure.Caps, pool, risk_cfg: dict,
             role_mean: Mapping[str, float], tournament: set[str], sleeve_max: int, mem_share: float = 1.0,
             faced: Sequence[bool] | None = None, rule_cids: frozenset[str] = frozenset(),
-            forced: Mapping[str, int] | None = None):
+            forced: Mapping[str, int] | None = None, extra_states: Sequence[Mapping[str, "_ContestState"]] = ()):
     """One knob's fill. The prepared field ranks (states) are shared across knobs and never copied. Each contest's
     own entries are kept in an `objectives.OwnContest` (C18, B55): a step scores every candidate by the change to
     the WHOLE contest's payout and utility (its own plus what it takes from the entries already placed there),
@@ -380,7 +380,13 @@ def _greedy(kappa: float, order: list, entry_contest: Mapping[str, str], fees: M
 
     forced (C41, flag 121): entry -> candidate index. Each entry is still ranked as usual and its Choice records that
     pick and its band's anchor, but the forced candidate is the one placed, so every later entry sees the state the
-    forced fill would have (the anchored refill of the ownership band report). None places the pick, as always."""
+    forced fill would have (the anchored refill of the ownership band report). None places the pick, as always.
+
+    extra_states (C41, flag 123, `selection.ownership_band`): the same candidates' ranks against other fields. Each field keeps
+    its own contest books and running payout; per scenario the step utility and the lose-80% indicator are averaged over the
+    base and the extra fields, so the score and its SE are the band average, paired. The tie order, caps and counts stay the
+    base field's, every pick is placed in every field's books, and the returned payout is the base field's. Empty: the
+    fill is exactly the one-field fill."""
     S, K = cand_scores.shape
     tp = float(risk_cfg["objectives"]["top_pct"])
     curves = {cid: _Curve(st.contest, tp, ob.goal_of(risk_cfg)) for cid, st in states.items()}
@@ -388,6 +394,8 @@ def _greedy(kappa: float, order: list, entry_contest: Mapping[str, str], fees: M
     step = ob._chunk_rows(S, K * 160, cap_mb)  # ~20 temporaries x 8 bytes
     n_in = Counter(entry_contest[e] for e in order)
     books: dict[str, ob.OwnContest] = {}  # per contest, made when its first entry is placed
+    xbooks: list[dict[str, ob.OwnContest]] = [{} for _ in extra_states]  # C41 (flag 123): the extra fields' books
+    xpay = [np.zeros(S, np.int64) for _ in extra_states]
     total_fees = sum(int(fees[e]) for e in order)
     thr = 0.2 * total_fees  # losing >= 80% of fees <=> total payout <= 20% of fees
     pay_total = np.zeros(S, np.int64)
@@ -463,18 +471,46 @@ def _greedy(kappa: float, order: list, entry_contest: Mapping[str, str], fees: M
             prize = int(st.contest.prizes_cents[0])  # one flat prize, cents
             held = oc.total[0] if oc.total is not None else np.zeros(S, np.int64)  # the contest's own payout so far
             fin = np.zeros(K)
-        for a in range(0, S, rows):
-            b = min(S, a + rows)
-            pay, util = oc.marginal(a, b)  # the whole contest's change, not just the newcomer's
-            if top_n:  # change in min($X, own payout): the first own entry paid counts, a tie at the line counts its share
-                h = held[a:b, None].astype(np.int64)
-                u = (np.minimum(h + pay, prize) - np.minimum(h, prize)) / 100.0
-                fin += pay.sum(axis=0)
-            else:
-                u = util / 100.0
-            su += u.sum(axis=0)
-            sq += (u * u).sum(axis=0)
-            n80 += ((pay_total[a:b, None] + pay) <= thr).sum(axis=0)
+        if extra_states:  # C41 (flag 123): the band average over the base and the extra fields, per scenario
+            xocs = []
+            for j, xs in enumerate(extra_states):
+                if cid not in xbooks[j]:
+                    xbooks[j][cid] = ob.OwnContest(cv.pay_util, xs[cid].G, xs[cid].E, cand_scores, capacity=n_in[cid], chunk=step,
+                                                   live_below=st.contest.paid)
+                xocs.append(xbooks[j][cid])
+            F = 1 + len(xocs)
+            rows = max(1, rows // F)  # F books' temporaries inside the same cap
+            for a in range(0, S, rows):
+                b = min(S, a + rows)
+                us, inds = 0.0, 0.0
+                for oc_f, pt_f in [(oc, pay_total), *zip(xocs, xpay)]:
+                    pay, util = oc_f.marginal(a, b)
+                    if top_n:
+                        held_f = oc_f.total[0] if oc_f.total is not None else np.zeros(S, np.int64)
+                        h = held_f[a:b, None].astype(np.int64)
+                        us = us + (np.minimum(h + pay, prize) - np.minimum(h, prize)) / 100.0
+                        if oc_f is oc:
+                            fin += pay.sum(axis=0)
+                    else:
+                        us = us + util / 100.0
+                    inds = inds + ((pt_f[a:b, None] + pay) <= thr)
+                u = us / F
+                su += u.sum(axis=0)
+                sq += (u * u).sum(axis=0)
+                n80 += (inds / F).sum(axis=0)
+        else:
+            for a in range(0, S, rows):
+                b = min(S, a + rows)
+                pay, util = oc.marginal(a, b)  # the whole contest's change, not just the newcomer's
+                if top_n:  # change in min($X, own payout): the first own entry paid counts, a tie at the line counts its share
+                    h = held[a:b, None].astype(np.int64)
+                    u = (np.minimum(h + pay, prize) - np.minimum(h, prize)) / 100.0
+                    fin += pay.sum(axis=0)
+                else:
+                    u = util / 100.0
+                su += u.sum(axis=0)
+                sq += (u * u).sum(axis=0)
+                n80 += ((pay_total[a:b, None] + pay) <= thr).sum(axis=0)
         mean_u = su / S
         se_u = np.sqrt(np.maximum(sq / S - mean_u ** 2, 0.0) / S)
         p80 = n80 / S
@@ -537,6 +573,8 @@ def _greedy(kappa: float, order: list, entry_contest: Mapping[str, str], fees: M
         used[candidates[k].key] += 1
         stress += candidates[k].family.startswith("priors_wrong")
         pay_total += oc.add(k)[0]  # exactly what the contest's payout changed by, entries displaced included
+        for j in range(len(extra_states)):  # C41 (flag 123): every field's books take the same pick
+            xpay[j] += xbooks[j][cid].add(k)[0]
     return choices, relax, pay_total
 
 
@@ -646,11 +684,14 @@ def select(candidates: Sequence[Candidate], role_base: ob.ScenarioSet, fields: M
            own_by_contest: Mapping[str, Mapping[str, float]] | None = None,
            dup_by_contest: Mapping[str, Mapping[str, float]] | None = None, field_cal=None,
            fees_cents: Mapping[str, int] | None = None, rule_families: frozenset[str] = frozenset(),
-           keep_prepared: bool = False) -> Selection:
+           keep_prepared: bool = False, band_fields: Mapping[str, tuple] | None = None) -> Selection:
     """Fill every entry from the candidates on the selection scenarios; see the module docstring. rule_families (C20,
     flags 51 and 52): the contest families whose entries take a candidate without a skater against its goalie (empty: the
     rule is off and nothing below changes; Classic only). keep_prepared (C41): keep what the fill was prepared from on
-    `Selection.prepared` for `band_report` (it holds the unscreened field ranks; no pick changes)."""
+    `Selection.prepared` for `band_report` (it holds the unscreened field ranks; no pick changes). band_fields (C41, flag
+    123, `config/risk.yaml` selection.ownership_band, off by default): label -> (FieldSpec by contest, ownership by contest,
+    duplicate counts by contest) of the low and high fields; the candidates are the union of every field's screen and the fill
+    scores each on the band average (`_greedy(extra_states=...)`); the frontier and the knob stay on the base field."""
     from nhl_dfs.contracts.statuses import FieldCalibration
 
     if not candidates:
@@ -678,6 +719,18 @@ def select(candidates: Sequence[Candidate], role_base: ob.ScenarioSet, fields: M
         faced = [own_goalie.faces_own_goalie(c.role_ids, pool, opp) for c in candidates]
     keep = screen(states, candidates, n_in, risk_cfg, S=cand_scores.shape[0], goalie_of=goalie_of,
                   rule_cids=rule_cids, faced=faced)
+    alt_states = []
+    added_by_band = 0
+    for label in sorted(band_fields or {}):  # C41 (flag 123): the low and high fields, prepared and screened like the base
+        f_alt, o_alt, d_alt = band_fields[label]
+        fs_alt = {cid: f_alt[cid].scores(role_base, pool.mode) for cid in contests}
+        st_alt = _prepare(cand_scores, fs_alt, contests, candidates, pool, fam_cfg, risk_cfg, o_alt or {}, d_alt or {}, field_cal,
+                          f_alt)
+        alt_states.append(st_alt)
+        more = set(screen(st_alt, candidates, n_in, risk_cfg, S=cand_scores.shape[0], goalie_of=goalie_of, rule_cids=rule_cids,
+                          faced=faced))
+        added_by_band += len(more - set(keep))
+        keep = sorted(set(keep) | more)
     screened = {"candidates_in": len(candidates), "kept": len(keep),
                 "goalies_in": len({g for gs in goalie_of for g in gs}),
                 "goalies_kept": len({g for i in keep for g in goalie_of[i]})}
@@ -691,6 +744,9 @@ def select(candidates: Sequence[Candidate], role_base: ob.ScenarioSet, fields: M
         cand_scores = np.ascontiguousarray(cand_scores[:, keep])
         states = {cid: _ContestState(st.contest, np.ascontiguousarray(st.G[:, keep]), np.ascontiguousarray(st.E[:, keep]),
                                      st.own_pct[keep], st.dup[keep], st.dup_name, st.policy) for cid, st in states.items()}
+        alt_states = [_subset(st_alt, keep) for st_alt in alt_states]
+    if band_fields:
+        screened["ownership_band"] = {"fields": sorted(band_fields), "added_by_band_screens": added_by_band}
     sleeve = max(1, int(round(float(risk_cfg["discovery"]["stress_sleeve_max"]) * len(order))))
     if prepared is not None:
         prepared.sleeve = sleeve
@@ -702,7 +758,7 @@ def select(candidates: Sequence[Candidate], role_base: ob.ScenarioSet, fields: M
     def fill(kappa: float):
         return _greedy(kappa, order, entry_contest, fees, cand_scores, candidates, states, caps, pool, risk_cfg,
                        role_mean, tournament, sleeve, mem_share=1.0 / len(kappas),  # not threads: chunking fixed
-                       faced=faced, rule_cids=rule_cids)
+                       faced=faced, rule_cids=rule_cids, extra_states=alt_states)
 
     if threads > 1:  # only the fills run concurrently; the joint frontier evaluation runs one knob at a time
         from concurrent.futures import ThreadPoolExecutor
