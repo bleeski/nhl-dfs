@@ -284,11 +284,15 @@ def test_calibrate_with_clean_constants_leaves_the_config_files_byte_identical(s
     assert set(js["constants"]["excluded_dates"]) >= set(js["as_of_dates"]) and js["constants"]["not_cleaned"]
 
 
-def test_report_with_the_shipped_files_matches_origin_master(store_root):
+@pytest.fixture(scope="module")
+def shipped_report(store_root):
+    return validate.report(HELD, store_root=store_root, n_scenarios=300)
+
+
+def test_report_with_the_shipped_files_matches_origin_master(shipped_report):
     """GOLDEN was written by validate.report(HELD, None, store_root=build_store(...), n_scenarios=300) on origin/master
     2091aad (before C25)."""
-    rep = validate.report(HELD, store_root=store_root, n_scenarios=300)
-    js = json.loads(rep.to_json())
+    js = json.loads(shipped_report.to_json())
     assert js["constants"] == {} and not any(d["kind"] == "constants" for d in js["deficiencies"])
     _same(old_keys(js), json.loads(GOLDEN.read_text(encoding="utf-8")))
 
@@ -348,3 +352,76 @@ def test_a_changed_league_value_moves_the_simulation(store_root):
     base = validate.report(HELD[:1], sim, model_cfg=model, store_root=store_root, n_scenarios=200).team["sim_mean"]
     assert validate.report(HELD[:1], hi, model_cfg=model, store_root=store_root, n_scenarios=200).team["sim_mean"] > 1.2 * base
     assert validate.report(HELD[:1], sim, model_cfg=rich, store_root=store_root, n_scenarios=200).team["sim_mean"] > 1.2 * base
+
+
+# -- the co-ceiling cause (flag 115) ----------------------------------------------------------------------------------
+
+def test_a_forward_missing_from_the_line_records_is_unmatched_never_not_linemates(shipped_report, store_root):
+    lines = store.read("line_games", [SEASON], root=store_root)
+    for d in HELD:
+        prim = validate.primary_lines(lines, d)
+        assert prim and not any(pid == NO_LINE_ID for _, pid in prim)
+    cc = json.loads(shipped_report.to_json())["co_ceiling"]
+    ca, groups = cc["cause"], cc["linemates"]
+    assert 0 < ca["unmatched"]["pairs"] <= 11 * len(HELD)  # his pairs with WPG's 11 other forwards, per date
+    assert sum(g["pairs"] for g in groups.values()) + ca["unmatched"]["pairs"] == ca["pairs"] == cc["pairs"] + cc["control_pairs"]
+    assert ca["match_rate"] == pytest.approx(ca["matched"] / ca["pairs"])
+
+
+def test_primary_line_is_the_most_used_line_of_that_game():
+    d = date(2026, 1, 1)
+    ln = pd.DataFrame([
+        {"line_id": "L1", "player_ids": "1|2|3", "unit": "line", "situation": "5on5", "toi_s": 400.0, "game_id": 9, "game_date": d},
+        {"line_id": "L2", "player_ids": "3|4|5", "unit": "line", "situation": "5on5", "toi_s": 300.0, "game_id": 9, "game_date": d},
+        {"line_id": "P1", "player_ids": "4|6", "unit": "pairing", "situation": "5on5", "toi_s": 900.0, "game_id": 9, "game_date": d},
+        {"line_id": "L0", "player_ids": "7|8|9", "unit": "line", "situation": "5on5", "toi_s": 500.0, "game_id": 8,
+         "game_date": d - timedelta(days=1)}])
+    prim = validate.primary_lines(ln, d)
+    assert prim == {(9, 1): "L1", (9, 2): "L1", (9, 3): "L1", (9, 4): "L2", (9, 5): "L2"}  # pairings and other days ignored
+
+
+def _pairs(n_games, spec=None, marg=None, unmatched=0):
+    """One pair per group per game. spec: group -> (expected joint per pair, a hit every k-th game, 0 never); default
+    (0.1, 10), observed equal to expected. marg: group -> (marginal hit every k-th game) with marginal expected 1.0."""
+    spec, marg, out = spec or {}, marg or {}, []
+    for g in range(n_games):
+        for name, (model, actual) in validate.GROUPS.items():
+            e, every = spec.get(name, (0.1, 10))
+            m_every = marg.get(name, 1)
+            out.append(validate.PairGame("2026-01-01", g, "T", model, actual, e, int(every > 0 and g % every == 0), 1.0,
+                                         int(g % m_every == 0)))
+    out += [validate.PairGame("2026-01-01", g, "T", True, None, 0.1, 0, 1.0, 1) for g in range(unmatched)]
+    return out
+
+
+@pytest.mark.parametrize("spec, causes", [
+    ({}, []),
+    ({"FT": (0.05, 5), "TF": (0.2, 20)}, [validate.CAUSE_LINES]),
+    ({"TT": (0.1, 40)}, [validate.CAUSE_CORR]),
+    ({"FT": (0.05, 5), "TF": (0.2, 20), "TT": (0.1, 40)}, [validate.CAUSE_LINES, validate.CAUSE_CORR]),
+    ({"FT": (0.05, 5)}, []),  # actual linemates the model split run hot, but model-only pairs do not run cold: not named
+    ({"TT": (0.02, 0)}, []),  # 8 expected joint events: below the floor of 10, so it cannot be named however low
+], ids=["neither", "lines", "correlation", "both", "half_of_lines", "floor"])
+def test_the_cause_rule_gives_the_preregistered_verdict(spec, causes):
+    res = validate.co_ceiling_cause(_pairs(400, spec))
+    assert res["causes"] == causes
+    assert res["verdict"] == ("named: " + "; ".join(causes) if causes else "both causes rejected at this sample")
+    assert res["match_rate"] == 1.0 and res["unmatched"]["pairs"] == 0
+    assert res == validate.co_ceiling_cause(_pairs(400, spec))  # the fixed seed gives the same intervals
+
+
+def test_the_rule_reads_the_adjusted_ratio_not_the_joint_one():
+    # TT's joint ratio is 0.25, but its members' own 2+ point nights also run at half: adjusted 0.25 / 0.5^2 = 1
+    res = validate.co_ceiling_cause(_pairs(400, {"TT": (0.1, 40)}, {"TT": 2}))
+    tt = res["groups"]["TT"]
+    assert tt["joint_ratio"] == pytest.approx(0.25) and tt["marginal_ratio"] == pytest.approx(0.5)
+    assert tt["adjusted_ratio"] == pytest.approx(1.0) and tt["adjusted_lo"] < 1 < tt["adjusted_hi"]
+    assert res["causes"] == []
+
+
+def test_too_few_matched_pairs_is_inconclusive_and_an_outside_lines_excess_is_described():
+    res = validate.co_ceiling_cause(_pairs(400, {"TT": (0.1, 40)}, unmatched=300))
+    assert res["match_rate"] < 0.9 and res["verdict"].startswith("INCONCLUSIVE (join)") and res["causes"] == []
+    res = validate.co_ceiling_cause(_pairs(400, {"FF": (0.1, 4)}))
+    assert res["excess_not_confined_to_lines"] and res["causes"] == []
+    assert validate.co_ceiling_cause([])["verdict"].startswith("INCONCLUSIVE (join)")

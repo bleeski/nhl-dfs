@@ -110,7 +110,25 @@ class CalibrationReport:
                 f"({cc.get('flag', 'n/a')})",
                 f"- control (forward teammates on different model lines): {cc.get('control_pairs', 0)} pair-games, observed "
                 f"{cc.get('control_observed', 0)}, expected {cc.get('control_expected', 0.0):.1f}, ratio {cc.get('control_ratio', 0.0):.2f}; "
-                "a co-ceiling miss that shows up equally in the control is not about line structure", "", "## Team goals", ""]
+                "a co-ceiling miss that shows up equally in the control is not about line structure"]
+        ca, lm = cc.get("cause"), cc.get("linemates")
+        if ca and lm:
+            out += ["", "### Cause test: actual linemates against model lines (C25, flag 115)", "",
+                    f"Actual linemates: the two forwards' most-used 5on5 line in that game (MoneyPuck line ids). {ca['matched']} of "
+                    f"{ca['pairs']} pair-games matched ({ca['match_rate']:.1%}); {ca['unmatched']['pairs']} unmatched, left out of "
+                    "every group. Adjusted = joint / marginal squared; intervals 90% from "
+                    f"{ca['n_boot']} resamples of games.", "",
+                    "| group (model line, actual line) | pairs | both 2+ observed | expected | joint ratio | marginal ratio | "
+                    "adjusted | 90% interval | eligible |", "|---|---:|---:|---:|---:|---:|---:|---|---|"]
+            for k, g in lm.items():
+                out.append(f"| {k} ({'same' if g['model_line'] else 'different'}, {'same' if g['actual_line'] else 'different'}) | "
+                           f"{g['pairs']} | {g['joint_observed']} | {g['joint_expected']:.1f} | {g['joint_ratio']:.2f} | "
+                           f"{g['marginal_ratio']:.2f} | {g['adjusted_ratio']:.2f} | {g['adjusted_lo']:.2f} to {g['adjusted_hi']:.2f} | "
+                           f"{'yes' if g['eligible'] else 'no'} |")
+            out += ["", f"- verdict: {ca['verdict']}"
+                    + ("; the excess also shows in FF, so it is not confined to line structure" if ca["excess_not_confined_to_lines"]
+                       else "")]
+        out += ["", "## Team goals", ""]
         t = self.team
         out.append(f"- MODEL intensities (no odds): observed mean {t.get('obs_mean', 0):.2f}, simulated {t.get('sim_mean', 0):.2f}; "
                    f"observed sd {t.get('obs_sd', 0):.2f}, simulated {t.get('sim_sd', 0):.2f}; PIT chi-square/df {t.get('chi2_per_df', 0):.2f}")
@@ -342,6 +360,116 @@ def derive_resolve(reg_goals: float, tie_rate: float, en_goals: float, sim_cfg: 
     return {"lambda0_league": lam, "q_eq": q_eq, "q_en": [c * s for s in shape]}
 
 
+# -- the co-ceiling cause: actual linemates against model lines (C25, [BEN] flag 115) ---------------------------------
+
+CAUSE_LINES = "model lines miss the real linemates"
+CAUSE_CORR = "within-line correlation too strong"
+GROUPS = {"TT": (True, True), "TF": (True, False), "FT": (False, True), "FF": (False, False)}  # (model line, actual line)
+
+
+@dataclass(frozen=True)
+class PairGame:
+    """One forward pair in one game, both dressed in at least 50 scenarios (C6's pair set). actual_same is None when
+    either forward has no 5on5 line row in that game (UNMATCHED). Expectations are over the scenarios where both dressed."""
+    date: str
+    game: int
+    team: str
+    model_same: bool
+    actual_same: bool | None
+    joint_exp: float  # P(both 2+ points)
+    joint_hit: int
+    marg_exp: float  # P(first 2+) + P(second 2+)
+    marg_hit: int
+
+
+def primary_lines(lines: pd.DataFrame, D: date) -> dict[tuple[int, int], str]:
+    """(game_id, nhl_id) -> the 5on5 forward line row with the most ice time that contains him on D (ties: the smaller
+    line_id). A forward with no row is absent, never given a line."""
+    if lines is None or lines.empty:
+        return {}
+    ln = lines[(lines["game_date"] == D) & (lines["unit"] == "line") & (lines["situation"] == "5on5")]
+    rows = [(int(r.game_id), int(pid), str(r.line_id), float(r.toi_s))
+            for r in ln.itertuples(index=False) for pid in str(r.player_ids).split("|") if pid]
+    if not rows:
+        return {}
+    df = pd.DataFrame(rows, columns=["game_id", "nhl_id", "line_id", "toi_s"])
+    best = df.sort_values(["game_id", "nhl_id", "toi_s", "line_id"], ascending=[True, True, False, True]).groupby(
+        ["game_id", "nhl_id"]).head(1)
+    return {(int(r.game_id), int(r.nhl_id)): r.line_id for r in best.itertuples(index=False)}
+
+
+def co_ceiling_cause(pair_games: list[PairGame], *, seed: int = 20260929, n_boot: int = 2000, min_expected: float = 10.0,
+                     join_floor: float = 0.9) -> dict:
+    """Flag 115's rule. Per group: joint ratio (both 2+ points), marginal ratio (the members' own 2+ point games over the
+    same pair-games) and adjusted ratio = joint / marginal squared, with 90% intervals from n_boot resamples of games
+    (joint over the groups, generator default_rng([seed, 25]), never the report's own). A group with fewer than
+    min_expected expected joint events cannot satisfy a condition; below join_floor matched pairs the result is
+    INCONCLUSIVE (join)."""
+    matched = [p for p in pair_games if p.actual_same is not None]
+    total = len(pair_games)
+    rate = len(matched) / total if total else float("nan")
+    games = sorted({p.game for p in matched})
+    gi = {g: k for k, g in enumerate(games)}
+    # per group and game: joint observed, joint expected, marginal observed, marginal expected
+    sums = {k: np.zeros((len(games), 4)) for k in GROUPS}
+    n_pairs = {k: 0 for k in GROUPS}
+    for p in matched:
+        k = next(name for name, ma in GROUPS.items() if ma == (p.model_same, p.actual_same))
+        sums[k][gi[p.game]] += (p.joint_hit, p.joint_exp, p.marg_hit, p.marg_exp)
+        n_pairs[k] += 1
+    rng = np.random.default_rng([seed, 25])
+    weights = np.zeros((n_boot, len(games)))
+    if games:
+        np.add.at(weights, (np.arange(n_boot)[:, None], rng.integers(0, len(games), size=(n_boot, len(games)))), 1.0)
+
+    def ratios(t):  # t: (..., 4) totals -> joint, marginal, adjusted (NaN where undefined)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            joint = np.where(t[..., 1] > 0, t[..., 0] / t[..., 1], np.nan)
+            marg = np.where(t[..., 3] > 0, t[..., 2] / t[..., 3], np.nan)
+            adj = np.where(marg > 0, joint / marg ** 2, np.nan)
+        return joint, marg, adj
+
+    out_groups: dict[str, dict] = {}
+    for k, (model, actual) in GROUPS.items():
+        tot = sums[k].sum(axis=0)
+        joint, marg, adj = (float(x) for x in ratios(tot))
+        bj, _, ba = ratios(weights @ sums[k])
+        ok = ~np.isnan(ba)
+        lo, hi = (float(x) for x in np.percentile(ba[ok], [5, 95])) if ok.any() else (float("nan"), float("nan"))
+        jlo, jhi = (float(x) for x in np.percentile(bj[~np.isnan(bj)], [5, 95])) if (~np.isnan(bj)).any() else (
+            float("nan"), float("nan"))
+        out_groups[k] = {"model_line": model, "actual_line": actual, "pairs": n_pairs[k],
+                         "games": int((sums[k][:, 1] > 0).sum()), "joint_observed": int(round(tot[0])),
+                         "joint_expected": float(tot[1]), "joint_ratio": joint, "joint_lo": jlo, "joint_hi": jhi,
+                         "marginal_observed": int(round(tot[2])), "marginal_expected": float(tot[3]), "marginal_ratio": marg,
+                         "adjusted_ratio": adj, "adjusted_lo": lo, "adjusted_hi": hi,
+                         "dropped_resamples": int((~ok).sum()), "eligible": bool(tot[1] >= min_expected)}
+
+    def above(k):
+        g = out_groups[k]
+        return g["eligible"] and g["adjusted_ratio"] > 1 and g["adjusted_lo"] > 1
+
+    def below(k):
+        g = out_groups[k]
+        return g["eligible"] and g["adjusted_ratio"] < 1 and g["adjusted_hi"] < 1
+
+    causes: list[str] = []
+    if not total or rate < join_floor:
+        verdict = f"INCONCLUSIVE (join): {len(matched)} of {total} forward pair-games matched to a 5on5 line"
+    else:
+        if above("FT") and below("TF"):
+            causes.append(CAUSE_LINES)
+        if below("TT"):
+            causes.append(CAUSE_CORR)
+        verdict = ("named: " + "; ".join(causes)) if causes else "both causes rejected at this sample"
+    unmatched = [p for p in pair_games if p.actual_same is None]
+    return {"rule": "flag 115", "seed": [seed, 25], "n_boot": n_boot, "min_expected": min_expected, "join_floor": join_floor,
+            "pairs": total, "matched": len(matched), "match_rate": rate,
+            "unmatched": {"pairs": len(unmatched), "model_same": sum(p.model_same for p in unmatched)},
+            "groups": out_groups, "causes": causes, "verdict": verdict,
+            "excess_not_confined_to_lines": bool(total and rate >= join_floor and above("FF"))}
+
+
 def _derived_values(d: dict | None) -> list[float | None]:
     return [None] * 6 if d is None else [d["lambda0_league"], d["q_eq"], *d["q_en"]]
 
@@ -444,6 +572,8 @@ def report(as_of_dates, cfg: dict | None = None, *, model_cfg: dict | None = Non
     gl_all = store_mod.read("goalie_games", seasons, root=store_root)
     sk_all = sk_all[sk_all["regime"] == "regular"]
     gl_all = gl_all[gl_all["regime"] == "regular"]
+    lines_all = store_mod.read("line_games", seasons, root=store_root)  # C25: actual linemates, game by game
+    pair_games: list[PairGame] = []
     rng = np.random.default_rng(seed)
     pits: dict[str, list[float]] = {k: [] for k in ("goals", "assists", "points", "sog", "blocks", "saves", "ga", "team_goals")}
     counts = {k: 0 for k in ("games", "skaters_observed", "skaters_matched", "goalies_observed", "goalies_matched")}
@@ -545,6 +675,8 @@ def report(as_of_dates, cfg: dict | None = None, *, model_cfg: dict | None = Non
                     team_sim_mean.append(float(sim_g.mean()))
                     team_sim_var.append(float(sim_g.var()))
         obs_pts = {(int(r.nhl_id)): int(r.goals + r.assists) for r in day_sk.itertuples(index=False)}
+        game_of = {int(r.nhl_id): int(r.game_id) for r in day_sk.itertuples(index=False)}
+        prim = primary_lines(lines_all, D)
         for team, tp in prep.teams.items():
             line_of = {i: int(np.argmax(tp.m_f[i])) for i in range(tp.n_listed) if tp.is_f[i]}
             fwd = sorted(line_of)
@@ -562,6 +694,11 @@ def report(as_of_dates, cfg: dict | None = None, *, model_cfg: dict | None = Non
                     pa, pb = pts[:, tp.cols[i]], pts[:, tp.cols[j]]
                     e = float(((pa >= 2) & (pb >= 2))[both].mean())
                     hit = int(obs_pts[ia] >= 2 and obs_pts[ib] >= 2)
+                    g = game_of[ia]
+                    la, lb = prim.get((g, ia)), prim.get((g, ib))
+                    pair_games.append(PairGame(D.isoformat(), g, team, bool(same), None if la is None or lb is None else la == lb,
+                                               e, hit, float((pa >= 2)[both].mean() + (pb >= 2)[both].mean()),
+                                               int(obs_pts[ia] >= 2) + int(obs_pts[ib] >= 2)))
                     if same:
                         co_exp, co_obs, co_pairs = co_exp + e, co_obs + hit, co_pairs + 1
                     else:
@@ -598,14 +735,17 @@ def report(as_of_dates, cfg: dict | None = None, *, model_cfg: dict | None = Non
     ratio = co_obs / co_exp if co_exp > 0 else float("nan")
     cflag = "FLAG" if co_exp >= flag_min and not (lo <= ratio <= hi) else ("ok" if co_exp >= flag_min else "too few to flag")
     cratio = ctl_obs / ctl_exp if ctl_exp > 0 else float("nan")
+    cause = co_ceiling_cause(pair_games, seed=seed)
     rep.co_ceiling = {"pairs": co_pairs, "observed": co_obs, "expected": co_exp, "ratio": ratio, "flag": cflag,
-                      "control_pairs": ctl_pairs, "control_observed": ctl_obs, "control_expected": ctl_exp, "control_ratio": cratio}
+                      "control_pairs": ctl_pairs, "control_observed": ctl_obs, "control_expected": ctl_exp, "control_ratio": cratio,
+                      "linemates": cause["groups"], "cause": {k: v for k, v in cause.items() if k != "groups"}}
     if cflag == "FLAG":
         rep.deficiencies.append({"kind": "co_ceiling", "what": "model-line pairs, both 2+ points",
                                  "detail": f"observed/expected {ratio:.2f} within model lines, {cratio:.2f} across model lines. "
-                                           "Hypothesis, not established: the rank-built model lines do not identify actual "
-                                           "linemates; the same ratios are also consistent with within-line correlation in the "
-                                           "simulation being too strong", "value": ratio})
+                                           f"Cause test against actual linemates (flag 115): {cause['verdict']}"
+                                           + ("; the excess also shows in pairs that are neither model nor actual linemates, so "
+                                              "it is not confined to line structure" if cause["excess_not_confined_to_lines"]
+                                              else ""), "value": ratio, "cause": cause["verdict"]})
     if team_obs:
         chi = rep.pit.get("team_goals", {}).get("chi2_per_df", 0.0)
         rep.team = {"obs_mean": float(np.mean(team_obs)), "obs_sd": float(np.std(team_obs)), "sim_mean": float(np.mean(team_sim_mean)),
