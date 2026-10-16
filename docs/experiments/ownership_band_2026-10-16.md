@@ -214,3 +214,41 @@ advisor tool:
   beside the control range of part 2 (a field redrawn at t = 1 changed 25 to 29 of 30 lineups through a full select); E[payout],
   first-place equity sums and P(lose >= 80%) on the referee draws under base, low and high (referee-purpose field specs, salt
   `cid|referee`), with SEs.
+
+### Part 4: the switch's replay (flag 123, information only; the switch ships OFF)
+
+`selection.ownership_band` built as part 3 says (54a4e1a; tests: the base field given twice reproduces the one-field picks, a field
+where the base pick collapses moves the pick, the mini run publishes with the switch on). Replays sw-off and sw-on on a clean export
+of db72b8d, the same protocol and seed, with the report off and the referee figures computed under the base, low and high fields at
+the config's t. Writes refused 0, network blocked 0. The mlb-dfs audit (`tools/audit.py --run-tests`) ran throughout. sw-off chose
+c41-off's 30 lineups on both slates.
+
+| Slate | Lineups changed, on against off | Knob off / on | Selection seconds off / on | Peak memory off / on |
+|---|---:|---|---|---|
+| 09-29 | 28 of 30 | 0 / 0.5 | 28.4 / 87.7 (plus 38.7 s for the two fields) | 1,046 / 1,364 MB |
+| 09-30 | 21 of 30 | 1.0 / 1.0 | 48.9 / 156.7 (plus 22.2 s) | 1,165 / 1,693 MB |
+
+Read beside part 2's control: a field drawn again at t = 1 changed 25 to 29 of 30 lineups through a full select, so the switch's
+lineup changes are inside what redrawing the field already does. The two band screens added 27 and 30 candidates.
+
+Referee draws (the same draws for off and on, so the SEs below are each portfolio's own, not of the difference), first-place utility /
+fees with its SE, E[payout] and P(lose >= 80%):
+
+| Slate, field | Off | On |
+|---|---|---|
+| 09-29 base | 0.3053 +/- 0.0065, $45.73, 0.0012 | 0.3104 +/- 0.0065, $46.17, 0.0011 |
+| 09-29 low | 0.5085 +/- 0.0082, $68.35, 0.0001 | 0.5150 +/- 0.0083, $69.05, 0.0001 |
+| 09-29 high | 0.2904 +/- 0.0064, $37.70, 0.0450 | 0.2859 +/- 0.0063, $37.69, 0.0394 |
+| 09-30 base | 0.3427 +/- 0.0160, $45.70, 0.0077 | 0.3405 +/- 0.0160, $46.27, 0.0083 |
+| 09-30 low | 0.5022 +/- 0.0194, $58.94, 0.0009 | 0.4932 +/- 0.0192, $59.51, 0.0008 |
+| 09-30 high | 0.3981 +/- 0.0172, $45.29, 0.0584 | 0.4265 +/- 0.0179, $47.39, 0.0608 |
+
+The figures move by about one SE either way except the 09-30 high field (+0.028, about 1.6 independent SEs); E[payout] is up $0.44
+to $0.57 on the base field and P(lose >= 80%) stays far inside the 0.60 budget everywhere. Two slates, a PRIOR field, in-sample contest
+sizes: no gain is shown and none is ruled out. The switch ships OFF, its cost is about three times the selection time, and adoption
+waits on C51's reading of the Classic objective (B112), as flag 121 said before any number.
+
+**C41's outcome.** The ownership band is measured and committed as a function; the low and high fields are calibrated; the report
+prints every candidate's spread and names every moved pick (off by default: it costs 1.5 to 2 minutes at 30 entries); by the
+preregistered rule the band moves picks, narrowly, so the switch exists and ships OFF. The larger finding is B139: on these slates
+most large_gpp picks move when the field is merely drawn again.

@@ -1336,5 +1336,351 @@
     }
    }
   }
+ },
+ "switch": {
+  "sw-off": {
+   "nhl_dfs": "C:\\Users\\benja\\AppData\\Local\\Temp\\claude\\C--Users-benja-Documents-Claude-nhl-dfs\\2d92eb2d-4368-4b23-a112-2b72690f7f8b\\scratchpad\\c41\\treesw\\src\\nhl_dfs",
+   "writes_refused": 0,
+   "network_blocked": 0,
+   "slates": {
+    "20260929-222125-classic": {
+     "ok": true,
+     "seconds": 84.2,
+     "chosen_kappa": 0.0,
+     "selection_draws_sha1": "20648d8a1fb616420afa6bd3671e8fe97033e759",
+     "timings": {
+      "start_peak_mb": 723.3,
+      "sim_design_s": 5.254,
+      "sim_design_peak_mb": 723.3,
+      "sim_selection_s": 7.555,
+      "sim_selection_peak_mb": 723.3,
+      "sim_referee_s": 7.533,
+      "sim_referee_peak_mb": 723.3,
+      "field_growth_s": 1.684,
+      "field_growth_peak_mb": 723.3,
+      "discovery_s": 3.552,
+      "discovery_peak_mb": 723.3,
+      "selection_s": 28.359,
+      "selection_peak_mb": 1045.6,
+      "referee_eval_s": 4.061,
+      "referee_eval_peak_mb": 1045.6,
+      "total_s": 58.757,
+      "peak_working_set_mb": 1045.6
+     },
+     "referee_bands": {
+      "base": {
+       "fees": 30.0,
+       "exp_payout": 45.7273345,
+       "exp_payout_se": 0.25005513633897924,
+       "p_lose80": 0.0012,
+       "p_lose80_se": 0.00024480196077646116,
+       "tail_utility": 0.30533076666666664,
+       "tail_utility_se": 0.006464650024745994,
+       "top1pct_utility": 0.6610041999999999,
+       "large_gpp_first_place_equity_sum": 0.07782
+      },
+      "low": {
+       "fees": 30.0,
+       "exp_payout": 68.350809,
+       "exp_payout_se": 0.31424390116560086,
+       "p_lose80": 0.0001,
+       "p_lose80_se": 7.070714249635606e-05,
+       "tail_utility": 0.5085299,
+       "tail_utility_se": 0.00824590613481553,
+       "top1pct_utility": 1.1216461833333335,
+       "large_gpp_first_place_equity_sum": 0.13518
+      },
+      "high": {
+       "fees": 30.0,
+       "exp_payout": 37.699707,
+       "exp_payout_se": 0.2591676745279155,
+       "p_lose80": 0.04505,
+       "p_lose80_se": 0.0014666372676977767,
+       "tail_utility": 0.2904497166666667,
+       "tail_utility_se": 0.006387538797596577,
+       "top1pct_utility": 0.5915674833333333,
+       "large_gpp_first_place_equity_sum": 0.07584
+      }
+     },
+     "selection_ownership_band": null,
+     "screened": {
+      "candidates_in": 386,
+      "kept": 134,
+      "goalies_in": 31,
+      "goalies_kept": 31
+     },
+     "other_python_at_start": [
+      "82772",
+      "23352",
+      "7584",
+      "84912",
+      "1836",
+      "73956"
+     ],
+     "lineups_changed_vs_sw_off": null
+    },
+    "20260930-210607-classic": {
+     "ok": true,
+     "seconds": 107.8,
+     "chosen_kappa": 1.0,
+     "selection_draws_sha1": "a3c4d8a95f902b9d2442194be9bc7063ed2237be",
+     "timings": {
+      "start_peak_mb": 1045.6,
+      "sim_design_s": 2.475,
+      "sim_design_peak_mb": 1045.6,
+      "sim_selection_s": 3.415,
+      "sim_selection_peak_mb": 1045.6,
+      "sim_referee_s": 3.427,
+      "sim_referee_peak_mb": 1045.6,
+      "field_growth_s": 5.373,
+      "field_growth_peak_mb": 1045.6,
+      "discovery_s": 2.177,
+      "discovery_peak_mb": 1045.6,
+      "selection_s": 48.857,
+      "selection_peak_mb": 1164.7,
+      "referee_eval_s": 27.004,
+      "referee_eval_peak_mb": 1164.7,
+      "total_s": 96.037,
+      "peak_working_set_mb": 1164.7
+     },
+     "referee_bands": {
+      "base": {
+       "fees": 28.0,
+       "exp_payout": 45.695756,
+       "exp_payout_se": 0.5234286102396613,
+       "p_lose80": 0.00775,
+       "p_lose80_se": 0.0006200781200784301,
+       "tail_utility": 0.34274714285714286,
+       "tail_utility_se": 0.016036505390232915,
+       "top1pct_utility": 0.9178865357142857,
+       "large_gpp_first_place_equity_sum": 0.02678
+      },
+      "low": {
+       "fees": 28.0,
+       "exp_payout": 58.936750499999995,
+       "exp_payout_se": 0.6303877305883162,
+       "p_lose80": 0.00095,
+       "p_lose80_se": 0.00021784139872852449,
+       "tail_utility": 0.5021973928571428,
+       "tail_utility_se": 0.019397788894709528,
+       "top1pct_utility": 1.2625644107142857,
+       "large_gpp_first_place_equity_sum": 0.03861
+      },
+      "high": {
+       "fees": 28.0,
+       "exp_payout": 45.287493999999995,
+       "exp_payout_se": 0.5711451562339456,
+       "p_lose80": 0.0584,
+       "p_lose80_se": 0.0016581531895455254,
+       "tail_utility": 0.39809423214285716,
+       "tail_utility_se": 0.01716515801248131,
+       "top1pct_utility": 1.004408625,
+       "large_gpp_first_place_equity_sum": 0.03245
+      }
+     },
+     "selection_ownership_band": null,
+     "screened": {
+      "candidates_in": 372,
+      "kept": 68,
+      "goalies_in": 6,
+      "goalies_kept": 6
+     },
+     "other_python_at_start": [
+      "82772",
+      "23352",
+      "7584",
+      "84912",
+      "1836",
+      "73956"
+     ],
+     "lineups_changed_vs_sw_off": null
+    }
+   }
+  },
+  "sw-on": {
+   "nhl_dfs": "C:\\Users\\benja\\AppData\\Local\\Temp\\claude\\C--Users-benja-Documents-Claude-nhl-dfs\\2d92eb2d-4368-4b23-a112-2b72690f7f8b\\scratchpad\\c41\\treesw\\src\\nhl_dfs",
+   "writes_refused": 0,
+   "network_blocked": 0,
+   "slates": {
+    "20260929-222125-classic": {
+     "ok": true,
+     "seconds": 180.6,
+     "chosen_kappa": 0.5,
+     "selection_draws_sha1": "20648d8a1fb616420afa6bd3671e8fe97033e759",
+     "timings": {
+      "start_peak_mb": 721.8,
+      "sim_design_s": 5.433,
+      "sim_design_peak_mb": 721.8,
+      "sim_selection_s": 7.352,
+      "sim_selection_peak_mb": 721.8,
+      "sim_referee_s": 7.206,
+      "sim_referee_peak_mb": 721.8,
+      "field_growth_s": 1.687,
+      "field_growth_peak_mb": 721.8,
+      "discovery_s": 3.348,
+      "discovery_peak_mb": 721.8,
+      "ownership_band_fields_s": 38.653,
+      "selection_s": 87.711,
+      "selection_peak_mb": 1363.5,
+      "referee_eval_s": 4.149,
+      "referee_eval_peak_mb": 1363.5,
+      "total_s": 156.23,
+      "peak_working_set_mb": 1363.5
+     },
+     "referee_bands": {
+      "base": {
+       "fees": 30.0,
+       "exp_payout": 46.168188,
+       "exp_payout_se": 0.250283343643425,
+       "p_lose80": 0.0011,
+       "p_lose80_se": 0.00023439176606698453,
+       "tail_utility": 0.31044725,
+       "tail_utility_se": 0.006520089762784003,
+       "top1pct_utility": 0.6672715,
+       "large_gpp_first_place_equity_sum": 0.07932
+      },
+      "low": {
+       "fees": 30.0,
+       "exp_payout": 69.047419,
+       "exp_payout_se": 0.31522917405265954,
+       "p_lose80": 5e-05,
+       "p_lose80_se": 4.99987499843746e-05,
+       "tail_utility": 0.5150108166666667,
+       "tail_utility_se": 0.008294295426073472,
+       "top1pct_utility": 1.1341869833333333,
+       "large_gpp_first_place_equity_sum": 0.13709
+      },
+      "high": {
+       "fees": 30.0,
+       "exp_payout": 37.6916365,
+       "exp_payout_se": 0.25573765417189426,
+       "p_lose80": 0.03935,
+       "p_lose80_se": 0.0013748013947476193,
+       "tail_utility": 0.28593016666666665,
+       "tail_utility_se": 0.006336920770992165,
+       "top1pct_utility": 0.5860851,
+       "large_gpp_first_place_equity_sum": 0.07454
+      }
+     },
+     "selection_ownership_band": {
+      "on": true,
+      "t_low": 1.6818,
+      "t_high": 0.3693,
+      "seconds": 38.653
+     },
+     "screened": {
+      "candidates_in": 386,
+      "kept": 161,
+      "goalies_in": 31,
+      "goalies_kept": 31,
+      "ownership_band": {
+       "fields": [
+        "high",
+        "low"
+       ],
+       "added_by_band_screens": 27
+      }
+     },
+     "other_python_at_start": [
+      "82772",
+      "23352",
+      "7584",
+      "84912",
+      "70040",
+      "49216"
+     ],
+     "lineups_changed_vs_sw_off": 28
+    },
+    "20260930-210607-classic": {
+     "ok": true,
+     "seconds": 248.2,
+     "chosen_kappa": 1.0,
+     "selection_draws_sha1": "a3c4d8a95f902b9d2442194be9bc7063ed2237be",
+     "timings": {
+      "start_peak_mb": 1363.5,
+      "sim_design_s": 2.326,
+      "sim_design_peak_mb": 1363.5,
+      "sim_selection_s": 3.558,
+      "sim_selection_peak_mb": 1363.5,
+      "sim_referee_s": 3.643,
+      "sim_referee_peak_mb": 1363.5,
+      "field_growth_s": 4.975,
+      "field_growth_peak_mb": 1363.5,
+      "discovery_s": 2.461,
+      "discovery_peak_mb": 1363.5,
+      "ownership_band_fields_s": 22.201,
+      "selection_s": 156.662,
+      "selection_peak_mb": 1693.2,
+      "referee_eval_s": 36.588,
+      "referee_eval_peak_mb": 1693.2,
+      "total_s": 235.977,
+      "peak_working_set_mb": 1693.2
+     },
+     "referee_bands": {
+      "base": {
+       "fees": 28.0,
+       "exp_payout": 46.266935000000004,
+       "exp_payout_se": 0.5248617113695652,
+       "p_lose80": 0.0083,
+       "p_lose80_se": 0.0006415259152988287,
+       "tail_utility": 0.3405029821428571,
+       "tail_utility_se": 0.016018437539552594,
+       "top1pct_utility": 0.9384038571428571,
+       "large_gpp_first_place_equity_sum": 0.02628
+      },
+      "low": {
+       "fees": 28.0,
+       "exp_payout": 59.511233499999996,
+       "exp_payout_se": 0.6263629992449856,
+       "p_lose80": 0.00075,
+       "p_lose80_se": 0.000193576535251564,
+       "tail_utility": 0.4932027857142857,
+       "tail_utility_se": 0.019154742553692396,
+       "top1pct_utility": 1.285351892857143,
+       "large_gpp_first_place_equity_sum": 0.0378
+      },
+      "high": {
+       "fees": 28.0,
+       "exp_payout": 47.386410500000004,
+       "exp_payout_se": 0.5956601724960504,
+       "p_lose80": 0.0608,
+       "p_lose80_se": 0.0016897242378565802,
+       "tail_utility": 0.4264538571428571,
+       "tail_utility_se": 0.017885645478849025,
+       "top1pct_utility": 1.077808607142857,
+       "large_gpp_first_place_equity_sum": 0.03352
+      }
+     },
+     "selection_ownership_band": {
+      "on": true,
+      "t_low": 1.6818,
+      "t_high": 0.3693,
+      "seconds": 22.201
+     },
+     "screened": {
+      "candidates_in": 372,
+      "kept": 98,
+      "goalies_in": 6,
+      "goalies_kept": 6,
+      "ownership_band": {
+       "fields": [
+        "high",
+        "low"
+       ],
+       "added_by_band_screens": 30
+      }
+     },
+     "other_python_at_start": [
+      "82772",
+      "23352",
+      "7584",
+      "84912",
+      "70040",
+      "49216"
+     ],
+     "lineups_changed_vs_sw_off": 21
+    }
+   }
+  }
  }
 }
