@@ -134,7 +134,8 @@ field:
   # scenario pass publishes, the report prints every candidate's spread between the three fields and names each entry whose
   # pick or band anchor would move; `report: false` turns it off. Classic only.
   error_band:
-    report: true
+    # off by flag 122's cost bar: 85.8 s and 133.3 s at 30 entries on the 09-29 and 09-30 replays, against 60 s
+    report: false
     time_limit_s: 300
     source: docs/experiments/ownership_band_2026-10-16.md
     classic:
