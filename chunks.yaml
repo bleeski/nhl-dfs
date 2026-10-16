@@ -835,6 +835,18 @@ deferred:
   - item: "RotoWire's 25-item window and dated items (B125)"
     trigger: "Ben answers which RotoWire view the engine reads (flags 91 and 93 allow one page), or the first slate where a RotoWire goalie confirmation was gone from the page before the T-60 refresh read it"
     backlog: [B125]
+  - item: "First-place goal overfitting the selection draws (B132)"
+    trigger: "C51's four-arm replay reads the first-place arm against real results, or Ben answers flag 113 (keep the first-place goal or go back to top1pct)"
+    backlog: [B132]
+  - item: "A tie criterion that can bind (B130)"
+    trigger: "the next chunk that preregisters a selection change measured on the saved runs (C41, C42), or Ben asks why the ownership order settles most picks"
+    backlog: [B130]
+  - item: "QA's goal at its own scenario count (B131)"
+    trigger: "the first QA round on a real slate with objectives.goal first_place, or the next session that touches build/controller.py"
+    backlog: [B131]
+  - item: "Tests that write into the real runs/ and outputs/ (B133)"
+    trigger: "the next session that touches build/refresh.py, build/late_swap.py or tests/conftest.py, or the next full local suite that moves runs/ or outputs/"
+    backlog: [B133]
 flag_recommendations:
   2: "Record Ben's 2026-10-02 answer in the flags table: 40% goalie and game fee share with the LINEUPS fallback (done in this plan); C27 fixes the feasibility test behind it."
   3: "Replace the placeholder mix with the observed one (5 to 10 entries per slate, 1 to 2 per contest, fees $0.10 to $1, 20-max and 150-max GPPs plus Showdown) so family priors and C21's sleeve sizes fit what Ben plays."
@@ -851,4 +863,5 @@ flag_recommendations:
   19: "Default taken: the delivery message names the refresh command and the lock time; no cloud scheduled routine is created until Ben registers one (B77, C43)."
   20: "Default taken: a first publish with no predecessor is never blocked for EDIT_STOP cells (it warns) and never changes cells of a game that has started; with a predecessor, pinned cells are diffed against it (B53, C14)."
   67: "Make the repo private: one setting closes B113 and keeps the bank (flag 66) and the facts table (flag 65) off the public web; a post-lock push needs a chunk, and a cloud container can be reclaimed before the slate locks, which would lose the record."
+  113: "Keep it ON for now as the rule says, and treat the result as unproven: the measurement could tell lineups apart on first place, but on fresh draws the first-place lineups did not win more often on these two slates. C51's real-results replay is the real test; set objectives.goal back to top1pct if you would rather wait for it."
   107: "Keep the default: first place pays more than other places only in tiered tables (large GPP, small field, WTA); in a cash, satellite or Top N contest first place pays the same as any paid place. Let C55 ship once its noise check passes rather than wait for C51's real-results replay, which can still overturn it."

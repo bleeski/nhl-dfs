@@ -38,6 +38,10 @@ late_swap:
   cache_scenarios: 8000         # draws per stream the C8 pass keeps under runs/<id>/scenario/ (whole 2,000 chunks)
   fast_scenarios: 4000          # --fast scores repairs on the first 4,000 (a chunk multiple)
   full_scenarios: 8000          # without --fast
+  # C55 (flag 110): the goal each path scores repairs by. null follows config/risk.yaml objectives.goal; top1pct keeps the
+  # top-1% goal where first place did not meet the bar at that path's scenario count. The run's notes say which goal was used.
+  full_goal: top1pct              # first place failed the bar at 8,000 (median SE / value 0.353 on 09-30)
+  fast_goal: top1pct              # and at 4,000 (0.447)
   candidates_per_entry: 8       # repair candidates the scenario objective chooses among
   scenario_budget_s: 12.0       # scoring time across all repaired entries; past it the surrogate's best is kept
   # Goalie gate (build/goalies.py, backlog B17): the starting-goalies page only, fetched cache first (10 min TTL)
