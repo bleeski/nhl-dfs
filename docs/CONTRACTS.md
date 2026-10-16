@@ -141,9 +141,12 @@ coerced to a known value (CLAUDE.md); other vocabularies here that have no
   summing to field size minus own entries. Sampled mode (fewer than 1,000 opponents): each scenario draws its actual
   opponents. GPP fields are grown to min(5,000, opponents) draws (Classic: `models/field_fast.py`; Showdown: threaded
   MILP); ownership is read off the grown field.
-- Family objectives: large_gpp exp_payout_top1pct, small_field exp_payout, wta first_place_equity, cash p_clear_line,
-  satellite p_seat (ticket face value kept apart from cash), top_n p_top_n (C47; its own entries are chosen together, see
-  "Top-N flat contests"). Own entries in a contest are copies and opponents.
+- Family objectives (`config/risk.yaml` `objectives.goal`, C55): under first_place, large_gpp and small_field
+  first_place_equity, valued as the first prize split among the entries tied for first, floored to the cent; under top1pct
+  (or no key), large_gpp exp_payout_top1pct and small_field exp_payout. Either goal: wta first_place_equity, cash
+  p_clear_line, satellite p_seat (ticket face value kept apart from cash), top_n p_top_n (C47; its own entries are chosen
+  together, see "Top-N flat contests"). The top-1% figures are always reported. Own entries in a contest are copies and
+  opponents. Late swap uses the goal only where first place met the bar at its scenario count (flag 110).
 - Tie-break: anchored bands, band = max(3% x anchor, anchor Monte Carlo SE); ownership never past one band; cash and
   satellite ignore ownership; dup = sampled count when FIELD_CALIBRATION=FITTED else the pre-fit proxy.
 - Caps: tournament entries only; plan defaults at >= 20 tournament entries with feasibility floors; below that no person

@@ -47,7 +47,7 @@ def test_scenario_figures_carry_their_errors_and_the_notes_say_so(classic):
     s = classic.manifest["scenario"]
     for e in s["entries"]:
         assert e["se"] >= 0 and "exp_payout_se" in e and "p_top1pct_se" in e
-        assert e["objective"] == ob.FAMILY_OBJECTIVE[e["family"]]
+        assert e["objective"] == ob.family_objective(ob.load_risk_config())[e["family"]]  # C55: the configured goal's map
     pf = s["portfolio"]
     assert pf["measured_on"] == "referee scenarios" and 0 <= pf["p_lose80"] <= 1 and pf["p_lose80_se"] >= 0
     notes = classic.notes_path.read_text(encoding="utf-8")

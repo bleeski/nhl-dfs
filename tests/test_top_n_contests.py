@@ -252,7 +252,7 @@ from nhl_dfs.data.http import HttpCache, load_sources_config  # noqa: E402
 from pool_builder import classic_pool  # noqa: E402
 from test_portfolio import E, disjoint_lineups, scenarios_for  # noqa: E402
 
-RISK = ob.load_risk_config()
+RISK = ob.with_goal(ob.load_risk_config(), "top1pct")  # C55: "the summed objective" below is small_field's top1pct-goal payout
 EXPO = exposure.load_exposure_config()
 
 

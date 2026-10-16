@@ -527,13 +527,32 @@ class Resolved:
     fallbacks: list[dict] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     timings: dict[str, float] = field(default_factory=dict)
+    goal: dict | None = None  # C55 (flag 110): the goal the scenario objective scored repairs by, and why
 
     def record(self) -> dict:
         r = {"kind": self.kind, "requested": self.requested, "fallbacks": self.fallbacks, "notes": self.notes,
              "timings": self.timings}
         if self.scenario is not None:
             r["scenario"] = self.scenario.record
+        if self.goal is not None:
+            r["goal"] = self.goal
         return r
+
+
+def path_goal(risk_cfg: dict, runtime: dict, fast: bool) -> tuple[dict, dict]:
+    """C55 (flag 110): (the risk config a late-swap path scores repairs by, {goal, why}). The path follows
+    `objectives.goal` unless config/runtime.yaml late_swap.fast_goal (--fast) or full_goal says top1pct, which keeps the
+    top-1% goal where first place did not meet the bar at that path's scenario count."""
+    goal = ob.goal_of(risk_cfg)
+    key = "fast_goal" if fast else "full_goal"
+    want = (runtime.get("late_swap") or {}).get(key)
+    if want not in (None, "top1pct"):
+        raise ValueError(f"config/runtime.yaml late_swap.{key} must be null or top1pct (got {want!r})")
+    if want == "top1pct" and goal != "top1pct":
+        return ob.with_goal(risk_cfg, "top1pct"), {
+            "goal": "top1pct", "why": f"late_swap.{key} top1pct (flag 110): first place did not meet the bar at "
+                                      f"{'--fast' if fast else 'the full path'}'s scenario count; objectives.goal is {goal}"}
+    return risk_cfg, {"goal": goal, "why": f"objectives.goal {goal}" + (f" (late_swap.{key} follows it)" if goal != "top1pct" else "")}
 
 
 def baseline_linear(pool) -> dict[str, float]:
@@ -595,8 +614,9 @@ def resolve(requested: str, *, pool, work, st, started_games, dk_rec, runs_root,
             try:
                 n_use = int(cfg.get("fast_scenarios", 4000) if fast else cfg.get("full_scenarios", 8000))
                 notes: list[str] = []
+                path_cfg, res.goal = path_goal(ob.load_risk_config(), runtime, fast)
                 so = ScenarioObjective(got, pool=score_pool or pool, work=work, rm=rm, st=st, started_games=started_games, n_use=n_use,
-                                       now=now, odds_snapshot=odds_snapshot, live=None, notes=notes,
+                                       now=now, odds_snapshot=odds_snapshot, live=None, risk_cfg=path_cfg, notes=notes,
                                        persist_to=persist_to)
                 if live is not None:
                     from nhl_dfs.build import live as live_mod

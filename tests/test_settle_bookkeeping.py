@@ -76,6 +76,7 @@ def _chain(tmp_path):
                        scenario=True, scenario_n=SMALL, out_root=tmp_path / "runs", outputs_root=tmp_path / "outputs",
                        clock=lambda: BEFORE)
     assert parent.ok and (parent.run.path / "scenario" / "meta.json").exists(), parent.manifest["failed"]
+    _set_written(parent.run.path, BEFORE)  # settle reads the files' real write times; pin them to the run's clock (pre-lock)
     child = late_swap.run(parent.run.run_id, ls / "DKEntries.current.csv", offline=True, fast=True,
                           runs_root=tmp_path / "runs", outputs_root=tmp_path / "outputs", as_of=G1 + timedelta(minutes=10))
     assert child.statuses["FILE_VALID"] == "TRUE" and not (child.run.path / "scenario").exists(), child.messages
@@ -93,12 +94,18 @@ def _settle(tmp_path, run_id, **kw):
                       backlog_path=tmp_path / "BACKLOG.md", offline=True, boxscores=False, **kw)
 
 
-def _after_first_game(run_path):
-    t = (G1 + timedelta(hours=1)).timestamp()
+def _set_written(run_path, when):
+    """Set the write time of the forecast files settle.forecast_status reads. The suite's wall clock passed the fixture's first
+    game on 2026-10-15 at 23:00 UTC, so files written now must be dated by the test, never by the machine."""
+    t = when.timestamp()
     for name in ("field.json", "scenario/meta.json", "scenario/fields.json"):
         p = run_path / name
         if p.exists():
             os.utime(p, (t, t))
+
+
+def _after_first_game(run_path):
+    _set_written(run_path, G1 + timedelta(hours=1))
 
 
 def test_a_late_swap_child_grades_from_its_pre_lock_ancestor_and_keeps_its_own_money(tmp_path):

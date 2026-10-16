@@ -22,7 +22,7 @@ from nhl_dfs.contracts.statuses import PayoutSource
 
 pytestmark = pytest.mark.c18
 
-CFG = ob.load_risk_config()
+CFG = ob.with_goal(ob.load_risk_config(), "top1pct")  # C55: these tests pin the top-1% goal's utility; test_first_place has first place
 TOP_PCT = float(CFG["objectives"]["top_pct"])
 FAMILIES = ("large_gpp", "small_field", "wta", "cash", "satellite", "top_n")  # top_n: C47, its utility is its payout
 EXACT_UTILITY = {"large_gpp", "small_field", "cash", "top_n"}
@@ -217,8 +217,9 @@ def test_review_r04_counterexample_at_the_primitive_level():
 
 # -- a portfolio with one entry in every contest must not move (flag 37) -------------------------------------------
 
-def golden_fixture(seed):
-    """Three contests (large_gpp, wta, cash), one entry each, three candidates, a spare-role field lineup per contest."""
+def golden_fixture(seed, risk=None):
+    """Three contests (large_gpp, wta, cash), one entry each, three candidates, a spare-role field lineup per contest. risk:
+    the risk config (default: the repo's, with the top-1% goal the golden values were captured under; C55)."""
     from nhl_dfs.build import exposure, portfolio as pf
     from nhl_dfs.contracts.geometry import Mode
     from nhl_dfs.models import contests as contests_mod
@@ -243,7 +244,7 @@ def golden_fixture(seed):
                                 np.asarray([n_opp[cid]], np.int64))
               for i, (cid, sp) in enumerate(zip(cts, spare))}
     entries = [E("e1", "G"), E("e2", "W"), E("e3", "C")]
-    risk = ob.load_risk_config()
+    risk = risk if risk is not None else CFG
     fam = contests_mod.load_contest_families()
     caps = exposure.caps(exposure.load_exposure_config(), 3, pool, Mode.CLASSIC, 1, budget=risk["budget"]["classic"])
 
