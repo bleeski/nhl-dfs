@@ -41,12 +41,6 @@ goals:
     blurb: Bookkeeping, measurement and cleanup, ordered by value against effort.
 
 asks:
-  - id: co-ceiling-floor
-    chunks: [C25]
-    since: 2026-10-16
-    question: The linemate check named one cause of the missing linemate big nights. A small-sample guard I added kept it from naming a second. Keep the result as recorded, or count both causes?
-    why: On 10 real nights, forwards the engine puts on one line who really were linemates had big nights together less often than it expects, so that cause was named. Real linemates the engine splits up had big nights together almost 3 times as often as it expects (26 times), but the engine expected only 9.4 such nights, under the guard of 10 that I added to your rule before seeing any number. Your rule without my guard would have named both.
-    recommendation: Keep it as recorded. The next fix (C13) gets both sets of numbers either way, so nothing is lost, and changing a rule after seeing the numbers would weaken every later test. Say "name both" if you prefer, and a session will record it.
   - id: first-place-goal
     chunks: [C55]
     since: 2026-10-15
@@ -68,7 +62,7 @@ asks:
 
 updates:
   - date: 2026-10-16
-    text: C25 finished on your machine. Re-measuring the league averages without the test nights changed nothing that matters. The linemate check found that the engine ties real linemates' big nights together too tightly when it groups them right, and misses real linemates when it splits them; whether the second finding counts as a named cause waits on your answer. The plan to test a hot-line boost is written down before any code, and it predicts the boost would make the first problem worse. Lineups are unchanged. Next up is C41.
+    text: C25 finished on your machine. Re-measuring the league averages without the test nights changed nothing that matters. The linemate check found that the engine ties real linemates' big nights together too tightly when it groups them right, and misses real linemates when it splits them; you chose to keep the recorded result, so the second finding goes to C13 as a description, not a named cause. The plan to test a hot-line boost is written down before any code, and it predicts the boost would make the first problem worse. Lineups are unchanged. Next up is C41.
   - date: 2026-10-15
     text: C55 finished on your machine. Big tournaments and small fields now aim at first place, because the engine passed the test set before any number on the Sept 29 and Sept 30 slates. Late swap still uses the top 1%, because with its fewer simulated nights first place was too noisy. On fresh simulated nights the first-place lineups did not win more often on those two slates and cashed a little less, so treat the change as unproven until the real-results replay (C51). Next up is C25.
   - date: 2026-10-14
@@ -386,7 +380,7 @@ chunks:
     what: Redoes the simulator's accuracy check on clean data, finds out why linemates' shared big nights look off, and writes the test plan for 3+ point games.
     why: The first check (Sept 29) used league numbers that included the very games it was tested on, so its warnings are not reliable yet.
     matters: Tournaments are won on ceilings. This confirms whether the simulator undersells them before anyone tunes it, and it unlocks C13. No tuning happens here.
-    result: Done Oct 16. The accuracy check was redone with league averages that leave out the 10 test nights, and the grades did not change. Real players still have 3+ point nights about 1.4 times as often as the simulator expects (1.41, against 1.40 before). The check then compared the simulator's lines with who really played together each night. When the engine groups real linemates correctly, it ties their big nights together more tightly than real games do, which can overrate full-line stacks; that cause is now named. When it splits real linemates, it underrates their shared big nights almost 3 times over, but a small-sample guard I added to your rule kept that second cause from being named, and your rule without my guard would have named both (your question at the top). The test plan for a hot-line boost is written before any code, and this result predicts the boost would fail it. Lineups did not change.
+    result: Done Oct 16. The accuracy check was redone with league averages that leave out the 10 test nights, and the grades did not change. Real players still have 3+ point nights about 1.4 times as often as the simulator expects (1.41, against 1.40 before). The check then compared the simulator's lines with who really played together each night. When the engine groups real linemates correctly, it ties their big nights together more tightly than real games do, which can overrate full-line stacks; that cause is now named. When it splits real linemates, it underrates their shared big nights almost 3 times over, but a small-sample guard I added to your rule kept that second cause from being named, and your rule without my guard would have named both. You chose on Oct 16 to keep the result as recorded, so the second finding goes to C13 as a description. The test plan for a hot-line boost is written before any code, and this result predicts the boost would fail it. Lineups did not change.
     caveat: One season, 10 nights and small counts (36 and 26 shared big nights). How much these gaps cost real lineups was not measured; the fix belongs to C13. Two league numbers in the engine (the goalie save rate and how assists split per goal) could not be rebuilt from the stored games, so they were left as they were and are listed for a later fix.
   C55:
     title_seen: "First-place equity as each contest's goal (large GPP and small field), the washout goal unchanged"
