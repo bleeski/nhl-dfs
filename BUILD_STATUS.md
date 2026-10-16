@@ -51,7 +51,7 @@ Tracker for `BUILD_CHUNKS.md` (final, 26 September 2026). Every development sess
 | C38 | DONE | C16 | 2026-10-05 | 2026-10-05 | 8f197df | PASS | band 1; B72 |
 | C39 | DONE | C17 | 2026-10-06 | 2026-10-06 | 8acfad6 | PASS | band 1; B70 (DONE), B71 (READY, the next cloud run observes it: deferred), B95 and B96 filed; flag 18 default in force, flags 33 and 34 defaults in force; CURRENT means the last finished day is stored (`history.fresh_days` 1, not the 2 in the plan); the back-to-back flag now uses the Eastern game day (it read 0 for starts after 8 PM ET); the three Linux-only bootstrap tests have not run anywhere yet (CI on the PR is their first run) |
 | C40 | BLOCKED | C7 | 2026-10-07 |  |  |  | first look 2026-10-07 inconclusive: stamp missed 4 of 85 real EV lines changes (4.7%) but its 95% upper bound is 10.08% against the 10% limit; one fixed second look at 2026-10-21T13:30:00Z, flag 35. band 1; B73 |
-| C41 | TODO | C19, C55 | | | | | band 1; B74 |
+| C41 | IN_PROGRESS | C19, C55 | 2026-10-16 |  |  |  | band 1; B74 |
 | C42 | TODO | C18, C55 | | | | | band 1, experiment: DONE on rejected is valid; B75 |
 | C43 | TODO | C10 | | | | | band 2; B77; flag 19 default in force |
 | C44 | TODO | C27 | | | | | band 2; B78 |
