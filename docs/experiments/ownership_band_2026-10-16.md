@@ -123,3 +123,24 @@ the replays show at most 60 s of added wall time and at most 1 GB of added peak 
 ## Result
 
 (appended below this line after the runs; the text above is not edited)
+
+### Part 1: the band and the calibration (2026-10-16, before any replay that counts a flip)
+
+**The band (flag 119),** `models/ownership.error_band` on `tests/fixtures/c41` (1,281 roles, the 8 large_gpp contests of the three
+graded forecasts): it reproduces every settle grade's MAE to 3 decimals (09-30: 4.106, 4.034, 4.315, 3.942). Pooled slopes: 09-30
+Classic 0.7369, 09-29 Classic 0.8503, 09-29 Showdown 0.7635. So beta_low = 0.7369 (09-30) and beta_high = 1 / 0.7369 = 1.357.
+
+**The calibration (flag 120),** `scripts/c41_ownership_band.py calibrate` on a clean export of a219485, PYTHONHASHSEED=0, seed
+20261015, both saved runs replayed with the report off (`ownership_band_2026-10-16_calibration.json`). Writes refused 0, network
+blocked 0. One other python command (besides the instrument's own pair) was running during the 09-30 pool, none during 09-29.
+
+| Pool | implied_total | t = 1 | Low: t, realized slope, MAE vs base, most-owned player | High: t, realized slope, MAE vs base, most-owned player |
+|---|---|---|---|---|
+| 09-29 (1,160 draws) | 0 for every team | keys equal the base field's | 1.6818, 0.7432, 0.789, 44.2% to 31.3% | 0.3856, 1.3635, 1.311, 44.2% to 68.0% |
+| 09-30 (5,000 draws) | 0 for every team | keys equal the base field's | 1.6818, 0.7551, 1.336, 64.8% to 47.2% | 0.3536, 1.3737, 2.985, 64.8% to 90.3% |
+
+- Noise alone reached every target inside 0.02, so the stack-team fallback was not needed; it was also unavailable, because the
+  replayed pools carry no implied team totals (the saved runs priced every game from the model).
+- `config/ownership.yaml` `field.error_band.classic`: t_low 1.6818, t_high 0.3693 (the geometric means), the report switched on for
+  the replays; flag 122's cost bar decides whether it stays on.
+- The decision replays use each pool's own t (09-29: 1.6818 and 0.3856; 09-30: 1.6818 and 0.3536), as flag 120 says.
