@@ -69,6 +69,7 @@ class Recorder:
         self.grow: dict | None = None  # the scenario pass's first _grow_fields call: inputs and the grown base field
         self.select: dict | None = None  # the scenario pass's select(): args, kwargs and the Selection
         self.bands: dict | None = None  # the in-run ownership_bands call: kwargs and the prepared context it was given
+        self.referee: dict | None = None  # the scenario pass's referee portfolio_metrics call
         self.frozen = False  # after the run: wrappers pass through and record nothing
 
 
@@ -93,7 +94,16 @@ def install(rec: Recorder) -> None:
             rec.select = {"args": a, "kwargs": kw, "sel": sel}
         return sel
 
-    sp._grow_fields, pf.select = grow, select
+    from nhl_dfs.build import objectives as ob
+
+    real_pm = ob.portfolio_metrics
+
+    def pm(assignment, contests, scenarios, **kw):  # the scenario pass's referee figures: keep the referee draws
+        if rec.referee is None and not rec.frozen and getattr(scenarios, "purpose", None) == "referee":
+            rec.referee = {"assignment": assignment, "contests": contests, "scen": scenarios, "kwargs": kw}
+        return real_pm(assignment, contests, scenarios, **kw)
+
+    sp._grow_fields, pf.select, ob.portfolio_metrics = grow, select, pm
     if hasattr(sp, "ownership_bands"):  # absent on origin/master: the report-off comparison runs there too
         real_bands = sp.ownership_bands
 
@@ -320,6 +330,52 @@ def _instrument(specs: list, base_choices: dict) -> dict:
     return rep
 
 
+def _referee_bands(t_low: float, t_high: float) -> dict:
+    """Flag 123's information: the published portfolio on the referee draws against the base field and the low and high fields
+    at the config's t (referee-purpose field specs, salt cid|referee), E[payout], P(lose >= 80%), first-place utility / fees and
+    the large_gpp first-place equity sum, with SEs."""
+    from nhl_dfs.build import objectives as ob
+    from nhl_dfs.build import scenario_pass as sp
+    from nhl_dfs.models import contests as contests_mod
+
+    work, proj, contexts, fb, own_n, prov, st, risk_cfg, seed, override = REC.grow["args"]
+    r = REC.referee
+    out = {}
+    for label, t in (("base", None), ("low", t_low), ("high", t_high)):
+        ev = r["contests"]
+        if t is not None:
+            fb_t, _ = sp.band_fields(work, proj, contexts, fb, own_n, prov, st, risk_cfg, seed, override, temperature=t)
+            ev = {}
+            for cid, ce in r["contests"].items():
+                f = fb_t.fields[contests_mod.field_family(contexts[cid].family)]
+                spec = ob.field_spec(f.lineups, f.keys, contexts[cid].field_size - own_n[cid], risk_cfg, n_scenarios=r["scen"].n,
+                                     seed=seed, salt=f"{cid}|referee")
+                ev[cid] = ob.ContestEval(ce.contest, spec, ce.entry_ids)
+            del fb_t
+        pm = ob.portfolio_metrics(r["assignment"], ev, r["scen"], **r["kwargs"])
+        gpp = [e for e, x in pm.per_entry.items() if x.get("family") == "large_gpp"]
+        out[label] = {k: pm.record()[k] for k in ("fees", "exp_payout", "exp_payout_se", "p_lose80", "p_lose80_se", "tail_utility",
+                                                   "tail_utility_se", "top1pct_utility")}
+        out[label]["large_gpp_first_place_equity_sum"] = round(sum(pm.per_entry[e].get("first_place_equity", 0.0) for e in gpp), 6)
+    return out
+
+
+def switch_on(on: bool | None) -> None:
+    """--switch on|off: config/risk.yaml selection.ownership_band forced for the run (flag 123)."""
+    from nhl_dfs.build import objectives as ob
+
+    if on is None:
+        return
+    real = ob.load_risk_config
+
+    def load(path=ob.RISK_YAML):
+        cfg = copy.deepcopy(real(path))
+        cfg.setdefault("selection", {})["ownership_band"] = bool(on)
+        return cfg
+
+    ob.load_risk_config = load
+
+
 def cmd_run(args) -> int:
     out = Path(args.out).resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -337,6 +393,7 @@ def cmd_run(args) -> int:
     install(REC)
     on = {"on": True, "off": False, "as-is": None}[args.report]
     report_switch(on)
+    switch_on({"on": True, "off": False, "as-is": None}[args.switch])
     cal = json.loads(Path(args.calibration).read_text(encoding="utf-8")) if args.calibration else None
     print(f"{args.label}: nhl_dfs from {where}; report {args.report}; seed {args.seed}; "
           f"PYTHONHASHSEED={os.environ.get('PYTHONHASHSEED')}", flush=True)
@@ -366,6 +423,17 @@ def cmd_run(args) -> int:
                                      "band_index": c.band_index, "band_term": pf.band_term(c, risk),
                                      "anchor_value": c.anchor_value, "anchor_se": c.anchor_se, "score": c.score, "se": c.score_se}
                                  for e, c in sel.choices.items()} if hasattr(sel.choices[next(iter(sel.choices))], "anchor_se") else None
+        if args.referee_bands and REC.referee is not None and REC.grow is not None:
+            from nhl_dfs.models import ownership as own_mod
+
+            c = own_mod.load_ownership_config()["field"]["error_band"]["classic"]
+            t0 = time.perf_counter()
+            rec["referee_bands"] = _referee_bands(float(c["t_low"]), float(c["t_high"]))
+            rec["referee_bands_seconds"] = round(time.perf_counter() - t0, 1)
+            rec["selection_ownership_band"] = sec.get("selection_ownership_band")
+            rec["screened"] = (sec.get("discovery") or {}).get("screened")
+            print("  referee " + "; ".join(f"{k}: E[payout] {v['exp_payout']:.2f}, P(lose80) {v['p_lose80']:.4f}, first-place "
+                                           f"utility/fees {v['tail_utility']:.4f}" for k, v in rec["referee_bands"].items()), flush=True)
         if on and cal is not None and REC.bands is not None:
             p = cal["pools"][rid]
             specs = [("low", float(p["low"]["t"]), 0), ("high", float(p["high"]["t"]), 0), ("control1", 1.0, 1), ("control2", 1.0, 2)]
@@ -475,6 +543,8 @@ def main(argv=None) -> int:
             p.add_argument("--label", required=True)
             p.add_argument("--report", choices=("on", "off", "as-is"), default="on")
             p.add_argument("--calibration", default=None)
+            p.add_argument("--switch", choices=("on", "off", "as-is"), default="as-is")
+            p.add_argument("--referee-bands", action="store_true")
         p.set_defaults(func=fn)
     c = sub.add_parser("compare")
     c.add_argument("--out", required=True)
