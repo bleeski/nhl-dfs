@@ -1,0 +1,265 @@
+{
+ "as_of_dates": [
+  "2025-11-03",
+  "2025-11-12"
+ ],
+ "n_scenarios": 300,
+ "coverage": {
+  "games": 2,
+  "skaters_observed": 72,
+  "skaters_matched": 72,
+  "goalies_observed": 4,
+  "goalies_matched": 4,
+  "skaters_unmatched": 0,
+  "goalies_unmatched": 0
+ },
+ "pit": {
+  "goals": {
+   "n": 72,
+   "chi2_per_df": 0.4876543209876544,
+   "hist": [
+    8,
+    8,
+    9,
+    10,
+    7,
+    6,
+    9,
+    5,
+    5,
+    5
+   ],
+   "flagged": false
+  },
+  "assists": {
+   "n": 72,
+   "chi2_per_df": 0.5493827160493827,
+   "hist": [
+    8,
+    8,
+    7,
+    10,
+    8,
+    6,
+    10,
+    6,
+    4,
+    5
+   ],
+   "flagged": false
+  },
+  "points": {
+   "n": 72,
+   "chi2_per_df": 0.9506172839506173,
+   "hist": [
+    10,
+    6,
+    12,
+    9,
+    8,
+    7,
+    6,
+    6,
+    3,
+    5
+   ],
+   "flagged": false
+  },
+  "sog": {
+   "n": 72,
+   "chi2_per_df": 1.9382716049382718,
+   "hist": [
+    6,
+    4,
+    2,
+    15,
+    10,
+    4,
+    7,
+    7,
+    7,
+    10
+   ],
+   "flagged": false
+  },
+  "blocks": {
+   "n": 72,
+   "chi2_per_df": 1.259259259259259,
+   "hist": [
+    11,
+    6,
+    6,
+    10,
+    2,
+    5,
+    7,
+    7,
+    12,
+    6
+   ],
+   "flagged": false
+  },
+  "saves": {
+   "n": 4,
+   "chi2_per_df": 1.2222222222222223,
+   "hist": [
+    1,
+    0,
+    0,
+    1,
+    0,
+    2,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flagged": false
+  },
+  "ga": {
+   "n": 4,
+   "chi2_per_df": 1.2222222222222223,
+   "hist": [
+    2,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1
+   ],
+   "flagged": false
+  },
+  "team_goals": {
+   "n": 4,
+   "chi2_per_df": 1.2222222222222223,
+   "hist": [
+    1,
+    0,
+    2,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0
+   ],
+   "flagged": false
+  }
+ },
+ "rates": [
+  {
+   "event": "sog>=5",
+   "observed": 5,
+   "expected": 4.236991754708593,
+   "ratio": 1.1800825419222192,
+   "n": 72,
+   "flag": "too few to flag"
+  },
+  {
+   "event": "blocks>=3",
+   "observed": 5,
+   "expected": 6.733689305450408,
+   "ratio": 0.7425350017193222,
+   "n": 72,
+   "flag": "too few to flag"
+  },
+  {
+   "event": "points>=3",
+   "observed": 2,
+   "expected": 1.0879997303490585,
+   "ratio": 1.838235749707721,
+   "n": 72,
+   "flag": "too few to flag"
+  },
+  {
+   "event": "goals>=3",
+   "observed": 0,
+   "expected": 0.08849793256808063,
+   "ratio": 0.0,
+   "n": 72,
+   "flag": "too few to flag"
+  },
+  {
+   "event": "points>=2",
+   "observed": 5,
+   "expected": 6.26221436812201,
+   "ratio": 0.7984396103481621,
+   "n": 72,
+   "flag": "too few to flag"
+  },
+  {
+   "event": "goals>=2",
+   "observed": 0,
+   "expected": 1.1930350174498408,
+   "ratio": 0.0,
+   "n": 72,
+   "flag": "too few to flag"
+  },
+  {
+   "event": "sog>=3",
+   "observed": 24,
+   "expected": 21.780587749014284,
+   "ratio": 1.10189863912585,
+   "n": 72,
+   "flag": "too few to flag"
+  },
+  {
+   "event": "blocks>=2",
+   "observed": 16,
+   "expected": 17.456848189740494,
+   "ratio": 0.9165457490432498,
+   "n": 72,
+   "flag": "too few to flag"
+  },
+  {
+   "event": "saves>=35",
+   "observed": 0,
+   "expected": 1.057835481085274,
+   "ratio": 0.0,
+   "n": 4,
+   "flag": "too few to flag"
+  },
+  {
+   "event": "goalie win",
+   "observed": 2,
+   "expected": 1.9063985046257401,
+   "ratio": 1.049098598822409,
+   "n": 4,
+   "flag": "too few to flag"
+  }
+ ],
+ "team": {
+  "obs_mean": 2.25,
+  "obs_sd": 1.7853571071357126,
+  "sim_mean": 3.213333333333333,
+  "sim_sd": 1.773496233119453,
+  "chi2_per_df": 1.2222222222222223,
+  "n": 4
+ },
+ "unavailable": {
+  "team totals vs market": "the store holds no historical odds; the rows above are the MODEL-source intensities only",
+  "goalie win vs implied": "no historical moneylines; 'goalie win' above is graded against the simulator's own probability"
+ },
+ "co_ceiling": {
+  "pairs": 48,
+  "observed": 1,
+  "expected": 2.4624352394577147,
+  "ratio": 0.40610205051330533,
+  "flag": "too few to flag",
+  "control_pairs": 216,
+  "control_observed": 2,
+  "control_expected": 2.4305468791791465,
+  "control_ratio": 0.8228600802283014
+ },
+ "deficiencies": [],
+ "notes": [
+  "'held out' means only the per-person parameters use games strictly before each date; the league constants (config/model.yaml means, config/sim.yaml resolve values and the pace target) were measured on both seasons including these dates, which flatters the team-goal, tie-rate and goalie-win rows",
+  "persons with no history use position priors (PRIOR); the calibration includes them",
+  "team SOG-to-goal correlation is higher in the simulation than in history (score effects are not modeled)"
+ ]
+}
