@@ -92,6 +92,9 @@ class Choice:
     anchor_key: str = ""
     anchor_own: float = 0.0
     anchor_dup: float = 0.0
+    # C41 (flag 121, B130): the anchor's knob score and SE, so a report can say whether the 3% floor or one SE set the band
+    anchor_value: float = 0.0
+    anchor_se: float = 0.0
 
 
 @dataclass
@@ -119,6 +122,27 @@ class FrontierPoint:
 
 
 @dataclass
+class Prepared:
+    """What `select` prepared before its knob loop, kept only when asked (`keep_prepared=True`) for the C41 band report: every
+    candidate it received with their selection scores and field ranks against the base field (before the screen), the
+    screen's indices and the fill's fixed inputs."""
+    candidates: list
+    cand_scores: np.ndarray
+    states: dict
+    keep: list[int]
+    order: list[str]
+    entry_contest: dict[str, str]
+    fees: dict[str, int]
+    tournament: set[str]
+    role_mean: Mapping[str, float]
+    rule_cids: frozenset[str]
+    faced: list[bool] | None
+    sleeve: int
+    n_in: Counter
+    goalie_of: list
+
+
+@dataclass
 class Selection:
     by_entry: dict[str, tuple[str, ...]]
     choices: dict[str, Choice]
@@ -131,6 +155,7 @@ class Selection:
     portfolio: ob.PortfolioMetrics | None = None
     screened: dict = field(default_factory=dict)
     accounting_gap_cents: int = 0  # largest gap, any knob, between the fill's running payout and the joint recount (0: exact)
+    prepared: Prepared | None = None  # C41: select(..., keep_prepared=True) only
 
 
 # -- discovery ------------------------------------------------------------------------------------
@@ -345,12 +370,17 @@ _Curve = ob.PayCurve  # moved to objectives.py with the joint-accounting primiti
 def _greedy(kappa: float, order: list, entry_contest: Mapping[str, str], fees: Mapping[str, int], cand_scores: np.ndarray,
             candidates: Sequence[Candidate], states: dict, caps: exposure.Caps, pool, risk_cfg: dict,
             role_mean: Mapping[str, float], tournament: set[str], sleeve_max: int, mem_share: float = 1.0,
-            faced: Sequence[bool] | None = None, rule_cids: frozenset[str] = frozenset()):
+            faced: Sequence[bool] | None = None, rule_cids: frozenset[str] = frozenset(),
+            forced: Mapping[str, int] | None = None):
     """One knob's fill. The prepared field ranks (states) are shared across knobs and never copied. Each contest's
     own entries are kept in an `objectives.OwnContest` (C18, B55): a step scores every candidate by the change to
     the WHOLE contest's payout and utility (its own plus what it takes from the entries already placed there),
     aggregated over scenario chunks (bounded memory), and `pay_total` stays the exact joint payout of everything
-    placed (never prizes that cannot be paid together). Returns (choices, relaxations, pay_total)."""
+    placed (never prizes that cannot be paid together). Returns (choices, relaxations, pay_total).
+
+    forced (C41, flag 121): entry -> candidate index. Each entry is still ranked as usual and its Choice records that
+    pick and its band's anchor, but the forced candidate is the one placed, so every later entry sees the state the
+    forced fill would have (the anchored refill of the ownership band report). None places the pick, as always."""
     S, K = cand_scores.shape
     tp = float(risk_cfg["objectives"]["top_pct"])
     curves = {cid: _Curve(st.contest, tp, ob.goal_of(risk_cfg)) for cid, st in states.items()}
@@ -473,6 +503,7 @@ def _greedy(kappa: float, order: list, entry_contest: Mapping[str, str], fees: M
             anchor = tiebreak.rank(items, risk_cfg, "mean")[0].item  # C22: what the pick is without the ownership order
             break
         k = pick.item.ref
+        placed_k = k if forced is None else int(forced[eid])
         if level:
             kind = {1: "OVERLAP", 2: "EXPOSURE", 3: "CONCENTRATION", 4: "REPEAT"}[level]
             detail = f"kappa {kappa:g}: no candidate passed the caps at level {level - 1}"
@@ -485,7 +516,8 @@ def _greedy(kappa: float, order: list, entry_contest: Mapping[str, str], fees: M
                                                        f"passed the caps; taken at level {level}"))
         choices[eid] = Choice(eid, cid, st.contest.family, k, candidates[k].key, candidates[k].family, float(score[k]),
                               float(se[k]), pick.band, pick.band_index, float(st.own_pct[k]), float(st.dup[k]),
-                              st.dup_name, level, anchor.key, anchor.own, anchor.dup)
+                              st.dup_name, level, anchor.key, anchor.own, anchor.dup, anchor.value, anchor.se)
+        k = placed_k
         # update state: fees, counts, own copies in this contest
         f = int(fees[eid])
         for g in goalies[k]:
@@ -613,10 +645,12 @@ def select(candidates: Sequence[Candidate], role_base: ob.ScenarioSet, fields: M
            families: tuple[float, ...] = (0.65, 0.25, 0.10), *, seed: int, pool, fam_cfg: dict, risk_cfg: dict,
            own_by_contest: Mapping[str, Mapping[str, float]] | None = None,
            dup_by_contest: Mapping[str, Mapping[str, float]] | None = None, field_cal=None,
-           fees_cents: Mapping[str, int] | None = None, rule_families: frozenset[str] = frozenset()) -> Selection:
+           fees_cents: Mapping[str, int] | None = None, rule_families: frozenset[str] = frozenset(),
+           keep_prepared: bool = False) -> Selection:
     """Fill every entry from the candidates on the selection scenarios; see the module docstring. rule_families (C20,
     flags 51 and 52): the contest families whose entries take a candidate without a skater against its goalie (empty: the
-    rule is off and nothing below changes; Classic only)."""
+    rule is off and nothing below changes; Classic only). keep_prepared (C41): keep what the fill was prepared from on
+    `Selection.prepared` for `band_report` (it holds the unscreened field ranks; no pick changes)."""
     from nhl_dfs.contracts.statuses import FieldCalibration
 
     if not candidates:
@@ -647,6 +681,9 @@ def select(candidates: Sequence[Candidate], role_base: ob.ScenarioSet, fields: M
     screened = {"candidates_in": len(candidates), "kept": len(keep),
                 "goalies_in": len({g for gs in goalie_of for g in gs}),
                 "goalies_kept": len({g for i in keep for g in goalie_of[i]})}
+    prepared = (Prepared(list(candidates), cand_scores, states, list(keep), order, entry_contest, fees, tournament, role_mean,
+                         rule_cids, list(faced) if faced is not None else None, 0, n_in, goalie_of)
+                if keep_prepared else None)
     if len(keep) < len(candidates):
         if faced is not None:
             faced = [faced[i] for i in keep]
@@ -655,6 +692,8 @@ def select(candidates: Sequence[Candidate], role_base: ob.ScenarioSet, fields: M
         states = {cid: _ContestState(st.contest, np.ascontiguousarray(st.G[:, keep]), np.ascontiguousarray(st.E[:, keep]),
                                      st.own_pct[keep], st.dup[keep], st.dup_name, st.policy) for cid, st in states.items()}
     sleeve = max(1, int(round(float(risk_cfg["discovery"]["stress_sleeve_max"]) * len(order))))
+    if prepared is not None:
+        prepared.sleeve = sleeve
     contests_eval = {cid: ob.ContestEval(ct, fields[cid], [e for e in order if entry_contest[e] == cid])
                      for cid, ct in contests.items()}
     kappas = [float(k) for k in risk_cfg["frontier"]["kappas"]]
@@ -691,6 +730,7 @@ def select(candidates: Sequence[Candidate], role_base: ob.ScenarioSet, fields: M
     sel = Selection(ordered, ch, points, best.kappa, why, rl, dict(mix), tuple(families), pm)
     sel.screened = screened
     sel.accounting_gap_cents = gap
+    sel.prepared = prepared
     return sel
 
 
@@ -705,20 +745,13 @@ def screen(states: Mapping[str, _ContestState], candidates: Sequence[Candidate],
     sc = risk_cfg.get("selection", {})
     lo, per, fam_n = int(sc.get("screen_min", 40)), float(sc.get("screen_per_entry", 2)), int(sc.get("screen_per_family", 3))
     g_n = int(sc.get("screen_per_goalie", 0))
-    tp = float(risk_cfg["objectives"]["top_pct"])
     K = len(candidates)
     keep: set[int] = set()
     fam_of = [c.family.split(":")[0] for c in candidates]
     for cid, st in states.items():
         if not n_in.get(cid):
             continue
-        cv = _Curve(st.contest, tp, ob.goal_of(risk_cfg))
-        su = np.zeros(K)
-        step = ob._chunk_rows(S, K * 80, float(risk_cfg["objectives"]["memory_cap_mb"]))
-        for a in range(0, S, step):
-            b = min(S, a + step)
-            _, util = cv.pay_util(st.G[a:b], st.E[a:b])
-            su += util.sum(axis=0)
+        su = ob.field_utility(st.contest, st.G, st.E, risk_cfg).total
         order = sorted(range(K), key=lambda k: (-su[k], candidates[k].key))
         keep.update(order[:max(lo, int(math.ceil(per * n_in[cid])))])
         for f in set(fam_of):
@@ -735,6 +768,83 @@ def screen(states: Mapping[str, _ContestState], candidates: Sequence[Candidate],
                 for g in {x for gs in goalie_of for x in gs}:
                     keep.update([k for k in comp if g in goalie_of[k]][:g_n])
     return sorted(keep)
+
+
+# -- C41 ownership band report (flags 119 to 122, docs/experiments/ownership_band_2026-10-16.md) --------------------------
+
+def _subset(states: Mapping[str, _ContestState], idx: Sequence[int]) -> dict[str, _ContestState]:
+    return {cid: _ContestState(st.contest, np.ascontiguousarray(st.G[:, idx]), np.ascontiguousarray(st.E[:, idx]),
+                               st.own_pct[idx], st.dup[idx], st.dup_name, st.policy) for cid, st in states.items()}
+
+
+def band_report(sel: Selection, fields_alt: Mapping[str, ob.FieldSpec], own_alt: Mapping[str, Mapping[str, float]] | None,
+                dup_alt: Mapping[str, Mapping[str, float]] | None, role_base: ob.ScenarioSet, contests: Mapping[str, ob.Contest],
+                caps: exposure.Caps, *, pool, fam_cfg: dict, risk_cfg: dict, field_cal=None, free: bool = False) -> dict:
+    """C41: one alternative field (per contest its FieldSpec, ownership and duplicate counts) against the base selection `sel`,
+    made with keep_prepared=True, on the same selection scenarios. Reads only: no pick, field or file changes.
+
+    - candidates: the union of the base screen and the alternative field's own screen (`screen`); the count it adds;
+    - per candidate select received and contest with entries: the field-only family utility against the base field (mean,
+      SE) and the mean per-scenario change against the alternative field with its paired SE, under the run's goal and under
+      top1pct (information), in dollars (`objectives.field_utility`);
+    - anchored: at the chosen knob, each entry ranked under the alternative field with the state advanced by the base fill's
+      own earlier picks (`_greedy(forced=...)`): the pick and the band's anchor there, against the base pick and anchor;
+    - free=True also fills from scratch under the alternative field at the chosen knob (information)."""
+    from nhl_dfs.contracts.statuses import FieldCalibration
+
+    P = sel.prepared
+    if P is None:
+        raise ValueError("band_report needs select(..., keep_prepared=True)")
+    field_cal = field_cal or FieldCalibration.PRIOR
+    S = P.cand_scores.shape[0]
+    fs = {cid: fields_alt[cid].scores(role_base, pool.mode) for cid in contests}
+    alt = _prepare(P.cand_scores, fs, contests, P.candidates, pool, fam_cfg, risk_cfg, own_alt or {}, dup_alt or {}, field_cal,
+                   fields_alt)
+    del fs
+    keep_alt = screen(alt, P.candidates, P.n_in, risk_cfg, S=S, goalie_of=P.goalie_of, rule_cids=P.rule_cids, faced=P.faced)
+    union = sorted(set(P.keep) | set(keep_alt))
+    in_base, in_alt = set(P.keep), set(keep_alt)
+    per_contest = {}
+    for cid, st in P.states.items():
+        if not P.n_in.get(cid):
+            continue
+        g = ob.field_utility(st.contest, st.G, st.E, risk_cfg, other=(alt[cid].G, alt[cid].E))
+        t = ob.field_utility(st.contest, st.G, st.E, risk_cfg, goal="top1pct", other=(alt[cid].G, alt[cid].E))
+        per_contest[cid] = {"family": st.contest.family, "goal": ob.family_objective(risk_cfg)[st.contest.family],
+                            "base": g.mean / 100.0, "base_se": g.se / 100.0, "d": g.diff / 100.0, "d_se": g.diff_se / 100.0,
+                            "top1_base": t.mean / 100.0, "top1_d": t.diff / 100.0, "top1_d_se": t.diff_se / 100.0}
+    pos = {k: j for j, k in enumerate(union)}
+    forced = {e: pos[P.keep[sel.choices[e].cand]] for e in P.order}
+    sub = _subset(alt, union)
+    del alt
+    cands = [P.candidates[i] for i in union]
+    faced = [P.faced[i] for i in union] if P.faced is not None else None
+    args = (P.order, P.entry_contest, P.fees, np.ascontiguousarray(P.cand_scores[:, union]), cands, sub, caps, pool, risk_cfg,
+            P.role_mean, P.tournament, P.sleeve)
+    anchored, _, _ = _greedy(sel.chosen_kappa, *args, faced=faced, rule_cids=P.rule_cids, forced=forced)
+    entries = {}
+    for e in P.order:
+        b, a = sel.choices[e], anchored[e]
+        entries[e] = {"contest_id": b.contest_id, "family": b.family, "base_key": b.key, "alt_key": a.key,
+                      "base_anchor": b.anchor_key, "alt_anchor": a.anchor_key, "pick_flip": a.key != b.key,
+                      "anchor_flip": a.anchor_key != b.anchor_key, "alt_pick_in_base_screen": union[a.cand] in in_base,
+                      "alt_band_index": a.band_index}
+    if free:
+        ch, _, _ = _greedy(sel.chosen_kappa, *args, faced=faced, rule_cids=P.rule_cids)
+        for e in P.order:
+            entries[e]["free_key"] = ch[e].key
+            entries[e]["free_flip"] = ch[e].key != sel.choices[e].key
+    return {"candidates": len(P.candidates), "base_screen": len(in_base), "alt_screen": len(in_alt),
+            "added_by_alt_screen": len(union) - len(in_base), "keys": [c.key for c in P.candidates],
+            "families": [c.family for c in P.candidates], "in_base_screen": [i in in_base for i in range(len(P.candidates))],
+            "per_contest": per_contest, "entries": entries}
+
+
+def band_term(ch: Choice, risk_cfg: dict) -> str:
+    """C41 (B130): which term set the width of the pick's band: "floor" (band_pct x |anchor score|) or "se" (se_mult x the
+    anchor's SE); "floor" on a tie."""
+    tb = risk_cfg["tiebreak"]
+    return "floor" if float(tb["band_pct"]) * abs(ch.anchor_value) >= float(tb["se_mult"]) * ch.anchor_se else "se"
 
 
 def lineup_keys(by_entry: Mapping[str, Sequence[str]], pool) -> dict[str, str]:

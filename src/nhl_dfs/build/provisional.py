@@ -205,10 +205,13 @@ class FieldBuild:
 
 def build_fields(pool: SalaryPool, proj: Projection, contexts: Mapping[str, ContestContext], *, seed: int,
                  statuses: Mapping[str, Participation] | None = None, odds=None,
-                 own_cfg: dict | None = None, inputs=None) -> FieldBuild:
+                 own_cfg: dict | None = None, inputs=None, feats: dict | None = None,
+                 temperature: float = 1.0) -> FieldBuild:
     """One sampled field per contest family present; marginals per contest at its field size. inputs: a
     models.field_inputs.FieldInputs (C17: the slate's odds, role state, news ages and goalie confirmations);
-    without it the feature table sees only `odds` (default none), as before."""
+    without it the feature table sees only `odds` (default none), as before. feats: an existing feature table to draw
+    from instead of building one (C41 rebuilds the run's field on the table it was drawn from); temperature: the noise
+    scale of every behavior (C41, `models.field.scaled_behaviors`; 1.0 is today's field)."""
     import time
 
     from nhl_dfs.models import field as field_mod
@@ -216,14 +219,15 @@ def build_fields(pool: SalaryPool, proj: Projection, contexts: Mapping[str, Cont
 
     t0 = time.perf_counter()
     own_cfg = own_cfg if own_cfg is not None else ownership.load_ownership_config()
-    kw = inputs.feature_kwargs() if inputs is not None else {"odds": odds}
-    feats = ownership.feature_table(pool, proj, cfg=own_cfg, statuses=statuses, **kw)
+    if feats is None:
+        kw = inputs.feature_kwargs() if inputs is not None else {"odds": odds}
+        feats = ownership.feature_table(pool, proj, cfg=own_cfg, statuses=statuses, **kw)
     n = int(own_cfg["field"]["n"][pool.mode.value])
     fields = {}
     for fam in sorted({field_family(c.family) for c in contexts.values()}):  # a top_n contest shares large_gpp's (C47)
         util = ownership.perceived(pool, proj, feats, ownership.family_weights(own_cfg, fam))
-        fields[fam] = field_mod.sample(pool, pool.mode, util, field_mod.behaviors_for_pool(fam, pool, own_cfg), n, seed, fam,
-                                       proj=proj, feats=feats, cfg=own_cfg)
+        beh = field_mod.scaled_behaviors(field_mod.behaviors_for_pool(fam, pool, own_cfg), temperature)
+        fields[fam] = field_mod.sample(pool, pool.mode, util, beh, n, seed, fam, proj=proj, feats=feats, cfg=own_cfg)
     margs = {cid: field_mod.marginals(fields[field_family(c.family)], pool, c.field_size) for cid, c in contexts.items()}
     return FieldBuild(fields, margs, time.perf_counter() - t0, feats, inputs)
 

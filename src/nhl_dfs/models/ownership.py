@@ -123,6 +123,15 @@ def validate_ownership_config(cfg: dict) -> None:
         raise ValueError(f"ownership field needs a {DEFAULT_FAMILY!r} mixture")
     _validate_classic_mixtures(fld, behaviors)
     _validate_classic_mixtures(fld, behaviors, "classic_mixtures_team5")
+    eb = fld.get("error_band")
+    if eb is not None:  # C41 (flag 122): optional as a whole
+        if not isinstance(eb.get("report"), bool):
+            raise ValueError("field.error_band.report must be true or false")
+        for k, v in (eb.get("classic") or {}).items():
+            if v is not None and not float(v) > 0:
+                raise ValueError(f"field.error_band.classic.{k} must be positive or null")
+        if eb["report"] and any((eb.get("classic") or {}).get(k) is None for k in ("t_low", "t_high")):
+            raise ValueError("field.error_band.report needs classic.t_low and classic.t_high")
     buckets = (cfg.get("dup_proxy") or {}).get("salary_left_buckets") or []
     if not buckets or buckets[-1].get("max_left") is not None:
         raise ValueError("dup_proxy.salary_left_buckets must end with max_left: null")

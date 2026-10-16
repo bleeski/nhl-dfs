@@ -782,6 +782,45 @@ class PayCurve:
         return pay, util
 
 
+@dataclass
+class FieldUtility:
+    """Per candidate, a contest's family utility against the field alone over S scenarios, in cents (`field_utility`)."""
+    total: np.ndarray  # sum over scenarios: what portfolio.screen orders by
+    mean: np.ndarray
+    se: np.ndarray
+    diff: np.ndarray | None = None  # mean over scenarios of (utility against `other` minus utility against this field)
+    diff_se: np.ndarray | None = None  # the paired standard error of `diff`
+
+
+def field_utility(ct: Contest, G: np.ndarray, E: np.ndarray, cfg: dict, *, goal: str | None = None,
+                  other: tuple[np.ndarray, np.ndarray] | None = None) -> FieldUtility:
+    """The family utility of every candidate (the columns of G and E: field weight strictly above and tied, no own entries)
+    under `goal` (the config's when None), summed in scenario chunks inside the memory cap. With other = (G2, E2), the same
+    candidates against another field on the same scenarios (C41): the mean per-scenario difference and its paired SE."""
+    S, K = G.shape
+    cv = PayCurve(ct, float(cfg["objectives"]["top_pct"]), goal_of(cfg) if goal is None else goal)
+    su, sq = np.zeros(K), np.zeros(K)
+    sd, sdq = (np.zeros(K), np.zeros(K)) if other is not None else (None, None)
+    step = _chunk_rows(S, K * (80 if other is None else 240), float(cfg["objectives"]["memory_cap_mb"]))
+    for a in range(0, S, step):
+        b = min(S, a + step)
+        _, util = cv.pay_util(G[a:b], E[a:b])
+        su += util.sum(axis=0)
+        sq += (util.astype(np.float64) ** 2).sum(axis=0)
+        if other is not None:
+            _, u2 = cv.pay_util(other[0][a:b], other[1][a:b])
+            d = (u2 - util).astype(np.float64)
+            sd += d.sum(axis=0)
+            sdq += (d * d).sum(axis=0)
+    n = max(1, S)
+    mean = su / n
+    se = np.sqrt(np.maximum(sq / n - mean ** 2, 0.0) / n)
+    if other is None:
+        return FieldUtility(su, mean, se)
+    dm = sd / n
+    return FieldUtility(su, mean, se, dm, np.sqrt(np.maximum(sdq / n - dm ** 2, 0.0) / n))
+
+
 class OwnContest:
     """One contest's own entries ranked jointly and filled one at a time: the joint-accounting primitive.
 

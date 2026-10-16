@@ -17,7 +17,7 @@ import math
 import time
 import zlib
 from collections import Counter, defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Mapping, Sequence
 
 from nhl_dfs.build.candidates import generate
@@ -150,6 +150,18 @@ def behaviors_for(family: str, cfg: dict | None = None, *, mode: Mode | None = N
 def behaviors_for_pool(family: str, pool: SalaryPool, cfg: dict | None = None) -> list[Behavior]:
     """behaviors_for for the slate in hand: its mode and its game count. What the run's field builders call."""
     return behaviors_for(family, cfg, mode=pool.mode, games=len(pool.games) or None)
+
+
+def scaled_behaviors(behaviors: Sequence[Behavior], temperature: float) -> list[Behavior]:
+    """C41 (flag 120): every behavior's Gumbel noise sd times `temperature`. Both samplers draw the noise as the scale times the
+    same uniforms, so with every seed unchanged 1.0 gives the same field draw for draw, above 1 a flatter field (chalk owned
+    less) and below 1 a chalkier one."""
+    t = float(temperature)
+    if not t > 0:
+        raise ValueError(f"temperature must be positive (got {temperature!r})")
+    if t == 1.0:
+        return list(behaviors)
+    return [replace(b, noise_sd=b.noise_sd * t) for b in behaviors]
 
 
 def split_counts(weights: Sequence[float], n: int) -> list[int]:
