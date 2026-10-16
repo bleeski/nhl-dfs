@@ -1030,6 +1030,8 @@ def build_parser() -> argparse.ArgumentParser:
     cal.add_argument("--scenarios", type=int, default=None)
     cal.add_argument("--store-root", type=str, default=None)
     cal.add_argument("--out-dir", type=str, default=None)
+    cal.add_argument("--clean-constants", action="store_true",
+                     help="C25: grade with the league constants recomputed without the held-out dates (config files unchanged)")
     cal.set_defaults(func=cmd_calibrate)
 
     sl = sub.add_parser("slate")

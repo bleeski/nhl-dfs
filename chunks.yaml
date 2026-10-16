@@ -847,6 +847,12 @@ deferred:
   - item: "Tests that write into the real runs/ and outputs/ (B133)"
     trigger: "the next session that touches build/refresh.py, build/late_swap.py or tests/conftest.py, or the next full local suite that moves runs/ or outputs/"
     backlog: [B133]
+  - item: "Windows timing flake in the phase B budget test (B134)"
+    trigger: "the windows CI job fails test_phase_b_budget_is_enforced again, or the next session that touches tests/test_fallbacks.py"
+    backlog: [B134]
+  - item: "Measured league constants shipped from committed code (B135)"
+    trigger: "C13's gate reads C25's clean calibration, or a month of 2026-27 games is in the history store (the measured replacements item)"
+    backlog: [B135]
 flag_recommendations:
   2: "Record Ben's 2026-10-02 answer in the flags table: 40% goalie and game fee share with the LINEUPS fallback (done in this plan); C27 fixes the feasibility test behind it."
   3: "Replace the placeholder mix with the observed one (5 to 10 entries per slate, 1 to 2 per contest, fees $0.10 to $1, 20-max and 150-max GPPs plus Showdown) so family priors and C21's sleeve sizes fit what Ben plays."
