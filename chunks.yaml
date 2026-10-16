@@ -853,6 +853,15 @@ deferred:
   - item: "Measured league constants shipped from committed code (B135)"
     trigger: "C13's gate reads C25's clean calibration, or a month of 2026-27 games is in the history store (the measured replacements item)"
     backlog: [B135]
+  - item: "The field's concentration against the graded forecasts (B136)"
+    trigger: "C12's fit by contest family opens, or a fourth graded forecast (any mode) is settled and its slope is also below 0.9, whichever comes first"
+    backlog: [B136]
+  - item: "Ownership error beyond concentration: per-player and per-team offsets (B137)"
+    trigger: "C51's replay reads the Classic objective, or Ben asks why the band leaves out which players the field over-owns"
+    backlog: [B137]
+  - item: "A Showdown ownership band (B138)"
+    trigger: "Ben asks for the Showdown spread, or a second graded Showdown forecast is settled"
+    backlog: [B138]
 flag_recommendations:
   2: "Record Ben's 2026-10-02 answer in the flags table: 40% goalie and game fee share with the LINEUPS fallback (done in this plan); C27 fixes the feasibility test behind it."
   3: "Replace the placeholder mix with the observed one (5 to 10 entries per slate, 1 to 2 per contest, fees $0.10 to $1, 20-max and 150-max GPPs plus Showdown) so family priors and C21's sleeve sizes fit what Ben plays."
