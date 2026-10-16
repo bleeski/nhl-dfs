@@ -647,3 +647,26 @@ reads it to tune, select or book money (booking stays with settle, C29).
   The initial run applies no scratch and lists scratched players still in its file (`goalies.rotowire.in_file`).
 - Research request: `urls` are Daily Faceoff's starting goalies, then `research.urls.rotowire_news`, then team pages.
 - Tests: `tests/conftest.py` stubs `gather_rotowire` to return None (RotoWire not read) for every test not marked c54.
+
+## Ownership band (C41, `models/ownership.py`, `models/field.py`, `build/provisional.py`, `build/scenario_pass.py`, `build/portfolio.py`, `build/objectives.py`, `build/notes.py`; B74, B130; flags 119 to 123)
+
+- Band: `ownership.error_band(rows: Iterable[GradedRow]) -> ErrorBand` (per contest: whole-pool MAE and actual-top-20 MAE with
+  `grade_ownership.grade`'s arithmetic, `concentration_slope`, residual sd; per forecast the pooled large_gpp slope; `beta_low` per
+  mode the smallest pooled slope, `beta_high` its mirror). Fixture `tests/fixtures/c41` (role ids and percentages only; rebuilt by
+  its `make_fixture.py` from Ben's local settles).
+- Field at a temperature: `field.scaled_behaviors(behaviors, t)` multiplies each behavior's Gumbel noise sd; seeds unchanged, so
+  t = 1 is the same field draw for draw. `provisional.build_fields(..., feats=, temperature=)`, `scenario_pass._grow_fields(...,
+  temperature=)` and `scenario_pass.band_fields(..., seed, override, temperature=)` (provisional draws at seed, growth at seed +
+  9001). Config `config/ownership.yaml field.error_band` (`report`, `time_limit_s`, `classic.beta_low/beta_high/t_low/t_high`).
+- Report (off by default, flag 122): after the S publish, `scenario_pass.ownership_bands(...)` builds the low and high fields one at
+  a time and calls `portfolio.band_report(sel, fields, own, dup, scen, contests, caps, ...)` on `select(..., keep_prepared=True)`'s
+  `Selection.prepared`; per entry the anchored pick and anchor (`_greedy(forced=)`), per candidate the paired change in the goal's
+  figure (`objectives.field_utility(..., other=)`, which `screen` also uses). Writes `runs/<id>/scenario/ownership_bands.json`,
+  manifest `scenario.ownership_bands` (`skipped`, `error` or the summary), `timings.ownership_bands_s`, RUN_NOTES lines naming each
+  moved pick as "Name (TEAM)". Classic only. Never changes a pick or the published bytes. Skipped when the switch below is on.
+- Switch (off, flag 123): `config/risk.yaml selection.ownership_band`. On: the scenario pass builds the low and high fields before
+  selection (`timings.ownership_band_fields_s`, manifest `scenario.selection_ownership_band`) and `select(..., band_fields=)` scores
+  each candidate on the per-scenario average of the three fields' contest books (`_greedy(extra_states=)`), candidates the union of
+  the three screens (`screened.ownership_band`); tie order, caps, frontier and knob on the base field. Off: the original fill path.
+- `Choice.anchor_value` and `anchor_se` (the band anchor's score and SE) and `portfolio.band_term(choice, risk_cfg)` ("floor" or "se",
+  B130). Instrument: `scripts/c41_ownership_band.py` (band, calibrate, run, compare).

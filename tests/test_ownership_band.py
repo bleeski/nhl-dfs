@@ -296,7 +296,7 @@ def mini_runs(tmp_path_factory):
     out = {}
     try:
         for name, cfg in (("off", _own_cfg(False, None, None)), ("on", _own_cfg(True, 2.0, 0.5)), ("one", _own_cfg(True, 1.0, 1.0)),
-                          ("switch", _own_cfg(False, 2.0, 0.5))):
+                          ("switch", _own_cfg(True, 2.0, 0.5))):
             ownership.load_ownership_config = lambda path=ownership.OWNERSHIP_YAML, cfg=cfg: copy.deepcopy(cfg)
             ob.load_risk_config = (lambda path=ob.RISK_YAML: copy.deepcopy(switch)) if name == "switch" else real_risk
             tmp = tmp_path_factory.mktemp(f"c41_{name}")
@@ -321,6 +321,7 @@ def test_the_switch_off_by_default_and_on_it_scores_on_the_band(mini_runs):
     assert data is not None and sec["selection_ownership_band"]["on"] is True
     assert sec["selection_ownership_band"]["t_low"] == 2.0 and sec["timings"]["ownership_band_fields_s"] > 0
     assert sec["discovery"]["screened"]["ownership_band"]["fields"] == ["high", "low"]
+    assert sec["ownership_bands"]["skipped"].startswith("SKIPPED (the selection already scores on the band")
 
 
 @pytest.mark.timeout(900)  # four whole offline scenario passes in the module fixture
@@ -359,3 +360,21 @@ def test_temperature_one_in_a_run_rebuilds_the_base_field_exactly(mini_runs):
         assert (fam["slope_vs_base"], fam["mae_vs_base"], fam["top_alt"]) == (1.0, 0.0, fam["top_base"])
         assert b["picks"][label]["pick_flips"] == b["picks"][label]["anchor_flips"] == 0
     assert b["flips"] == [] and all(v["max_spread"] == 0.0 for v in b["spread"].values())
+
+
+def test_run_notes_name_every_moved_pick_by_name_and_team():
+    from nhl_dfs.build import notes
+
+    b = {"label": "C41 ownership band, report only", "band": {"beta_low": 0.7369, "beta_high": 1.357}, "seconds": 12.0,
+         "fields": {"low": {"temperature": 1.6818, "families": {"large_gpp": {"slope_vs_base": 0.75, "mae_vs_base": 1.3,
+                                                                             "top_base": 64.8, "top_alt": 47.2}}}},
+         "spread": {"C": {"family": "large_gpp", "goal": "first_place_equity", "utility": "first-place dollars", "candidates": 3,
+                          "median_spread": 0.1, "max_spread": 0.5, "median_z": 2.1, "share_z_over_2": 0.5}},
+         "picks": {"low": {"entries": 2, "pick_flips": 1, "anchor_flips": 1, "large_gpp_picks": 2, "large_gpp_pick_flips": 1,
+                           "large_gpp_anchor_flips": 1, "added_by_alt_screen": 0}},
+         "flips": [{"entry_id": "7000000001", "contest_id": "C", "field": "low", "anchor_moved": True,
+                    "out": ["Sebastian Aho (CAR)"], "in": ["Sebastian Aho (NYI)"]}],
+         "chosen_kappa": 0.25, "file": "scenario/ownership_bands.json", "notes": []}
+    text = "\n".join(notes._band_lines(b))
+    assert "7000000001 (C, low, anchor moved): out Sebastian Aho (CAR); in Sebastian Aho (NYI)" in text
+    assert "first-place dollars" in text and "high not built" in text and "Picks at knob 0.25 under low: 1 of 2" in text

@@ -339,6 +339,8 @@ def run_scenario_pass(*, run, entries, pool, work, proj, st, starts, offline, ru
                                                "seconds": timings["ownership_band_fields_s"]}
         else:
             sec["selection_ownership_band"] = {"on": False, "why": "Classic only, with calibrated t_low and t_high"}
+    if band_sel is not None and band_spec is not None:  # one field against a band-averaged selection would misread every pick
+        band_spec, band_why = None, "SKIPPED (the selection already scores on the band: config/risk.yaml selection.ownership_band)"
     t = time.perf_counter()
     sel = pf.select(cands, sets["selection"], fields["selection"], contests, entries, caps, budget, seed=seed, pool=work,
                     fam_cfg=fam_cfg, risk_cfg=risk_cfg, own_by_contest=own_by, dup_by_contest=dup_by,
