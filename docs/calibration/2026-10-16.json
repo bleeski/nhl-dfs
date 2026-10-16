@@ -1,0 +1,1148 @@
+{
+ "as_of_dates": [
+  "2025-11-07",
+  "2025-11-22",
+  "2025-12-08",
+  "2025-12-23",
+  "2026-01-10",
+  "2026-01-26",
+  "2026-03-01",
+  "2026-03-16",
+  "2026-03-31",
+  "2026-04-16"
+ ],
+ "n_scenarios": 1500,
+ "created_utc": "2026-10-16T15:35:15.636590+00:00",
+ "coverage": {
+  "games": 79,
+  "skaters_observed": 2844,
+  "skaters_matched": 2810,
+  "goalies_observed": 158,
+  "goalies_matched": 154,
+  "skaters_unmatched": 34,
+  "goalies_unmatched": 4
+ },
+ "pit": {
+  "goals": {
+   "n": 2810,
+   "chi2_per_df": 0.675365757216291,
+   "hist": [
+    293,
+    283,
+    278,
+    272,
+    311,
+    274,
+    264,
+    267,
+    281,
+    287
+   ],
+   "flagged": false
+  },
+  "assists": {
+   "n": 2810,
+   "chi2_per_df": 1.8964017398181099,
+   "hist": [
+    275,
+    298,
+    282,
+    297,
+    250,
+    291,
+    313,
+    299,
+    262,
+    243
+   ],
+   "flagged": false
+  },
+  "points": {
+   "n": 2810,
+   "chi2_per_df": 0.9687623566627125,
+   "hist": [
+    297,
+    270,
+    277,
+    298,
+    284,
+    289,
+    306,
+    255,
+    268,
+    266
+   ],
+   "flagged": false
+  },
+  "sog": {
+   "n": 2810,
+   "chi2_per_df": 2.475286674574931,
+   "hist": [
+    318,
+    310,
+    280,
+    290,
+    276,
+    307,
+    260,
+    241,
+    246,
+    282
+   ],
+   "flagged": false
+  },
+  "blocks": {
+   "n": 2810,
+   "chi2_per_df": 2.808224594701463,
+   "hist": [
+    296,
+    337,
+    299,
+    272,
+    283,
+    286,
+    270,
+    282,
+    232,
+    253
+   ],
+   "flagged": false
+  },
+  "saves": {
+   "n": 154,
+   "chi2_per_df": 1.0995670995670994,
+   "hist": [
+    17,
+    13,
+    20,
+    19,
+    14,
+    13,
+    10,
+    22,
+    16,
+    10
+   ],
+   "flagged": false
+  },
+  "ga": {
+   "n": 154,
+   "chi2_per_df": 1.0129870129870129,
+   "hist": [
+    16,
+    13,
+    7,
+    16,
+    18,
+    15,
+    18,
+    22,
+    13,
+    16
+   ],
+   "flagged": false
+  },
+  "team_goals": {
+   "n": 158,
+   "chi2_per_df": 0.13783403656821377,
+   "hist": [
+    16,
+    16,
+    14,
+    13,
+    17,
+    17,
+    16,
+    15,
+    16,
+    18
+   ],
+   "flagged": false
+  }
+ },
+ "rates": [
+  {
+   "event": "sog>=5",
+   "observed": 116,
+   "expected": 113.3194147220381,
+   "ratio": 1.0236551281573163,
+   "n": 2810,
+   "flag": "ok"
+  },
+  {
+   "event": "blocks>=3",
+   "observed": 185,
+   "expected": 209.35929194675603,
+   "ratio": 0.8836483839802484,
+   "n": 2810,
+   "flag": "ok"
+  },
+  {
+   "event": "points>=3",
+   "observed": 66,
+   "expected": 46.73887882835699,
+   "ratio": 1.4121006248861296,
+   "n": 2810,
+   "flag": "FLAG"
+  },
+  {
+   "event": "goals>=3",
+   "observed": 8,
+   "expected": 4.198424088481481,
+   "ratio": 1.9054768721312054,
+   "n": 2810,
+   "flag": "too few to flag"
+  },
+  {
+   "event": "points>=2",
+   "observed": 246,
+   "expected": 235.81580260089726,
+   "ratio": 1.0431870862205908,
+   "n": 2810,
+   "flag": "ok"
+  },
+  {
+   "event": "goals>=2",
+   "observed": 47,
+   "expected": 45.61995762170079,
+   "ratio": 1.030250847441444,
+   "n": 2810,
+   "flag": "ok"
+  },
+  {
+   "event": "sog>=3",
+   "observed": 586,
+   "expected": 611.135204993432,
+   "ratio": 0.9588712861113898,
+   "n": 2810,
+   "flag": "ok"
+  },
+  {
+   "event": "blocks>=2",
+   "observed": 513,
+   "expected": 566.5669752155553,
+   "ratio": 0.9054534105254276,
+   "n": 2810,
+   "flag": "ok"
+  },
+  {
+   "event": "saves>=35",
+   "observed": 8,
+   "expected": 9.594450286614485,
+   "ratio": 0.8338153579430233,
+   "n": 154,
+   "flag": "too few to flag"
+  },
+  {
+   "event": "goalie win",
+   "observed": 77,
+   "expected": 73.38420026904994,
+   "ratio": 1.049272182809016,
+   "n": 154,
+   "flag": "ok"
+  }
+ ],
+ "co_ceiling": {
+  "pairs": 1499,
+  "observed": 44,
+  "expected": 80.0476267172069,
+  "ratio": 0.5496727611356133,
+  "flag": "FLAG",
+  "control_pairs": 8639,
+  "control_observed": 131,
+  "control_expected": 82.80501103246468,
+  "control_ratio": 1.5820298598672962
+ },
+ "team": {
+  "obs_mean": 3.0316455696202533,
+  "obs_sd": 1.8840465677142415,
+  "sim_mean": 2.9786540084388182,
+  "sim_sd": 1.7673621471595393,
+  "chi2_per_df": 0.13783403656821377,
+  "n": 158
+ },
+ "unavailable": {
+  "team totals vs market": "the store holds no historical odds; the rows above are the MODEL-source intensities only",
+  "goalie win vs implied": "no historical moneylines; 'goalie win' above is graded against the simulator's own probability"
+ },
+ "deficiencies": [
+  {
+   "kind": "rate",
+   "what": "points>=3",
+   "detail": "observed 66 vs expected 46.7 (ratio 1.41)",
+   "value": 1.4121006248861296
+  },
+  {
+   "kind": "co_ceiling",
+   "what": "model-line pairs, both 2+ points",
+   "detail": "observed/expected 0.55 within model lines, 1.58 across model lines. Hypothesis, not established: the rank-built model lines do not identify actual linemates; the same ratios are also consistent with within-line correlation in the simulation being too strong",
+   "value": 0.5496727611356133
+  },
+  {
+   "kind": "constants",
+   "what": "league constants not cleaned",
+   "detail": "model.goalies.sv_pct: does not reproduce from the store: model.goalies.sv_pct recomputes to 0.8980109711221461 against 0.8979 shipped; sim.skater.assists_per_goal: does not reproduce from the store: sim.skater.assists_per_goal[0] recomputes to 0.06451007383306218 against 0.063 shipped; sim.skater.assists_per_goal[1] recomputes to 0.18533350018771116 against 0.188 shipped; sim.skater.assists_per_goal[2] recomputes to 0.7501564259792266 against 0.749 shipped; sim.pace.var: calibrated by a synthetic simulation that is not in the repo, so it cannot be re-solved here; its target, the team SOG cv after removing team-season means, is 0.2206 on all dates and 0.2213 without the held-out dates (0.2205 in the config comment)",
+   "value": 3.0
+  }
+ ],
+ "notes": [
+  "'held out' means the per-person parameters use games strictly before each date and the league constants were recomputed without the 10 held-out dates (32 cleaned groups; not cleaned, so still measured on these dates: model.goalies.sv_pct, sim.skater.assists_per_goal, sim.pace.var); the clean constants still use games played after each held-out date, though not the graded games themselves",
+  "persons with no history use position priors (PRIOR); the calibration includes them",
+  "team SOG-to-goal correlation is higher in the simulation than in history (score effects are not modeled)"
+ ],
+ "wall_s": 279.2974181000027,
+ "constants": {
+  "seasons": [
+   20242025,
+   20252026
+  ],
+  "excluded_dates": [
+   "2025-11-07",
+   "2025-11-22",
+   "2025-12-08",
+   "2025-12-23",
+   "2026-01-10",
+   "2026-01-26",
+   "2026-03-01",
+   "2026-03-16",
+   "2026-03-31",
+   "2026-04-16"
+  ],
+  "games_all": 2624,
+  "games_used": 2545,
+  "rows": [
+   {
+    "name": "model.skaters.F.toi_s.ev",
+    "file": "model",
+    "path": [
+     "skaters",
+     "F",
+     "toi_s",
+     "ev"
+    ],
+    "kind": "MEASURED",
+    "decimals": 0,
+    "shipped": 772.0,
+    "all_dates": 772.4004528855507,
+    "clean": 772.6317061541243,
+    "reproduced": true,
+    "moved": 0.23125326857359596,
+    "status": "CLEANED"
+   },
+   {
+    "name": "model.skaters.F.toi_s.pp",
+    "file": "model",
+    "path": [
+     "skaters",
+     "F",
+     "toi_s",
+     "pp"
+    ],
+    "kind": "MEASURED",
+    "decimals": 0,
+    "shipped": 90.0,
+    "all_dates": 90.09545679248593,
+    "clean": 90.04661218986863,
+    "reproduced": true,
+    "moved": -0.04884460261730794,
+    "status": "CLEANED"
+   },
+   {
+    "name": "model.skaters.F.toi_s.sh",
+    "file": "model",
+    "path": [
+     "skaters",
+     "F",
+     "toi_s",
+     "sh"
+    ],
+    "kind": "MEASURED",
+    "decimals": 0,
+    "shipped": 46.0,
+    "all_dates": 45.57449488909088,
+    "clean": 45.555926406997585,
+    "reproduced": true,
+    "moved": -0.018568482093293426,
+    "status": "CLEANED"
+   },
+   {
+    "name": "model.skaters.F.pts60.ev",
+    "file": "model",
+    "path": [
+     "skaters",
+     "F",
+     "pts60",
+     "ev"
+    ],
+    "kind": "MEASURED",
+    "decimals": 3,
+    "shipped": 1.808,
+    "all_dates": 1.807712619790959,
+    "clean": 1.8091074752714986,
+    "reproduced": true,
+    "moved": 0.0013948554805396363,
+    "status": "CLEANED"
+   },
+   {
+    "name": "model.skaters.F.pts60.pp",
+    "file": "model",
+    "path": [
+     "skaters",
+     "F",
+     "pts60",
+     "pp"
+    ],
+    "kind": "MEASURED",
+    "decimals": 3,
+    "shipped": 4.608,
+    "all_dates": 4.608166383352602,
+    "clean": 4.600632677375621,
+    "reproduced": true,
+    "moved": -0.007533705976980443,
+    "status": "CLEANED"
+   },
+   {
+    "name": "model.skaters.F.pts60.sh",
+    "file": "model",
+    "path": [
+     "skaters",
+     "F",
+     "pts60",
+     "sh"
+    ],
+    "kind": "MEASURED",
+    "decimals": 3,
+    "shipped": 0.785,
+    "all_dates": 0.7847635229821853,
+    "clean": 0.7977603232618379,
+    "reproduced": true,
+    "moved": 0.012996800279652554,
+    "status": "CLEANED"
+   },
+   {
+    "name": "model.skaters.D.toi_s.ev",
+    "file": "model",
+    "path": [
+     "skaters",
+     "D",
+     "toi_s",
+     "ev"
+    ],
+    "kind": "MEASURED",
+    "decimals": 0,
+    "shipped": 1015.0,
+    "all_dates": 1014.7875885966293,
+    "clean": 1014.9170807756017,
+    "reproduced": true,
+    "moved": 0.12949217897232757,
+    "status": "CLEANED"
+   },
+   {
+    "name": "model.skaters.D.toi_s.pp",
+    "file": "model",
+    "path": [
+     "skaters",
+     "D",
+     "toi_s",
+     "pp"
+    ],
+    "kind": "MEASURED",
+    "decimals": 0,
+    "shipped": 51.0,
+    "all_dates": 50.629484958261145,
+    "clean": 50.59433563935172,
+    "reproduced": true,
+    "moved": -0.03514931890942563,
+    "status": "CLEANED"
+   },
+   {
+    "name": "model.skaters.D.toi_s.sh",
+    "file": "model",
+    "path": [
+     "skaters",
+     "D",
+     "toi_s",
+     "sh"
+    ],
+    "kind": "MEASURED",
+    "decimals": 0,
+    "shipped": 92.0,
+    "all_dates": 91.643313907702,
+    "clean": 91.57965507161649,
+    "reproduced": true,
+    "moved": -0.0636588360855086,
+    "status": "CLEANED"
+   },
+   {
+    "name": "model.skaters.D.pts60.ev",
+    "file": "model",
+    "path": [
+     "skaters",
+     "D",
+     "pts60",
+     "ev"
+    ],
+    "kind": "MEASURED",
+    "decimals": 3,
+    "shipped": 0.967,
+    "all_dates": 0.9670944997571276,
+    "clean": 0.9670419640990184,
+    "reproduced": true,
+    "moved": -5.253565810914296e-05,
+    "status": "CLEANED"
+   },
+   {
+    "name": "model.skaters.D.pts60.pp",
+    "file": "model",
+    "path": [
+     "skaters",
+     "D",
+     "pts60",
+     "pp"
+    ],
+    "kind": "MEASURED",
+    "decimals": 3,
+    "shipped": 4.247,
+    "all_dates": 4.246801801605616,
+    "clean": 4.268466871106963,
+    "reproduced": true,
+    "moved": 0.0216650695013465,
+    "status": "CLEANED"
+   },
+   {
+    "name": "model.skaters.D.pts60.sh",
+    "file": "model",
+    "path": [
+     "skaters",
+     "D",
+     "pts60",
+     "sh"
+    ],
+    "kind": "MEASURED",
+    "decimals": 3,
+    "shipped": 0.251,
+    "all_dates": 0.25120161198013075,
+    "clean": 0.25279769162511895,
+    "reproduced": true,
+    "moved": 0.001596079644988202,
+    "status": "CLEANED"
+   },
+   {
+    "name": "model.skaters.F.goal_share",
+    "file": "model",
+    "path": [
+     "skaters",
+     "F",
+     "goal_share"
+    ],
+    "kind": "MEASURED",
+    "decimals": 3,
+    "shipped": 0.423,
+    "all_dates": 0.42328371196817605,
+    "clean": 0.4232419623414884,
+    "reproduced": true,
+    "moved": -4.174962668762605e-05,
+    "status": "CLEANED"
+   },
+   {
+    "name": "model.skaters.F.a1_share",
+    "file": "model",
+    "path": [
+     "skaters",
+     "F",
+     "a1_share"
+    ],
+    "kind": "MEASURED",
+    "decimals": 3,
+    "shipped": 0.592,
+    "all_dates": 0.5924328985663468,
+    "clean": 0.5925144380275433,
+    "reproduced": true,
+    "moved": 8.153946119648925e-05,
+    "status": "CLEANED"
+   },
+   {
+    "name": "model.skaters.F.sog60",
+    "file": "model",
+    "path": [
+     "skaters",
+     "F",
+     "sog60"
+    ],
+    "kind": "MEASURED",
+    "decimals": 3,
+    "shipped": 6.711,
+    "all_dates": 6.710781558791945,
+    "clean": 6.715429288510992,
+    "reproduced": true,
+    "moved": 0.0046477297190472555,
+    "status": "CLEANED"
+   },
+   {
+    "name": "model.skaters.F.blk60",
+    "file": "model",
+    "path": [
+     "skaters",
+     "F",
+     "blk60"
+    ],
+    "kind": "MEASURED",
+    "decimals": 3,
+    "shipped": 2.068,
+    "all_dates": 2.0682989117045434,
+    "clean": 2.073399545960728,
+    "reproduced": true,
+    "moved": 0.005100634256184566,
+    "status": "CLEANED"
+   },
+   {
+    "name": "model.skaters.F.ixg_per_sog",
+    "file": "model",
+    "path": [
+     "skaters",
+     "F",
+     "ixg_per_sog"
+    ],
+    "kind": "MEASURED",
+    "decimals": 4,
+    "shipped": 0.1328,
+    "all_dates": 0.13281221440214064,
+    "clean": 0.1327388552959789,
+    "reproduced": true,
+    "moved": -7.335910616174113e-05,
+    "status": "CLEANED"
+   },
+   {
+    "name": "model.skaters.D.goal_share",
+    "file": "model",
+    "path": [
+     "skaters",
+     "D",
+     "goal_share"
+    ],
+    "kind": "MEASURED",
+    "decimals": 3,
+    "shipped": 0.22,
+    "all_dates": 0.21984562447689018,
+    "clean": 0.2191780821917808,
+    "reproduced": true,
+    "moved": -0.0006675422851093737,
+    "status": "CLEANED"
+   },
+   {
+    "name": "model.skaters.D.a1_share",
+    "file": "model",
+    "path": [
+     "skaters",
+     "D",
+     "a1_share"
+    ],
+    "kind": "MEASURED",
+    "decimals": 3,
+    "shipped": 0.472,
+    "all_dates": 0.47198378636146876,
+    "clean": 0.4717791411042945,
+    "reproduced": true,
+    "moved": -0.00020464525717428517,
+    "status": "CLEANED"
+   },
+   {
+    "name": "model.skaters.D.sog60",
+    "file": "model",
+    "path": [
+     "skaters",
+     "D",
+     "sog60"
+    ],
+    "kind": "MEASURED",
+    "decimals": 3,
+    "shipped": 4.023,
+    "all_dates": 4.023415500885603,
+    "clean": 4.026365590189346,
+    "reproduced": true,
+    "moved": 0.002950089303742409,
+    "status": "CLEANED"
+   },
+   {
+    "name": "model.skaters.D.blk60",
+    "file": "model",
+    "path": [
+     "skaters",
+     "D",
+     "blk60"
+    ],
+    "kind": "MEASURED",
+    "decimals": 3,
+    "shipped": 4.364,
+    "all_dates": 4.363510791818176,
+    "clean": 4.37549579759565,
+    "reproduced": true,
+    "moved": 0.011985005777473745,
+    "status": "CLEANED"
+   },
+   {
+    "name": "model.skaters.D.ixg_per_sog",
+    "file": "model",
+    "path": [
+     "skaters",
+     "D",
+     "ixg_per_sog"
+    ],
+    "kind": "MEASURED",
+    "decimals": 4,
+    "shipped": 0.0546,
+    "all_dates": 0.05464638811061031,
+    "clean": 0.054554582193328156,
+    "reproduced": true,
+    "moved": -9.180591728215337e-05,
+    "status": "CLEANED"
+   },
+   {
+    "name": "model.team.pp_clock_s",
+    "file": "model",
+    "path": [
+     "team",
+     "pp_clock_s"
+    ],
+    "kind": "MEASURED",
+    "decimals": 0,
+    "shipped": 277.0,
+    "all_dates": 276.56360518292684,
+    "clean": 276.40369351669943,
+    "reproduced": true,
+    "moved": -0.15991166622740138,
+    "status": "CLEANED"
+   },
+   {
+    "name": "model.team.pk_clock_s",
+    "file": "model",
+    "path": [
+     "team",
+     "pk_clock_s"
+    ],
+    "kind": "MEASURED",
+    "decimals": 0,
+    "shipped": 275.0,
+    "all_dates": 274.7307545731707,
+    "clean": 274.5777504911591,
+    "reproduced": true,
+    "moved": -0.15300408201159144,
+    "status": "CLEANED"
+   },
+   {
+    "name": "model.team.sog_for",
+    "file": "model",
+    "path": [
+     "team",
+     "sog_for"
+    ],
+    "kind": "MEASURED",
+    "decimals": 2,
+    "shipped": 28.05,
+    "all_dates": 28.048971036585368,
+    "clean": 28.072495088408644,
+    "reproduced": true,
+    "moved": 0.023524051823276437,
+    "status": "CLEANED"
+   },
+   {
+    "name": "model.goalies.sv_pct",
+    "file": "model",
+    "path": [
+     "goalies",
+     "sv_pct"
+    ],
+    "kind": "MEASURED",
+    "decimals": 4,
+    "shipped": 0.8979,
+    "all_dates": 0.8980109711221461,
+    "clean": 0.8980525062356439,
+    "reproduced": false,
+    "moved": 4.15351134978037e-05,
+    "status": "NOT_CLEANED"
+   },
+   {
+    "name": "model.goalies.shots_against",
+    "file": "model",
+    "path": [
+     "goalies",
+     "shots_against"
+    ],
+    "kind": "MEASURED",
+    "decimals": 2,
+    "shipped": 27.19,
+    "all_dates": 27.187309451219512,
+    "clean": 27.21728880157171,
+    "reproduced": true,
+    "moved": 0.02997935035219612,
+    "status": "CLEANED"
+   },
+   {
+    "name": "model.goalies.p_win",
+    "file": "model",
+    "path": [
+     "goalies",
+     "p_win"
+    ],
+    "kind": "MEASURED",
+    "decimals": 3,
+    "shipped": 0.493,
+    "all_dates": 0.49314024390243905,
+    "clean": 0.49292730844793714,
+    "reproduced": true,
+    "moved": -0.00021293545450190576,
+    "status": "CLEANED"
+   },
+   {
+    "name": "model.goalies.p_otl",
+    "file": "model",
+    "path": [
+     "goalies",
+     "p_otl"
+    ],
+    "kind": "MEASURED",
+    "decimals": 3,
+    "shipped": 0.112,
+    "all_dates": 0.11166158536585366,
+    "clean": 0.11218074656188605,
+    "reproduced": true,
+    "moved": 0.0005191611960323889,
+    "status": "CLEANED"
+   },
+   {
+    "name": "model.goalies.pull_per_ga",
+    "file": "model",
+    "path": [
+     "goalies",
+     "pull_per_ga"
+    ],
+    "kind": "MEASURED",
+    "decimals": 3,
+    "shipped": 0.019,
+    "all_dates": 0.019494783086216366,
+    "clean": 0.019232128968394258,
+    "reproduced": true,
+    "moved": -0.0002626541178221073,
+    "status": "CLEANED"
+   },
+   {
+    "name": "sim.resolve.goals_league",
+    "file": "sim",
+    "path": [
+     "resolve",
+     "goals_league"
+    ],
+    "kind": "MEASURED",
+    "decimals": 3,
+    "shipped": 3.046,
+    "all_dates": 3.0457317073170733,
+    "clean": 3.0461689587426326,
+    "reproduced": true,
+    "moved": 0.00043725142555928187,
+    "status": "CLEANED"
+   },
+   {
+    "name": "sim.resolve.ot_goal_p",
+    "file": "sim",
+    "path": [
+     "resolve",
+     "ot_goal_p"
+    ],
+    "kind": "MEASURED",
+    "decimals": 4,
+    "shipped": 0.6717,
+    "all_dates": 0.6716917922948074,
+    "clean": 0.6683848797250859,
+    "reproduced": true,
+    "moved": -0.0033069125697214874,
+    "status": "CLEANED"
+   },
+   {
+    "name": "sim.skater.assists_per_goal[0]",
+    "file": "sim",
+    "path": [
+     "skater",
+     "assists_per_goal",
+     0
+    ],
+    "kind": "MEASURED",
+    "decimals": 3,
+    "shipped": 0.063,
+    "all_dates": 0.06451007383306218,
+    "clean": 0.06372960072244083,
+    "reproduced": false,
+    "moved": -0.0007804731106213492,
+    "status": "NOT_CLEANED"
+   },
+   {
+    "name": "sim.skater.assists_per_goal[1]",
+    "file": "sim",
+    "path": [
+     "skater",
+     "assists_per_goal",
+     1
+    ],
+    "kind": "MEASURED",
+    "decimals": 3,
+    "shipped": 0.188,
+    "all_dates": 0.18533350018771116,
+    "clean": 0.1853834741662904,
+    "reproduced": false,
+    "moved": 4.9973978579226364e-05,
+    "status": "NOT_CLEANED"
+   },
+   {
+    "name": "sim.skater.assists_per_goal[2]",
+    "file": "sim",
+    "path": [
+     "skater",
+     "assists_per_goal",
+     2
+    ],
+    "kind": "MEASURED",
+    "decimals": 3,
+    "shipped": 0.749,
+    "all_dates": 0.7501564259792266,
+    "clean": 0.7508869251112688,
+    "reproduced": false,
+    "moved": 0.0007304991320421506,
+    "status": "NOT_CLEANED"
+   },
+   {
+    "name": "sim.resolve.lambda0_league",
+    "file": "sim",
+    "path": [
+     "resolve",
+     "lambda0_league"
+    ],
+    "kind": "DERIVED",
+    "decimals": 4,
+    "shipped": 2.7475,
+    "all_dates": 2.746784963610303,
+    "clean": 2.747596337185561,
+    "solved_from_printed_inputs": 2.747533058801708,
+    "reproduced": true,
+    "moved": 0.0008113735752579565,
+    "status": "CLEANED"
+   },
+   {
+    "name": "sim.resolve.q_eq",
+    "file": "sim",
+    "path": [
+     "resolve",
+     "q_eq"
+    ],
+    "kind": "DERIVED",
+    "decimals": 4,
+    "shipped": 0.1678,
+    "all_dates": 0.16771709878062765,
+    "clean": 0.17152738441612958,
+    "solved_from_printed_inputs": 0.16776743442933467,
+    "reproduced": true,
+    "moved": 0.0038102856355019254,
+    "status": "CLEANED"
+   },
+   {
+    "name": "sim.resolve.q_en[0]",
+    "file": "sim",
+    "path": [
+     "resolve",
+     "q_en",
+     0
+    ],
+    "kind": "DERIVED",
+    "decimals": 4,
+    "shipped": 0.6889,
+    "all_dates": 0.6891043865391681,
+    "clean": 0.6856712619337685,
+    "solved_from_printed_inputs": 0.6888726044422137,
+    "reproduced": true,
+    "moved": -0.0034331246053995734,
+    "status": "CLEANED"
+   },
+   {
+    "name": "sim.resolve.q_en[1]",
+    "file": "sim",
+    "path": [
+     "resolve",
+     "q_en",
+     1
+    ],
+    "kind": "DERIVED",
+    "decimals": 4,
+    "shipped": 0.496,
+    "all_dates": 0.496155158308201,
+    "clean": 0.4936833085923133,
+    "solved_from_printed_inputs": 0.49598827519839384,
+    "reproduced": true,
+    "moved": -0.0024718497158877084,
+    "status": "CLEANED"
+   },
+   {
+    "name": "sim.resolve.q_en[2]",
+    "file": "sim",
+    "path": [
+     "resolve",
+     "q_en",
+     2
+    ],
+    "kind": "DERIVED",
+    "decimals": 4,
+    "shipped": 0.31,
+    "all_dates": 0.31009697394262564,
+    "clean": 0.30855206787019585,
+    "solved_from_printed_inputs": 0.30999267199899616,
+    "reproduced": true,
+    "moved": -0.001544906072429797,
+    "status": "CLEANED"
+   },
+   {
+    "name": "sim.resolve.q_en[3]",
+    "file": "sim",
+    "path": [
+     "resolve",
+     "q_en",
+     3
+    ],
+    "kind": "DERIVED",
+    "decimals": 4,
+    "shipped": 0.1033,
+    "all_dates": 0.1033656579808752,
+    "clean": 0.10285068929006527,
+    "solved_from_printed_inputs": 0.10333089066633204,
+    "reproduced": true,
+    "moved": -0.0005149686908099277,
+    "status": "CLEANED"
+   },
+   {
+    "name": "in.reg_goals",
+    "file": "sim",
+    "path": [],
+    "kind": "INPUT",
+    "decimals": 3,
+    "shipped": 2.97,
+    "all_dates": 2.969321646341464,
+    "clean": 2.969744597249509,
+    "moved": 0.0004229509080451166,
+    "status": "INPUT",
+    "reproduced": true
+   },
+   {
+    "name": "in.tie_rate",
+    "file": "sim",
+    "path": [],
+    "kind": "INPUT",
+    "decimals": 4,
+    "shipped": 0.2275,
+    "all_dates": 0.22751524390243902,
+    "clean": 0.2286836935166994,
+    "moved": 0.0011684496142603806,
+    "status": "INPUT",
+    "reproduced": true
+   },
+   {
+    "name": "in.en_goals",
+    "file": "sim",
+    "path": [],
+    "kind": "INPUT",
+    "decimals": 3,
+    "shipped": 0.196,
+    "all_dates": 0.19607469512195122,
+    "clean": 0.19508840864440077,
+    "moved": -0.0009862864775504465,
+    "status": "INPUT",
+    "reproduced": true
+   },
+   {
+    "name": "in.ot_goals",
+    "file": "sim",
+    "path": [],
+    "kind": "INPUT",
+    "decimals": 3,
+    "shipped": 0.076,
+    "all_dates": 0.07641006097560976,
+    "clean": 0.07642436149312377,
+    "moved": 1.4300517514012623e-05,
+    "status": "INPUT",
+    "reproduced": true
+   },
+   {
+    "name": "sim.pace.target_cv",
+    "file": "sim",
+    "path": [],
+    "kind": "TARGET",
+    "decimals": 4,
+    "shipped": 0.2205,
+    "all_dates": 0.22055871561225493,
+    "clean": 0.22130775058290467,
+    "moved": 0.0007490349706497368,
+    "status": "TARGET",
+    "reproduced": true
+   },
+   {
+    "name": "sim.pace.var",
+    "file": "sim",
+    "path": [
+     "pace",
+     "var"
+    ],
+    "kind": "CALIBRATED",
+    "decimals": 4,
+    "shipped": 0.0042,
+    "all_dates": null,
+    "clean": null,
+    "moved": null,
+    "status": "NOT_CLEANED",
+    "reproduced": false
+   }
+  ],
+  "cleaned": [
+   "model.skaters.F.toi_s.ev",
+   "model.skaters.F.toi_s.pp",
+   "model.skaters.F.toi_s.sh",
+   "model.skaters.F.pts60.ev",
+   "model.skaters.F.pts60.pp",
+   "model.skaters.F.pts60.sh",
+   "model.skaters.D.toi_s.ev",
+   "model.skaters.D.toi_s.pp",
+   "model.skaters.D.toi_s.sh",
+   "model.skaters.D.pts60.ev",
+   "model.skaters.D.pts60.pp",
+   "model.skaters.D.pts60.sh",
+   "model.skaters.F.goal_share",
+   "model.skaters.F.a1_share",
+   "model.skaters.F.sog60",
+   "model.skaters.F.blk60",
+   "model.skaters.F.ixg_per_sog",
+   "model.skaters.D.goal_share",
+   "model.skaters.D.a1_share",
+   "model.skaters.D.sog60",
+   "model.skaters.D.blk60",
+   "model.skaters.D.ixg_per_sog",
+   "model.team.pp_clock_s",
+   "model.team.pk_clock_s",
+   "model.team.sog_for",
+   "model.goalies.shots_against",
+   "model.goalies.p_win",
+   "model.goalies.p_otl",
+   "model.goalies.pull_per_ga",
+   "sim.resolve.goals_league",
+   "sim.resolve.ot_goal_p",
+   "sim.resolve (derived)"
+  ],
+  "not_cleaned": [
+   {
+    "name": "model.goalies.sv_pct",
+    "why": "does not reproduce from the store: model.goalies.sv_pct recomputes to 0.8980109711221461 against 0.8979 shipped"
+   },
+   {
+    "name": "sim.skater.assists_per_goal",
+    "why": "does not reproduce from the store: sim.skater.assists_per_goal[0] recomputes to 0.06451007383306218 against 0.063 shipped; sim.skater.assists_per_goal[1] recomputes to 0.18533350018771116 against 0.188 shipped; sim.skater.assists_per_goal[2] recomputes to 0.7501564259792266 against 0.749 shipped"
+   },
+   {
+    "name": "sim.pace.var",
+    "why": "calibrated by a synthetic simulation that is not in the repo, so it cannot be re-solved here; its target, the team SOG cv after removing team-season means, is 0.2206 on all dates and 0.2213 without the held-out dates (0.2205 in the config comment)"
+   }
+  ]
+ }
+}
