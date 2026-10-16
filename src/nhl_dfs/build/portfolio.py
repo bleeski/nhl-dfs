@@ -811,7 +811,7 @@ def band_report(sel: Selection, fields_alt: Mapping[str, ob.FieldSpec], own_alt:
         g = ob.field_utility(st.contest, st.G, st.E, risk_cfg, other=(alt[cid].G, alt[cid].E))
         t = ob.field_utility(st.contest, st.G, st.E, risk_cfg, goal="top1pct", other=(alt[cid].G, alt[cid].E))
         per_contest[cid] = {"family": st.contest.family, "goal": ob.family_objective(risk_cfg)[st.contest.family],
-                            "base": g.mean / 100.0, "base_se": g.se / 100.0, "d": g.diff / 100.0, "d_se": g.diff_se / 100.0,
+                            "utility": utility_label(st.contest.family, ob.goal_of(risk_cfg)), "base": g.mean / 100.0, "base_se": g.se / 100.0, "d": g.diff / 100.0, "d_se": g.diff_se / 100.0,
                             "top1_base": t.mean / 100.0, "top1_d": t.diff / 100.0, "top1_d_se": t.diff_se / 100.0}
     pos = {k: j for j, k in enumerate(union)}
     forced = {e: pos[P.keep[sel.choices[e].cand]] for e in P.order}
@@ -838,6 +838,13 @@ def band_report(sel: Selection, fields_alt: Mapping[str, ob.FieldSpec], own_alt:
             "added_by_alt_screen": len(union) - len(in_base), "keys": [c.key for c in P.candidates],
             "families": [c.family for c in P.candidates], "in_base_screen": [i in in_base for i in range(len(P.candidates))],
             "per_contest": per_contest, "entries": entries}
+
+
+def utility_label(family: str, goal: str) -> str:
+    """What `objectives.PayCurve.pay_util` counts as a family's utility, in words (C41's report prints it in dollars)."""
+    if family == "wta" or (goal == "first_place" and family in ob.FIRST_PLACE_FAMILIES):
+        return "first-place dollars"
+    return {"large_gpp": "top-1% payout dollars", "satellite": "seat value plus payout dollars"}.get(family, "payout dollars")
 
 
 def band_term(ch: Choice, risk_cfg: dict) -> str:

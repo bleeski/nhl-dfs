@@ -237,8 +237,9 @@ def _band_lines(b: dict[str, Any], most: int = 20) -> list[str]:
     out = [f"- {b['label']}. Band (flag 119): slope {band.get('beta_low')} to {band.get('beta_high')} around the forecast; "
            + "; ".join(fld(x) for x in ("low", "high")) + f"; {b.get('seconds')} s."]
     for cid, sp in (b.get("spread") or {}).items():
-        out.append(f"- Tail spread, contest {cid} ({sp['family']}, {sp['goal']} against the field alone, max minus min over base, "
-                   f"low and high): {sp['candidates']} candidates, median ${sp['median_spread']:.4f}, max ${sp['max_spread']:.4f}, "
+        out.append(f"- Tail spread, contest {cid} ({sp['family']}: {sp.get('utility', sp['goal'])} against the field alone, max "
+                   f"minus min over base, low and high): {sp['candidates']} candidates, median ${sp['median_spread']:.4f}, max "
+                   f"${sp['max_spread']:.4f}, "
                    f"median paired z {sp['median_z']}, {sp['share_z_over_2']:.0%} above z 2 (every candidate in "
                    f"{b.get('file')}).")
     for label, p in (b.get("picks") or {}).items():

@@ -517,11 +517,13 @@ def _plain(a: np.ndarray, digits: int) -> list:
 
 def ownership_bands(*, run, work, proj, contexts, fb, own_n, prov, st, risk_cfg, fam_cfg, seed: int, override: dict, sel, scen,
                     contests, caps, field_cal, specs: list[tuple[str, float, int]], free: bool = False,
-                    write: bool = True) -> dict:
+                    write: bool = True, budget_s: float | None = None, hook=None) -> dict:
     """C41 (flags 119 to 122): the spread report. For each (label, temperature, seed shift) the field is rebuilt
     (`band_fields`, built and freed one at a time) and `portfolio.band_report` scores it against the base selection `sel`
     (select(..., keep_prepared=True)) on the selection scenarios. Reads only. Writes every candidate's figures to
-    runs/<id>/scenario/ownership_bands.json and returns the summary the manifest keeps."""
+    runs/<id>/scenario/ownership_bands.json and returns the summary the manifest keeps. budget_s replaces the config's
+    time_limit_s; hook(label, fields, own_by, dup_by), when given, sees each alternative field before it is freed (the C41
+    instrument's full select)."""
     from nhl_dfs.models import contests as contests_mod
     from nhl_dfs.models import field as field_mod
     from nhl_dfs.models import ownership
@@ -530,7 +532,7 @@ def ownership_bands(*, run, work, proj, contexts, fb, own_n, prov, st, risk_cfg,
     peak0 = peak_mb()
     own_cfg = (prov or {}).get("own_cfg") or ownership.load_ownership_config()
     eb = (own_cfg.get("field") or {}).get("error_band") or {}
-    budget = float(eb.get("time_limit_s", 300))
+    budget = float(budget_s if budget_s is not None else eb.get("time_limit_s", 300))
     base_own = {fam: field_mod.marginals(f, work, 1).own for fam, f in fb.fields.items()}
     keys = None
     by_key = {c.key: c.role_ids for c in sel.prepared.candidates}
@@ -561,6 +563,8 @@ def ownership_bands(*, run, work, proj, contexts, fb, own_n, prov, st, risk_cfg,
         del fb_alt
         rep = pf.band_report(sel, fields_alt, own_alt, dup_alt, scen, contests, caps, pool=work, fam_cfg=fam_cfg,
                              risk_cfg=risk_cfg, field_cal=field_cal, free=free)
+        if hook is not None:
+            hook(label, fields_alt, own_alt, dup_alt)
         del fields_alt, own_alt, dup_alt
         keys = rep.pop("keys")
         reports[label] = rep
@@ -578,8 +582,8 @@ def ownership_bands(*, run, work, proj, contexts, fb, own_n, prov, st, risk_cfg,
             sp = np.maximum(d.max(axis=0), 0.0) - np.minimum(d.min(axis=0), 0.0)
             with np.errstate(divide="ignore", invalid="ignore"):
                 z = np.where(se > 0, np.abs(d) / se, np.where(d != 0, np.inf, 0.0)).max(axis=0)
-            spread[cid] = {"family": pl["family"], "goal": pl["goal"], "spread": sp, "z": z, "base": pl["base"],
-                           "base_se": pl["base_se"]}
+            spread[cid] = {"family": pl["family"], "goal": pl["goal"], "utility": pl["utility"], "spread": sp, "z": z,
+                           "base": pl["base"], "base_se": pl["base_se"]}
     # flips, per alternative field
     picks, flips = {}, []
     order = sel.prepared.order
@@ -612,7 +616,8 @@ def ownership_bands(*, run, work, proj, contexts, fb, own_n, prov, st, risk_cfg,
     summary_spread = {}
     for cid, sp in spread.items():
         z = sp["z"][np.isfinite(sp["z"])]
-        summary_spread[cid] = {"family": sp["family"], "goal": sp["goal"], "candidates": int(len(sp["spread"])),
+        summary_spread[cid] = {"family": sp["family"], "goal": sp["goal"], "utility": sp["utility"],
+                               "candidates": int(len(sp["spread"])),
                                "median_spread": round(float(np.median(sp["spread"])), 4),
                                "max_spread": round(float(sp["spread"].max()), 4),
                                "median_z": round(float(np.median(z)), 2) if len(z) else None,
