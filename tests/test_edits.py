@@ -734,3 +734,66 @@ def test_the_two_edits_on_the_real_10_17_v3_bytes(tmp_path):
     assert [o.status for o in res.entries] == ["APPLIED", "APPLIED"], [(o.rule, o.reason) for o in res.entries]
     assert [o.total for o in res.entries] == [49_200, 49_700]
     assert Path(res.delivery_path).exists() and res.published_version == pub.version + 1
+
+
+# -- the advisor's cases: a dropped entry must not leave a breach behind, a goalie who is not starting, the notes --------
+
+def test_an_entry_the_referee_drops_cannot_leave_another_entrys_budget_breach_unreported(base, tmp_path):
+    """A (Allen to Hildeby, but over the cap) lowers Allen from 6 lineups to 5; B (Thompson to Allen) goes back to 6 and passes the
+    cap of 6 only because of A. The referee drops A, so B is judged again without it: 7 lineups, a breach with no override."""
+    run, runs, outs = _fresh(base, tmp_path)
+    m = read_manifest(run)
+    m["scenario"] = {"skipped": "test stub: no scenario pass", "caps": {"goalie_fee_share": None, "goalie_lineups": 6, "game_fee_share": None,
+                                                                          "game_lineups": None}}
+    write_manifest(run, m)
+    view = _view(run, runs)
+    lu, labels = view.lineups[E1], edits_mod.slot_labels(view.mode)
+    k = view.slots.index("C")
+    dear = next(r for r in sorted(view.pool.rows, key=lambda r: -r.salary) if r.role_id not in lu and not r.is_goalie and _playing(view, r)
+                and slot_accepts(view.slots[k], r, view.mode))
+    assert sum(view.pool.by_role_id[r].salary for r in lu) - view.pool.by_role_id[lu[k]].salary + 600 + dear.salary > 50_000  # A is over the cap
+    a = E(E1, [C("G", HILDEBY, ALLEN), C(labels[k], dear.role_id, lu[k])])
+    b = E(E2, [C("G", ALLEN, THOMPSON)])
+    state = _state(run, outs)
+    res = _apply(run, runs, outs, [a, b])
+    by = {o.entry_id: o for o in res.entries}
+    assert by[E1].rule == "referee" and "over the 50000 cap" in by[E1].reason
+    assert by[E2].rule == "risk_budget" and "7.00 > the run's cap 6.00" in by[E2].reason  # judged again without A
+    assert res.published_version is None and _state(run, outs) == state
+    # with B's override the breach is reported, never silent
+    b2 = E(E2, [C("G", ALLEN, THOMPSON)], override={"rule": "risk_budget", "reason": "the extra Allen entry is the best first place shot"})
+    ok = _apply(run, runs, outs, [a, b2])
+    assert {o.entry_id: o.status for o in ok.entries} == {E1: "REJECTED", E2: "APPLIED"}
+    assert any(f.startswith("BREACHED(risk_budget)") for f in ok.entries[1].flags)
+
+
+def test_a_goalie_who_is_not_starting_is_refused_and_cannot_be_overridden(base, tmp_path):
+    run, runs, outs = _fresh(base, tmp_path)
+    pk = _view(run, runs).pool.by_role_id[HILDEBY].person_key
+    m = read_manifest(run)
+    m["goalies"] = {"GOALIE_GATE": "CLEAR", "page": {}, "problems": [], "rows": [], "persons": {pk: {"status": "NOT STARTING"}}}
+    write_manifest(run, m)
+    state = _state(run, outs)
+    for extra in ({}, {"override": {"rule": "own_goalie", "reason": "the goalie table is wrong about this one"}}):
+        res = _apply(run, runs, outs, [E(E1, [C("G", HILDEBY, ALLEN)], **extra)])
+        assert res.entries[0].rule == "not_starting" and "NOT STARTING" in res.entries[0].reason and res.published_version is None
+    assert _state(run, outs) == state
+
+
+def test_a_notes_error_after_the_publish_is_a_message_and_the_delivery_still_prints(base, tmp_path, monkeypatch, capsys):
+    from nhl_dfs import cli
+    from nhl_dfs.build import notes
+
+    run, runs, outs = _fresh(base, tmp_path)
+
+    def boom(run_, manifest_):
+        raise ValueError("a renderer failure")
+
+    monkeypatch.setattr(notes, "write_run_notes", boom)
+    f = tmp_path / "edits.json"
+    f.write_text(json.dumps([E(E2, [C("G", KOCHETKOV, THOMPSON)])]))
+    argv = ["edit-apply", "--run", run.run_id, "--runs-root", str(runs), "--outputs-root", str(outs), "--as-of", "2026-10-17T16:30:00Z",
+            "--edits", str(f)]
+    assert cli.main(argv) == 0
+    out = capsys.readouterr().out
+    assert "delivery_file=" in out and "RUN_NOTES.md could not be written (ValueError: a renderer failure)" in out

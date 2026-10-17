@@ -342,7 +342,7 @@ def apply_edits(run, edits_input, *, now: datetime | None = None, runs_root=None
                 clock: Callable[[], datetime] | None = None) -> EditResult:
     """edits_input: a path to the file saved verbatim, or its text. Returns the result; every case, applied or not, is recorded
     under runs/<id>/edits/."""
-    from nhl_dfs.build import controller, late_swap, own_goalie as og_mod, packet as packet_mod
+    from nhl_dfs.build import controller, goalies as goalies_mod, late_swap, own_goalie as og_mod, packet as packet_mod
     from nhl_dfs.build import locks as locks_mod
     from nhl_dfs.build.manifest import read_manifest
     from nhl_dfs.build.objectives import load_risk_config
@@ -398,8 +398,6 @@ def apply_edits(run, edits_input, *, now: datetime | None = None, runs_root=None
             news_at[pk] = max(news_at.get(pk, o.effective_utc), o.effective_utc)
     goalie_table = (m.get("goalies") or {}).get("persons") or {}
     caps = (m.get("scenario") or {}).get("caps") or {}
-    means: dict[str, float] | None = None
-    cur = {e: list(lu) for e, lu in v.lineups.items()}
     buffer_s = int(ls.buffer_s)
 
     by_entry: dict[str, list[Edit]] = defaultdict(list)
@@ -410,113 +408,126 @@ def apply_edits(run, edits_input, *, now: datetime | None = None, runs_root=None
         e = next((x.entry_id for x in edits if x.n == n), None) or (bad[n][0] if n in bad else None)
         if e and e not in order:
             order.append(e)
-    outcomes: dict[str, EntryOutcome] = {}
-    overridden: dict[str, list[str]] = {}
-    rechecks: dict[str, list[dict]] = {}
-    for eid in order:
-        bad_here = [f"edit {n + 1}: {why}" for n, (e, why) in sorted(bad.items()) if e == eid]
-        out = EntryOutcome(eid, "REJECTED")
-        outcomes[eid] = out
-        mine = by_entry.get(eid, [])
-        out.edits = [{"n": ed.n, "edit_type": ed.edit_type, "reason": ed.reason, "evidence": ed.evidence,
-                      "claimed_gain": ed.claimed_gain, "sources": ed.sources, "override": ed.override} for ed in mine]
-        if bad_here:
-            out.rule, out.reason = "malformed", "; ".join(bad_here)
-            continue
-        if eid not in cur:
-            out.rule, out.reason = "unknown_entry", f"entry {eid} is not in this run's file"
-            continue
-        labels_used = [c.label for ed in mine for c in ed.cells]
-        dup = next((x for x in labels_used if labels_used.count(x) > 1), None)
-        if dup:
-            out.rule, out.reason = "duplicate_cell", f"slot {dup} is edited twice for this entry"
-            continue
-        lu = list(cur[eid])
-        stop = None
-        for ed in mine:
-            for c in ed.cells:
-                k_, old, new = c.index, lu[c.index], c.player_id
-                old_row = pool.by_role_id.get(old) if old else None
-                cell = {"slot": c.label, "index": k_, "out": old, "in": new,
-                        "out_who": _who(old_row, _game_key(old_row)) if old_row else "(empty)", "in_who": f"[{new}]"}
-                out.cells.append(cell)
-                if c.replaces and c.replaces != old:
-                    stop = ("stale_view", f"{c.label} holds {old}, the edit expected {c.replaces}: the model's view is out of date")
-                elif new not in pool.by_role_id:
-                    stop = ("unknown_player", f"{new} is not in the salary pool")
-                else:
-                    row = pool.by_role_id[new]
-                    cell["in_who"] = _who(row, _game_key(row))
-                    cs = ls.cells[(eid, k_)]
-                    if cs.pinned:
-                        stop = ("pinned", f"{c.label} is pinned ({cs.lock.value}): {cs.reason}")
-                    elif not ls.addable(new):
-                        if new in ls.started_role_ids:
-                            ws = f"{_game_key(row) or row.team} has started"
-                        elif new in ls.unswappable:
-                            ws = "DraftKings reports him not swappable"
-                        elif new not in ls.start_utc:
-                            ws = "his game has no known start time"
-                        else:
-                            ws = f"{_game_key(row)} starts {ls.start_utc[new].isoformat()}, inside the {buffer_s}s edit stop"
-                        stop = ("not_addable", f"{row.name} may not be added: {ws}")
-                    elif v.st.get(new, (Participation.PLAYING,))[0] is Participation.OUT or row.person_key in excluded:
-                        stop = ("out", f"{row.name} is OUT or IR" + (f" ({excluded[row.person_key]})" if row.person_key in excluded else ""))
-                    elif c.team and c.team.upper() != row.team.upper():
-                        stop = ("identity", f"{new} is {row.name} of {row.team}, the edit expected team {c.team}: wrong id?")
-                    elif c.name and c.name.strip().lower() != row.name.strip().lower():
-                        stop = ("identity", f"{new} is {row.name}, the edit expected {c.name}: wrong id?")
-                    elif ed.edit_type == "news":
-                        newest = max((news_at[pk] for pk in {row.person_key, old_row.person_key if old_row else None}
-                                      if pk in news_at), default=None)
-                        pub = max((_utc(s["published_utc"]) for s in ed.sources if s["published_utc"]), default=None)
-                        if newest is not None and pub is not None and pub < newest:
-                            stop = ("source_stale", f"the cited page ({pub:%Y-%m-%dT%H:%MZ}) is older than the news it contradicts "
-                                                    f"(accepted override effective {newest:%Y-%m-%dT%H:%MZ})")
-                    if stop is None:
-                        lu[k_] = new
-                        if row.is_goalie:
-                            g = goalie_table.get(row.person_key) or {}
-                            status = g.get("status") or "UNKNOWN"
-                            if status != "CONFIRMED":
-                                start = ls.start_utc.get(new)
-                                out.flags.append(f"UNCONFIRMED_GOALIE: {row.name} ({row.team}) is {status} in the run's goalie table; "
-                                                 "queued for a recheck before his game")
-                                rechecks.setdefault(eid, []).append({"entry_id": eid, "goalie": row.name, "team": row.team, "role_id": new, "status": status,
-                                                    "game": _game_key(row), "start_utc": start.isoformat() if start else None,
-                                                    "recheck_before_utc": (start - timedelta(seconds=buffer_s)).isoformat().replace("+00:00", "Z")
-                                                    if start else "unknown",
-                                                    "why": "the edit seats a goalie whose start is not confirmed"})
+    means_box: dict[str, dict[str, float]] = {}
+
+    def evaluate(skip: dict[str, str]):
+        """Every entry judged on the parent lineups plus the entries applied before it (flag 127). `skip` holds the entries the
+        referee dropped: they are judged for their cells and never applied, and the entries after them are judged without them."""
+        cur = {e: list(lu) for e, lu in v.lineups.items()}
+        outcomes: dict[str, EntryOutcome] = {}
+        overridden: dict[str, list[str]] = {}
+        rechecks: dict[str, list[dict]] = {}
+        for eid in order:
+            bad_here = [f"edit {n + 1}: {why}" for n, (e, why) in sorted(bad.items()) if e == eid]
+            out = EntryOutcome(eid, "REJECTED")
+            outcomes[eid] = out
+            mine = by_entry.get(eid, [])
+            out.edits = [{"n": ed.n, "edit_type": ed.edit_type, "reason": ed.reason, "evidence": ed.evidence,
+                          "claimed_gain": ed.claimed_gain, "sources": ed.sources, "override": ed.override} for ed in mine]
+            if bad_here:
+                out.rule, out.reason = "malformed", "; ".join(bad_here)
+                continue
+            if eid not in cur:
+                out.rule, out.reason = "unknown_entry", f"entry {eid} is not in this run's file"
+                continue
+            labels_used = [c.label for ed in mine for c in ed.cells]
+            dup = next((x for x in labels_used if labels_used.count(x) > 1), None)
+            if dup:
+                out.rule, out.reason = "duplicate_cell", f"slot {dup} is edited twice for this entry"
+                continue
+            lu = list(cur[eid])
+            stop = None
+            for ed in mine:
+                for c in ed.cells:
+                    k_, old, new = c.index, lu[c.index], c.player_id
+                    old_row = pool.by_role_id.get(old) if old else None
+                    cell = {"slot": c.label, "index": k_, "out": old, "in": new,
+                            "out_who": _who(old_row, _game_key(old_row)) if old_row else "(empty)", "in_who": f"[{new}]"}
+                    out.cells.append(cell)
+                    if c.replaces and c.replaces != old:
+                        stop = ("stale_view", f"{c.label} holds {old}, the edit expected {c.replaces}: the model's view is out of date")
+                    elif new not in pool.by_role_id:
+                        stop = ("unknown_player", f"{new} is not in the salary pool")
+                    else:
+                        row = pool.by_role_id[new]
+                        cell["in_who"] = _who(row, _game_key(row))
+                        cs = ls.cells[(eid, k_)]
+                        if cs.pinned:
+                            stop = ("pinned", f"{c.label} is pinned ({cs.lock.value}): {cs.reason}")
+                        elif not ls.addable(new):
+                            if new in ls.started_role_ids:
+                                ws = f"{_game_key(row) or row.team} has started"
+                            elif new in ls.unswappable:
+                                ws = "DraftKings reports him not swappable"
+                            elif new not in ls.start_utc:
+                                ws = "his game has no known start time"
+                            else:
+                                ws = f"{_game_key(row)} starts {ls.start_utc[new].isoformat()}, inside the {buffer_s}s edit stop"
+                            stop = ("not_addable", f"{row.name} may not be added: {ws}")
+                        elif v.st.get(new, (Participation.PLAYING,))[0] is Participation.OUT or row.person_key in excluded:
+                            stop = ("out", f"{row.name} is OUT or IR" + (f" ({excluded[row.person_key]})" if row.person_key in excluded else ""))
+                        elif row.is_goalie and (goalie_table.get(row.person_key) or {}).get("status") == goalies_mod.NOT_STARTING:
+                            stop = ("not_starting", f"{row.name} ({row.team}) is NOT STARTING in the run's goalie table: his team's other goalie "
+                                                    "is confirmed or DraftKings names him")
+                        elif c.team and c.team.upper() != row.team.upper():
+                            stop = ("identity", f"{new} is {row.name} of {row.team}, the edit expected team {c.team}: wrong id?")
+                        elif c.name and c.name.strip().lower() != row.name.strip().lower():
+                            stop = ("identity", f"{new} is {row.name}, the edit expected {c.name}: wrong id?")
+                        elif ed.edit_type == "news":
+                            newest = max((news_at[pk] for pk in {row.person_key, old_row.person_key if old_row else None}
+                                          if pk in news_at), default=None)
+                            pub = max((_utc(s["published_utc"]) for s in ed.sources if s["published_utc"]), default=None)
+                            if newest is not None and pub is not None and pub < newest:
+                                stop = ("source_stale", f"the cited page ({pub:%Y-%m-%dT%H:%MZ}) is older than the news it contradicts "
+                                                        f"(accepted override effective {newest:%Y-%m-%dT%H:%MZ})")
+                        if stop is None:
+                            lu[k_] = new
+                            if row.is_goalie:
+                                g = goalie_table.get(row.person_key) or {}
+                                status = g.get("status") or "UNKNOWN"
+                                if status != "CONFIRMED":
+                                    start = ls.start_utc.get(new)
+                                    out.flags.append(f"UNCONFIRMED_GOALIE: {row.name} ({row.team}) is {status} in the run's goalie table; "
+                                                     "queued for a recheck before his game")
+                                    rechecks.setdefault(eid, []).append({"entry_id": eid, "goalie": row.name, "team": row.team, "role_id": new, "status": status,
+                                                        "game": _game_key(row), "start_utc": start.isoformat() if start else None,
+                                                        "recheck_before_utc": (start - timedelta(seconds=buffer_s)).isoformat().replace("+00:00", "Z")
+                                                        if start else "unknown",
+                                                        "why": "the edit seats a goalie whose start is not confirmed"})
+                    if stop:
+                        break
                 if stop:
                     break
             if stop:
-                break
-        if stop:
-            out.rule, out.reason = stop
-            continue
-        # the printed checks the model may override (flag 125)
-        need: list[tuple[str, str]] = []
-        if og_error is None and fam_of.get(eid) in rule_fams and set(og_mod.conflict_rows(lu, pool)) - set(og_mod.conflict_rows(cur[eid], pool)):
-            need.append(("own_goalie", "the edit puts a skater against the entry's own goalie (own-goalie rule)"))
-        if caps:
-            if means is None:
-                means = v.role_means()
-            trial = {**cur, eid: lu}
-            breaches = _budget_breaches(_concentration(cur, v, means), _concentration(trial, v, means), caps)
-            if breaches:
-                need.append(("risk_budget", "; ".join(breaches)))
-        have = {ed.override["rule"]: ed.override["reason"] for ed in mine if ed.override}
-        missing = [(r, w) for r, w in need if r not in have]
-        if missing:
-            out.rule, out.reason = missing[0][0], f"{missing[0][1]}; needs an override naming the rule with a stated reason"
-            continue
-        for r, w in need:
-            tag = "OVERRIDE" if r == "own_goalie" else "BREACHED"
-            out.flags.append(f"{tag}({r}): {w}; reason given: {have[r]}")
-            overridden.setdefault(r, []).append(f"entry {eid}: {w}")
-        out.status, out.new_lineup = "APPLIED", lu
-        out.total = sum(pool.by_role_id[r].salary for r in lu)
-        cur[eid] = lu  # later entries are tested on the portfolio plus this one (flag 127)
+                out.rule, out.reason = stop
+                continue
+            if eid in skip:  # the referee dropped this entry on an earlier pass: it is judged again for its cells, never applied
+                out.rule, out.reason = "referee", skip[eid]
+                continue
+            # the printed checks the model may override (flag 125)
+            need: list[tuple[str, str]] = []
+            if og_error is None and fam_of.get(eid) in rule_fams and set(og_mod.conflict_rows(lu, pool)) - set(og_mod.conflict_rows(cur[eid], pool)):
+                need.append(("own_goalie", "the edit puts a skater against the entry's own goalie (own-goalie rule)"))
+            if caps:
+                if "m" not in means_box:
+                    means_box["m"] = v.role_means()
+                trial = {**cur, eid: lu}
+                breaches = _budget_breaches(_concentration(cur, v, means_box["m"]), _concentration(trial, v, means_box["m"]), caps)
+                if breaches:
+                    need.append(("risk_budget", "; ".join(breaches)))
+            have = {ed.override["rule"]: ed.override["reason"] for ed in mine if ed.override}
+            missing = [(r, w) for r, w in need if r not in have]
+            if missing:
+                out.rule, out.reason = missing[0][0], f"{missing[0][1]}; needs an override naming the rule with a stated reason"
+                continue
+            for r, w in need:
+                tag = "OVERRIDE" if r == "own_goalie" else "BREACHED"
+                out.flags.append(f"{tag}({r}): {w}; reason given: {have[r]}")
+                overridden.setdefault(r, []).append(f"entry {eid}: {w}")
+            out.status, out.new_lineup = "APPLIED", lu
+            out.total = sum(pool.by_role_id[r].salary for r in lu)
+            cur[eid] = lu  # later entries are tested on the portfolio plus this one (flag 127)
+        return outcomes, cur, overridden, rechecks
 
     # splice, then the referee decides legality; entries it names are dropped and the file is rebuilt (flag 127)
     from nhl_dfs.intake.entries import read_entries, template_permutation
@@ -529,7 +540,9 @@ def apply_edits(run, edits_input, *, now: datetime | None = None, runs_root=None
     changes: dict[str, dict[int, str]] = {}
     data = parent_bytes
     report = None
-    for _ in range(len(order) + 1):
+    skip: dict[str, str] = {}
+    for _ in range(len(order) + 1):  # each pass drops at least one entry the referee named, so this ends
+        outcomes, cur, overridden, rechecks = evaluate(skip)
         changes = {o.entry_id: {k_: r for k_, r in enumerate(o.new_lineup) if r != v.lineups[o.entry_id][k_]}
                    for o in outcomes.values() if o.status == "APPLIED"}
         changes = {e: ch for e, ch in changes.items() if ch}
@@ -549,14 +562,12 @@ def apply_edits(run, edits_input, *, now: datetime | None = None, runs_root=None
                     o.status, o.rule, o.reason = "REJECTED", "referee", res.stop_reason
             changes, report = {}, None
             break
-        for e in hit:
-            o = outcomes[e]
-            o.status, o.rule = "REJECTED", "referee"
-            o.reason = "; ".join(r for r in report.reasons if r.startswith(f"entry {e}:"))[:300]
-            cur[e] = list(v.lineups[e])
+        for e in hit:  # the whole evaluation runs again without them: an entry that passed the budget only because of them is judged anew
+            skip[e] = "; ".join(r for r in report.reasons if r.startswith(f"entry {e}:"))[:300]
         report = None
     res.entries = [outcomes[e] for e in order]
     if not changes or report is None:
+        changes = {}
         if not res.stop_reason:
             res.stop_reason = "no entry was applied: nothing published, the delivered file stands"
         return _record(run, res, m, now, d)
@@ -696,7 +707,10 @@ def _record(run, res: EditResult, m: dict, now: datetime, d: Path) -> EditResult
             f"{'Restore' if res.kind == 'restore' else 'Model edit file'} {res.k} published v{res.published_version} "
             f"({len(res.applied)} entr{'y' if len(res.applied) == 1 else 'ies'}; log in runs/{res.run_id}/edits/)"]
         write_manifest(run, m)
-        write_run_notes(run, m)
+        try:  # the file is already published and delivered: a notes error is a message, never a crash before the delivery lines print
+            write_run_notes(run, m)
+        except Exception as exc:
+            res.stop_reason = (res.stop_reason + "; " if res.stop_reason else "") + f"RUN_NOTES.md could not be written ({type(exc).__name__}: {str(exc)[:100]})"
     return res
 
 
