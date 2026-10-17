@@ -1,0 +1,109 @@
+Entry ID,Contest Name,Contest ID,Entry Fee,C,C,W,W,W,D,D,G,UTIL,,Instructions
+5298507706,NHL $1.25K Hip Check [20 Entry Max] (Early),196799751,$1,,,,,,,,,,,1. Column A lists all of your contest entries for this draftgroup
+5298507561,NHL $250 Quarter Jukebox (Early),196799752,$0.25,,,,,,,,,,,2. Your current lineup is listed next to each entry (blank for reservations)
+5298507589,NHL $250 Quarter Jukebox (Early),196799752,$0.25,,,,,,,,,,,3. You can change the lineup for an entry by entering the IDs of the players in the row next to that entry
+5298507648,NHL $100 Daily Dollar [Single Entry] (Early),196799754,$1,,,,,,,,,,,4. Use data from the Name+ID column or the ID column; you cannot use just the player's name
+5298507816,NHL $20 Dime Time (Early),196825463,$0.10,,,,,,,,,,,5. For faster processing only include entries you are changing in the file you upload
+5298513803,NHL $20 Dime Time (Early),196825463,$0.10,,,,,,,,,,,
+5298513804,NHL $20 Dime Time (Early),196825463,$0.10,,,,,,,,,,,Position,Name + ID,Name,ID,Roster Position,Salary,Game Info,TeamAbbrev,AvgPointsPerGame
+5298513805,NHL $20 Dime Time (Early),196825463,$0.10,,,,,,,,,,,RW,Nikita Kucherov (44537273),Nikita Kucherov,44537273,W/UTIL,8900,VAN@TBL 10/17/2026 04:00PM ET,TBL,10.66
+5298513806,NHL $20 Dime Time (Early),196825463,$0.10,,,,,,,,,,,G,Andrei Vasilevskiy (44537487),Andrei Vasilevskiy,44537487,G,8400,VAN@TBL 10/17/2026 04:00PM ET,TBL,8.9
+5298513807,NHL $20 Dime Time (Early),196825463,$0.10,,,,,,,,,,,LW,Kyle Connor (44537275),Kyle Connor,44537275,W/UTIL,8300,CAR@WPG 10/17/2026 03:30PM ET,WPG,22.24
+5298513808,NHL $20 Dime Time (Early),196825463,$0.10,,,,,,,,,,,G,Dennis Hildeby (44537488),Dennis Hildeby,44537488,G,8200,VAN@TBL 10/17/2026 04:00PM ET,TBL,22.8
+5298507747,NHL $20 Quarter Jukebox (Early),196830354,$0.25,,,,,,,,,,,C,Jack Hughes (44537213),Jack Hughes,44537213,C/UTIL,8100,NJD@WSH 10/17/2026 01:00PM ET,NJD,15.7
+5298513718,NHL $20 Quarter Jukebox (Early),196830354,$0.25,,,,,,,,,,,G,Brandon Bussi (44537489),Brandon Bussi,44537489,G,8000,CAR@WPG 10/17/2026 03:30PM ET,CAR,7.18
+,,,,,,,,,,,,,,C,Sebastian Aho (44537215),Sebastian Aho,44537215,C/UTIL,7800,CAR@WPG 10/17/2026 03:30PM ET,CAR,18.62
+,,,,,,,,,,,,,,G,Pyotr Kochetkov (44537490),Pyotr Kochetkov,44537490,G,7800,CAR@WPG 10/17/2026 03:30PM ET,CAR,12.48
+,,,,,,,,,,,,,,G,Logan Thompson (44537491),Logan Thompson,44537491,G,7700,NJD@WSH 10/17/2026 01:00PM ET,WSH,12.28
+,,,,,,,,,,,,,,LW,Brandon Hagel (44537277),Brandon Hagel,44537277,W/UTIL,7700,VAN@TBL 10/17/2026 04:00PM ET,TBL,21.51
+,,,,,,,,,,,,,,G,Jake Allen (44537492),Jake Allen,44537492,G,7600,NJD@WSH 10/17/2026 01:00PM ET,NJD,10.1
+,,,,,,,,,,,,,,G,Charlie Lindgren (44537493),Charlie Lindgren,44537493,G,7500,NJD@WSH 10/17/2026 01:00PM ET,WSH,10.7
+,,,,,,,,,,,,,,G,Nico Daws (44537494),Nico Daws,44537494,G,7400,NJD@WSH 10/17/2026 01:00PM ET,NJD,4.33
+,,,,,,,,,,,,,,G,Remi Poirier (44537495),Remi Poirier,44537495,G,7400,NJD@WSH 10/17/2026 01:00PM ET,NJD,0
+,,,,,,,,,,,,,,G,Stuart Skinner (44537496),Stuart Skinner,44537496,G,7300,CAR@WPG 10/17/2026 03:30PM ET,WPG,13.5
+,,,,,,,,,,,,,,D,Jakob Chychrun (44537389),Jakob Chychrun,44537389,D/UTIL,7300,NJD@WSH 10/17/2026 01:00PM ET,WSH,9.67
+,,,,,,,,,,,,,,RW,Seth Jarvis (44537279),Seth Jarvis,44537279,W/UTIL,7100,CAR@WPG 10/17/2026 03:30PM ET,CAR,0
+,,,,,,,,,,,,,,G,Clay Stevenson (44537497),Clay Stevenson,44537497,G,7100,CAR@WPG 10/17/2026 03:30PM ET,WPG,6.85
+,,,,,,,,,,,,,,G,Connor Hellebuyck (44537498),Connor Hellebuyck,44537498,G,7100,CAR@WPG 10/17/2026 03:30PM ET,WPG,0
+,,,,,,,,,,,,,,RW,Andrei Svechnikov (44537283),Andrei Svechnikov,44537283,W/UTIL,7000,CAR@WPG 10/17/2026 03:30PM ET,CAR,16.01
+,,,,,,,,,,,,,,LW,Alex Tuch (44537281),Alex Tuch,44537281,W/UTIL,7000,NJD@WSH 10/17/2026 01:00PM ET,WSH,12.93
+,,,,,,,,,,,,,,G,Leevi Merilainen (44537499),Leevi Merilainen,44537499,G,7000,VAN@TBL 10/17/2026 04:00PM ET,VAN,12.72
+,,,,,,,,,,,,,,C,Mark Scheifele (44537217),Mark Scheifele,44537217,C/UTIL,6900,CAR@WPG 10/17/2026 03:30PM ET,WPG,8.47
+,,,,,,,,,,,,,,G,Kevin Lankinen (44537500),Kevin Lankinen,44537500,G,6800,VAN@TBL 10/17/2026 04:00PM ET,VAN,-3.9
+,,,,,,,,,,,,,,G,Thatcher Demko (44537501),Thatcher Demko,44537501,G,6800,VAN@TBL 10/17/2026 04:00PM ET,VAN,0
+,,,,,,,,,,,,,,LW,Alex Ovechkin (44537285),Alex Ovechkin,44537285,W/UTIL,6300,NJD@WSH 10/17/2026 01:00PM ET,WSH,4.97
+,,,,,,,,,,,,,,C,Nico Hischier (44537219),Nico Hischier,44537219,C/UTIL,6200,NJD@WSH 10/17/2026 01:00PM ET,NJD,9.74
+,,,,,,,,,,,,,,LW,Jake Guentzel (44537287),Jake Guentzel,44537287,W/UTIL,6200,VAN@TBL 10/17/2026 04:00PM ET,TBL,11.59
+,,,,,,,,,,,,,,RW,Jesper Bratt (44537289),Jesper Bratt,44537289,W/UTIL,6100,NJD@WSH 10/17/2026 01:00PM ET,NJD,11.54
+,,,,,,,,,,,,,,D,John Carlson (44537391),John Carlson,44537391,D/UTIL,5900,VAN@TBL 10/17/2026 04:00PM ET,TBL,10.46
+,,,,,,,,,,,,,,C,Logan Stankoven (44537221),Logan Stankoven,44537221,C/UTIL,5800,CAR@WPG 10/17/2026 03:30PM ET,CAR,10.46
+,,,,,,,,,,,,,,LW,Nikolaj Ehlers (44537293),Nikolaj Ehlers,44537293,W/UTIL,5800,CAR@WPG 10/17/2026 03:30PM ET,CAR,5.48
+,,,,,,,,,,,,,,D,Josh Morrissey (44537393),Josh Morrissey,44537393,D/UTIL,5800,CAR@WPG 10/17/2026 03:30PM ET,WPG,10.62
+,,,,,,,,,,,,,,LW,Timo Meier (44537291),Timo Meier,44537291,W/UTIL,5800,NJD@WSH 10/17/2026 01:00PM ET,NJD,9.16
+,,,,,,,,,,,,,,C,Brayden Point (44537223),Brayden Point,44537223,C/UTIL,5800,VAN@TBL 10/17/2026 04:00PM ET,TBL,7.77
+,,,,,,,,,,,,,,RW,Cole Perfetti (44537297),Cole Perfetti,44537297,W/UTIL,5600,CAR@WPG 10/17/2026 03:30PM ET,WPG,13.06
+,,,,,,,,,,,,,,RW,Tom Wilson (44537295),Tom Wilson,44537295,W/UTIL,5600,NJD@WSH 10/17/2026 01:00PM ET,WSH,10.56
+,,,,,,,,,,,,,,RW,Jackson Blake (44537299),Jackson Blake,44537299,W/UTIL,5500,CAR@WPG 10/17/2026 03:30PM ET,CAR,10.24
+,,,,,,,,,,,,,,C,Elias Pettersson (44537225),Elias Pettersson,44537225,C/UTIL,5200,VAN@TBL 10/17/2026 04:00PM ET,VAN,10.56
+,,,,,,,,,,,,,,D,Shayne Gostisbehere (44537395),Shayne Gostisbehere,44537395,D/UTIL,5100,CAR@WPG 10/17/2026 03:30PM ET,CAR,7.3
+,,,,,,,,,,,,,,RW,Luke Evangelista (44537301),Luke Evangelista,44537301,W/UTIL,5100,NJD@WSH 10/17/2026 01:00PM ET,NJD,9.04
+,,,,,,,,,,,,,,D,Neal Pionk (44537397),Neal Pionk,44537397,D/UTIL,5000,CAR@WPG 10/17/2026 03:30PM ET,WPG,10.66
+,,,,,,,,,,,,,,C,Dylan Strome (44537227),Dylan Strome,44537227,C/UTIL,4800,NJD@WSH 10/17/2026 01:00PM ET,WSH,7.26
+,,,,,,,,,,,,,,D,Filip Hronek (44537399),Filip Hronek,44537399,D/UTIL,4800,VAN@TBL 10/17/2026 04:00PM ET,VAN,10.44
+,,,,,,,,,,,,,,RW,Gabriel Vilardi (44537305),Gabriel Vilardi,44537305,W/UTIL,4500,CAR@WPG 10/17/2026 03:30PM ET,WPG,5.09
+,,,,,,,,,,,,,,D,Luke Hughes (44537401),Luke Hughes,44537401,D/UTIL,4500,NJD@WSH 10/17/2026 01:00PM ET,NJD,10.3
+,,,,,,,,,,,,,,LW,Jake DeBrusk (44537303),Jake DeBrusk,44537303,W/UTIL,4500,VAN@TBL 10/17/2026 04:00PM ET,VAN,10.34
+,,,,,,,,,,,,,,C,Anthony Cirelli (44537229),Anthony Cirelli,44537229,C/UTIL,4400,VAN@TBL 10/17/2026 04:00PM ET,TBL,5.9
+,,,,,,,,,,,,,,C,Pierre-Luc Dubois (44537231),Pierre-Luc Dubois,44537231,C/UTIL,4300,NJD@WSH 10/17/2026 01:00PM ET,WSH,9.1
+,,,,,,,,,,,,,,D,Dougie Hamilton (44537403),Dougie Hamilton,44537403,D/UTIL,4300,NJD@WSH 10/17/2026 01:00PM ET,NJD,11.47
+,,,,,,,,,,,,,,D,Sean Walker (44537405),Sean Walker,44537405,D/UTIL,4200,CAR@WPG 10/17/2026 03:30PM ET,CAR,9.81
+,,,,,,,,,,,,,,LW,Aliaksei Protas (44537307),Aliaksei Protas,44537307,W/UTIL,4100,NJD@WSH 10/17/2026 01:00PM ET,WSH,4.5
+,,,,,,,,,,,,,,LW,Taylor Hall (44537313),Taylor Hall,44537313,W/UTIL,4000,CAR@WPG 10/17/2026 03:30PM ET,CAR,7.79
+,,,,,,,,,,,,,,RW,Jordan Kyrou (44537311),Jordan Kyrou,44537311,W/UTIL,4000,NJD@WSH 10/17/2026 01:00PM ET,WSH,6.16
+,,,,,,,,,,,,,,D,Cole Hutson (44537407),Cole Hutson,44537407,D/UTIL,4000,NJD@WSH 10/17/2026 01:00PM ET,WSH,8.73
+,,,,,,,,,,,,,,RW,Brock Boeser (44537309),Brock Boeser,44537309,W/UTIL,4000,VAN@TBL 10/17/2026 04:00PM ET,VAN,6.71
+,,,,,,,,,,,,,,C,Boone Jenner (44537233),Boone Jenner,44537233,C/UTIL,3800,NJD@WSH 10/17/2026 01:00PM ET,WSH,10.31
+,,,,,,,,,,,,,,LW,Anthony Mantha (44537317),Anthony Mantha,44537317,W/UTIL,3800,NJD@WSH 10/17/2026 01:00PM ET,NJD,3.64
+,,,,,,,,,,,,,,C,Marco Rossi (44537235),Marco Rossi,44537235,C/UTIL,3600,VAN@TBL 10/17/2026 04:00PM ET,VAN,7.3
+,,,,,,,,,,,,,,D,K'Andre Miller (44537411),K'Andre Miller,44537411,D/UTIL,3500,CAR@WPG 10/17/2026 03:30PM ET,CAR,6.65
+,,,,,,,,,,,,,,RW,Dawson Mercer (44537319),Dawson Mercer,44537319,W/UTIL,3500,NJD@WSH 10/17/2026 01:00PM ET,NJD,7.03
+,,,,,,,,,,,,,,D,Jaccob Slavin (44537413),Jaccob Slavin,44537413,D/UTIL,3400,CAR@WPG 10/17/2026 03:30PM ET,CAR,8.25
+,,,,,,,,,,,,,,LW,Arseny Gritsyuk (44537321),Arseny Gritsyuk,44537321,W/UTIL,3300,NJD@WSH 10/17/2026 01:00PM ET,NJD,6.86
+,,,,,,,,,,,,,,D,Timothy Liljegren (44537415),Timothy Liljegren,44537415,D/UTIL,3300,NJD@WSH 10/17/2026 01:00PM ET,WSH,5.34
+,,,,,,,,,,,,,,D,Brett Pesce (44537417),Brett Pesce,44537417,D/UTIL,3300,NJD@WSH 10/17/2026 01:00PM ET,NJD,5.21
+,,,,,,,,,,,,,,C,Jordan Staal (44537239),Jordan Staal,44537239,C/UTIL,3200,CAR@WPG 10/17/2026 03:30PM ET,CAR,2.15
+,,,,,,,,,,,,,,D,Martin Fehervary (44537419),Martin Fehervary,44537419,D/UTIL,3200,NJD@WSH 10/17/2026 01:00PM ET,WSH,6.01
+,,,,,,,,,,,,,,C,Ilya Protas (44537241),Ilya Protas,44537241,C/UTIL,3100,NJD@WSH 10/17/2026 01:00PM ET,WSH,4.67
+,,,,,,,,,,,,,,D,Jalen Chatfield (44537423),Jalen Chatfield,44537423,D/UTIL,3000,CAR@WPG 10/17/2026 03:30PM ET,CAR,4.45
+,,,,,,,,,,,,,,RW,Conor Geekie (44537327),Conor Geekie,44537327,W/UTIL,3000,VAN@TBL 10/17/2026 04:00PM ET,TBL,3.11
+,,,,,,,,,,,,,,D,Elias-Nils Pettersson (44537421),Elias-Nils Pettersson,44537421,D/UTIL,3000,VAN@TBL 10/17/2026 04:00PM ET,VAN,7.08
+,,,,,,,,,,,,,,C,Morgan Barron (44537245),Morgan Barron,44537245,C/UTIL,2900,CAR@WPG 10/17/2026 03:30PM ET,WPG,5.43
+,,,,,,,,,,,,,,C,Evan Rodrigues (44537243),Evan Rodrigues,44537243,C/UTIL,2900,NJD@WSH 10/17/2026 01:00PM ET,NJD,7.01
+,,,,,,,,,,,,,,D,Ryan McDonagh (44537425),Ryan McDonagh,44537425,D/UTIL,2900,VAN@TBL 10/17/2026 04:00PM ET,TBL,3.49
+,,,,,,,,,,,,,,D,Victor Hedman (44537427),Victor Hedman,44537427,D/UTIL,2900,VAN@TBL 10/17/2026 04:00PM ET,TBL,6.67
+,,,,,,,,,,,,,,C,Viggo Bjorck (44537249),Viggo Bjorck,44537249,C/UTIL,2800,CAR@WPG 10/17/2026 03:30PM ET,WPG,1.5
+,,,,,,,,,,,,,,RW,Jonathan Lekkerimaki (44537329),Jonathan Lekkerimaki,44537329,W/UTIL,2800,VAN@TBL 10/17/2026 04:00PM ET,VAN,6.01
+,,,,,,,,,,,,,,LW,Gage Goncalves (44537331),Gage Goncalves,44537331,W/UTIL,2800,VAN@TBL 10/17/2026 04:00PM ET,TBL,1.18
+,,,,,,,,,,,,,,D,Jamie Oleksiak (44537429),Jamie Oleksiak,44537429,D/UTIL,2800,VAN@TBL 10/17/2026 04:00PM ET,VAN,6.52
+,,,,,,,,,,,,,,D,J.J. Moser (44537433),J.J. Moser,44537433,D/UTIL,2800,VAN@TBL 10/17/2026 04:00PM ET,TBL,3.17
+,,,,,,,,,,,,,,RW,Alex Iafallo (44537337),Alex Iafallo,44537337,W/UTIL,2700,CAR@WPG 10/17/2026 03:30PM ET,WPG,6.24
+,,,,,,,,,,,,,,C,Zemgus Girgensons (44537253),Zemgus Girgensons,44537253,C/UTIL,2700,VAN@TBL 10/17/2026 04:00PM ET,TBL,5.21
+,,,,,,,,,,,,,,D,Charle-Edouard D'Astous (44537439),Charle-Edouard D'Astous,44537439,D/UTIL,2700,VAN@TBL 10/17/2026 04:00PM ET,TBL,5.22
+,,,,,,,,,,,,,,C,Adam Lowry (44537259),Adam Lowry,44537259,C/UTIL,2600,CAR@WPG 10/17/2026 03:30PM ET,WPG,4.67
+,,,,,,,,,,,,,,LW,Nino Niederreiter (44537341),Nino Niederreiter,44537341,W/UTIL,2600,CAR@WPG 10/17/2026 03:30PM ET,WPG,3.38
+,,,,,,,,,,,,,,C,Cody Glass (44537255),Cody Glass,44537255,C/UTIL,2600,NJD@WSH 10/17/2026 01:00PM ET,NJD,3.61
+,,,,,,,,,,,,,,LW,Isak Rosen (44537371),Isak Rosen,44537371,W/UTIL,2500,CAR@WPG 10/17/2026 03:30PM ET,WPG,3.39
+,,,,,,,,,,,,,,D,Mike Reilly (44537469),Mike Reilly,44537469,D/UTIL,2500,CAR@WPG 10/17/2026 03:30PM ET,CAR,4.75
+,,,,,,,,,,,,,,C,Nick Bjugstad (44537263),Nick Bjugstad,44537263,C/UTIL,2500,NJD@WSH 10/17/2026 01:00PM ET,NJD,0
+,,,,,,,,,,,,,,LW,Anthony Beauvillier (44537351),Anthony Beauvillier,44537351,W/UTIL,2500,NJD@WSH 10/17/2026 01:00PM ET,WSH,3.3
+,,,,,,,,,,,,,,RW,Stefan Noesen (44537355),Stefan Noesen,44537355,W/UTIL,2500,NJD@WSH 10/17/2026 01:00PM ET,NJD,5.62
+,,,,,,,,,,,,,,RW,Jesper Boqvist (44537357),Jesper Boqvist,44537357,W/UTIL,2500,NJD@WSH 10/17/2026 01:00PM ET,NJD,6.96
+,,,,,,,,,,,,,,D,Jonas Siegenthaler (44537459),Jonas Siegenthaler,44537459,D/UTIL,2500,NJD@WSH 10/17/2026 01:00PM ET,NJD,3.61
+,,,,,,,,,,,,,,D,Declan Chisholm (44537461),Declan Chisholm,44537461,D/UTIL,2500,NJD@WSH 10/17/2026 01:00PM ET,NJD,2.44
+,,,,,,,,,,,,,,C,Dominic James (44537267),Dominic James,44537267,C/UTIL,2500,VAN@TBL 10/17/2026 04:00PM ET,TBL,6.5
+,,,,,,,,,,,,,,C,Yanni Gourde (44537269),Yanni Gourde,44537269,C/UTIL,2500,VAN@TBL 10/17/2026 04:00PM ET,TBL,0
+,,,,,,,,,,,,,,LW,Ilya Mikheyev (44537379),Ilya Mikheyev,44537379,W/UTIL,2500,VAN@TBL 10/17/2026 04:00PM ET,TBL,5.94
+,,,,,,,,,,,,,,RW,Pontus Holmberg (44537381),Pontus Holmberg,44537381,W/UTIL,2500,VAN@TBL 10/17/2026 04:00PM ET,TBL,6.27
+,,,,,,,,,,,,,,D,Tom Willander (44537441),Tom Willander,44537441,D/UTIL,2500,VAN@TBL 10/17/2026 04:00PM ET,VAN,4.61
+,,,,,,,,,,,,,,D,Erik Cernak (44537483),Erik Cernak,44537483,D/UTIL,2500,VAN@TBL 10/17/2026 04:00PM ET,TBL,6.37
+,,,,,,,,,,,,,,D,Max Crozier (44537485),Max Crozier,44537485,D/UTIL,2500,VAN@TBL 10/17/2026 04:00PM ET,TBL,6.56
