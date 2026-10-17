@@ -67,11 +67,11 @@ Tracker for `BUILD_CHUNKS.md` (final, 26 September 2026). Every development sess
 | C55 | DONE | C18 | 2026-10-15 | 2026-10-15 | c549b04 | PASS | band 1; B129; flag 107 default in force; flags 108 to 112 (written before any number) and 113 (ON by the rule, Ben may revert); switch ON: `objectives.goal: first_place` for large_gpp and small_field (Part A 0.2424 against 0.25 at 20,000; Part B could not bind); late swap and --fast keep top-1% (`late_swap.full_goal`, `fast_goal`); referee draws showed no first-place gain on 09-29 or 09-30 (B132); B130, B131, B133 filed; B15 rider |
 | C56 | TODO | C10 | | | | | band 1; B141, B150; Ben 2026-10-17: top priority, ranked first; the model's write path and its guardrails |
 | C59 | TODO | C11, C41 | | | | | band 1; B142; measurement on saved caches and standings, the real-contest part runs on Ben's machine; ranked second because the evaluator and every goalie result rest on it (Opus read) |
-| C62 | TODO | C56 | | | | | band 1; B147; the fair scorer for edits, ranked third |
-| C57 | TODO | C56, C62 | | | | | band 1; B141, B140 steps 1 and 2, B143; ranked fourth, after the evaluator it prints |
+| C62 | TODO | C56 | | | | | band 1; B147, B152; the fair scorer for edits, ranked third |
+| C57 | TODO | C56, C62 | | | | | band 1; B141, B140 steps 1 and 2, B143, B153, B81; ranked fourth, after the evaluator it prints |
 | C61 | TODO | C54 | | | | | band 1; B144; small and independent |
 | C60 | TODO | C61, C59 | | | | | band 1; B145, B146; adjustments with provenance and grading |
-| C58 | TODO | C20, C59 | | | | | band 1; B140 step 3, B148; the real-cache arm waits on B102 |
+| C58 | TODO | C20, C59 | | | | | band 1; B140 step 3, B148, B151; the real-cache arm waits on B102 |
 
 ## Open [BEN] flags
 

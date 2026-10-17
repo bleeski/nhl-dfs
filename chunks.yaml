@@ -260,7 +260,7 @@ chunks:
     effort: "high: build/controller.py evaluate (the paired comparison over the selection draws and one referee block), build/swap_objective.py ScenarioObjective, build/objectives.py own_totals and joint, cli.py (a what-if command), config/qa.yaml"
     breakpoint: "first commit: the what-if command over the existing evaluate with both goals' deltas and standard errors; second: held-out scoring, the goalie-starting conditional and the payout-curve weight; third: the Pareto accept rule and the claimed-gain field in the edit log"
     impact: "Band 1 and 2: the controller's evaluate already scores the joint total of every owned entry in a touched contest on paired draws, but it credits only first-place gain (safety is a cap at a placeholder 0.60) and is reachable only through qa-apply. The same swap scored -0.019 +/- 0.005 on selection draws and -0.010 +/- 0.010 on referee draws (entry 5298507816, Allen to Hildeby, 2026-10-17), so repeated what-if queries on the draws that chose the portfolio will mine noise (Opus read, judgment)."
-    backlog: [B147]
+    backlog: [B147, B152]
     checks:
       - pytest -m c62 -q
   - id: C57
@@ -272,7 +272,7 @@ chunks:
     effort: "high: build/packet.py (a coverage table for every goalie in the pool, flags for a team or game with no lineup), .claude/agents/nhl-adversary.md and .claude/skills/nhl-run/SKILL.md (the goals and the required review), settle's grading of edited against engine-only lineups, CLAUDE.md, docs/proposal_schema.md, config/qa.yaml"
     breakpoint: "first commit: the packet coverage table and flags (B140 steps 1 and 2) with a rehearsal that still echoes its canary; second: the reasoning pass and the staged timeline in the nhl-run skill; third: settle grading by edit type and the CLAUDE.md and schema text"
     impact: "Band 1 and 2: without a gap report the model cannot see an unused goalie, and without deltas and grading nobody can tell whether its edits help. Evidence is the 2026-10-17 run: the packet listed four goalies and the adversary proposed no goalie change in either reply. Judgment, unmeasured: the reasoning pass finds gaps the engine does not."
-    backlog: [B141, B140, B143]
+    backlog: [B141, B140, B143, B153, B81]
     checks:
       - pytest -m c57 -q
   - id: C61
@@ -308,7 +308,7 @@ chunks:
     effort: "high: build/portfolio.py (selection is greedy per entry) and build/exposure.py, config/risk.yaml discovery.goalie_term and per_goalie, scripts/c20_goalie_experiment.py as the pattern, a docs/experiments preregistration written before any arm runs, the real caches of B102 on Ben's machine"
     breakpoint: "first commit: the preregistration, committed before any code or number; second: the arms and the verdict on the synthetic bed; third: the same arms on real caches when Ben runs B102"
     impact: "Band 1 and 2: on 2026-10-17 selection held no CAR or TBL goalie and 66% of fees on one game's goalies, and all 7 Dime Time entries held NJD or WSH goalies. Opus read (judgment): a hard every-goalie-once rule is wrong as a rule, because a repeat on the best goalie can beat a first entry on a long shot; allocate goalies by marginal value and build the skaters around each. Hypothesis, unmeasured: that lowers P(lose >= 80%) at no first-place cost, as the kappa 2 point did (0.103 to 0.087 at utility 0.853 to 0.848, SE 0.038). An experiment chunk is DONE when its challenger is rejected."
-    backlog: [B140, B148]
+    backlog: [B140, B148, B151]
     checks:
       - pytest -m c58 -q
   - id: C48
