@@ -272,7 +272,7 @@ chunks:
     effort: "high: build/packet.py (a coverage table for every goalie in the pool, flags for a team or game with no lineup), .claude/agents/nhl-adversary.md and .claude/skills/nhl-run/SKILL.md (the goals and the required review), settle's grading of edited against engine-only lineups, CLAUDE.md, docs/proposal_schema.md, config/qa.yaml"
     breakpoint: "first commit: the packet coverage table and flags (B140 steps 1 and 2) with a rehearsal that still echoes its canary; second: the reasoning pass and the staged timeline in the nhl-run skill; third: settle grading by edit type and the CLAUDE.md and schema text"
     impact: "Band 1 and 2: without a gap report the model cannot see an unused goalie, and without deltas and grading nobody can tell whether its edits help. Evidence is the 2026-10-17 run: the packet listed four goalies and the adversary proposed no goalie change in either reply. Judgment, unmeasured: the reasoning pass finds gaps the engine does not."
-    backlog: [B141, B140, B143, B153, B81]
+    backlog: [B141, B140, B143, B153, B81, B156]
     checks:
       - pytest -m c57 -q
   - id: C61
@@ -871,6 +871,12 @@ deferred:
   - item: "Leverage review against public ownership and projection pages (B149)"
     trigger: "Ben names the public sources a session may read (nothing paid, nothing behind a login), and the model-versus-standings replay (C59) and the goalie term's real-slate run (B102) have reported"
     backlog: [B149]
+  - item: "The edit command reads DraftKings' draftables for isSwappable and early starts (B154)"
+    trigger: "an edit is refused or reaches DraftKings after lock because Game Info alone said the cell was open, or Ben asks"
+    backlog: [B154]
+  - item: "Contest names of the 2026-10-17 slate have no own-goalie family when a run lacks scenario rows (B155)"
+    trigger: "Ben names the family of Hip Check, Quarter Jukebox, Daily Dollar and Dime Time contests, or a baseline-only run delivers OWN_GOALIE=NOT_EVALUATED on a slate with those names"
+    backlog: [B155]
   - item: "The Phase A baseline (v1) cannot honor the own-goalie rule: families are unknown when it is built (B103)"
     trigger: "a run published with --baseline in a large_gpp-heavy slate, or Ben asks; OWN_GOALIE on v1 prints the count of lineups facing their own goalie meanwhile"
     backlog: [B103]

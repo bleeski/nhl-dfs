@@ -698,6 +698,49 @@ def cmd_qa_apply(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_edit_apply(args: argparse.Namespace) -> int:
+    """C56 (flags 124 to 131): the model's edit list, checked by the referee and published as the next version."""
+    from nhl_dfs.build import edits
+
+    if not (args.run and args.edits):
+        print("edit-apply needs --run <id> --edits <file saved verbatim>")
+        return 2
+    run, runs_root, outputs_root = _qa_run(args)
+    as_of = _as_of(args.as_of)  # only a labeled rehearsal freezes the clock, as in qa-apply
+    res = edits.apply_edits(run, Path(args.edits), now=as_of, clock=(lambda: as_of) if as_of is not None else None,
+                            runs_root=runs_root, outputs_root=outputs_root)
+    for line in res.lines():
+        print(line)
+    if res.published_version:  # the lines the skill hands Ben: delivery_file, FILE_VALID, DELIVERY_CURRENT, LOCK_SOON
+        _, lines = verify_run(runs_root, run.run_id, now=as_of)
+        for line in lines:
+            print(line)
+    _print_risk_budget(run)
+    _print_goalies(_goalie_refresh(run))
+    return 0 if res.delivery_path else 1  # a version that was written but not delivered is not a success (the public file was open elsewhere)
+
+
+def cmd_edit_restore(args: argparse.Namespace) -> int:
+    """C56 (flag 128): put the previous version's bytes back as the next version."""
+    from nhl_dfs.build import edits
+
+    if not args.run:
+        print("edit-restore needs --run <id>")
+        return 2
+    run, runs_root, outputs_root = _qa_run(args)
+    as_of = _as_of(args.as_of)
+    res = edits.restore_previous(run, now=as_of, clock=(lambda: as_of) if as_of is not None else None,
+                                 runs_root=runs_root, outputs_root=outputs_root)
+    for line in res.lines():
+        print(line)
+    if res.published_version:
+        _, lines = verify_run(runs_root, run.run_id, now=as_of)
+        for line in lines:
+            print(line)
+    _print_risk_budget(run)
+    return 0 if res.delivery_path else 1
+
+
 def _goalie_refresh(run):
     from datetime import datetime, timezone
 
@@ -1049,7 +1092,7 @@ def build_parser() -> argparse.ArgumentParser:
     reh.set_defaults(func=cmd_qa_rehearse)
 
     for name, func in (("qa-packet", cmd_qa_packet), ("qa-apply", cmd_qa_apply), ("research-request", cmd_research_request),
-                       ("overrides-apply", cmd_overrides_apply)):
+                       ("overrides-apply", cmd_overrides_apply), ("edit-apply", cmd_edit_apply), ("edit-restore", cmd_edit_restore)):
         sp = sub.add_parser(name)
         sp.add_argument("--run", type=str, default=None)
         sp.add_argument("--runs-root", type=str, default=str(RUNS_ROOT))
@@ -1061,6 +1104,8 @@ def build_parser() -> argparse.ArgumentParser:
             sp.add_argument("--canary", type=str, default=None, help="rehearsal only: a token the adversary must echo")
         if name == "qa-apply":
             sp.add_argument("--proposals", type=str, default=None)
+        if name == "edit-apply":
+            sp.add_argument("--edits", type=str, default=None, help="the model's edit list, saved verbatim (docs/proposal_schema.md)")
         if name == "overrides-apply":
             sp.add_argument("--file", type=str, default=None)
             sp.add_argument("--ben", type=str, default=None, help="Ben's report: '<player> OUT' (C53; no URL needed)")

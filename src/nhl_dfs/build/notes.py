@@ -78,9 +78,27 @@ def render(m: dict[str, Any]) -> str:
         from nhl_dfs.build.goalies import notes_lines
 
         lines += notes_lines(m["goalies"])
+    if m.get("edits"):
+        lines += _edit_lines(m["edits"])
     if m.get("messages"):
         lines += ["", "## Messages", ""] + [f"- {x}" for x in m["messages"]]
     return "\n".join(lines) + "\n"
+
+
+def _edit_lines(edits: list[dict[str, Any]]) -> list[str]:
+    """C56 section: every model edit file and restore that published a version, each applied edit with its reason, claimed gain,
+    cells and flags (OVERRIDE, BREACHED, UNCONFIRMED_GOALIE). The log under runs/<id>/edits/ keeps the rest."""
+    out = ["", "## Model edits (C56)", ""]
+    for f in edits:
+        what = "restore" if f.get("kind") == "restore" else "edit file"
+        rej = f", rejected {len(f['rejected'])} ({', '.join(r['entry_id'] + ' ' + r['rule'] for r in f['rejected'])})" if f.get("rejected") else ""
+        out.append(f"- {what} {f['file']}: v{f['version']} (delivery v{f.get('delivery_version')}), applied {len(f['applied'])} "
+                   f"({', '.join(f['applied'])}){rej}")
+        for e in f.get("edits", []):
+            out.append(f"  - entry {e['entry_id']} [{e.get('edit_type', 'restore')}]: " + "; ".join(e.get("cells", []))
+                       + (f" | reason: {e['reason']} | claimed gain: {e['claimed_gain']}" if e.get("reason") else "")
+                       + "".join(f" | {x.split(':')[0]}" for x in e.get("flags", [])))
+    return out
 
 
 def _base(path: str) -> str:
