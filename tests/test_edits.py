@@ -410,3 +410,327 @@ def test_the_cli_prints_the_delivery_file_and_the_checks(base, tmp_path, capsys)
     capsys.readouterr()
     assert cli.main(argv) == 1  # the same file again: Thompson is no longer in that cell
     assert "REJECTED [stale_view]" in capsys.readouterr().out
+
+
+# -- the log, the counterfactual and restore (flag 128) ------------------------------------------------------------
+
+def _two_goalie_edits():
+    return [E(E1, [C("G", HILDEBY, ALLEN, team="TBL", name="Dennis Hildeby")]), E(E2, [C("G", KOCHETKOV, THOMPSON, team="CAR")])]
+
+
+def test_each_edit_writes_a_log_row_and_the_engine_counterfactual_is_written_once(base, tmp_path):
+    run, runs, outs = _fresh(base, tmp_path)
+    d = run.path / "edits"
+    raw = json.dumps(_two_goalie_edits())
+    res = edits_mod.apply_edits(run, raw, now=T_OPEN, runs_root=runs, outputs_root=outs, clock=lambda: T_OPEN)
+    assert (d / "edits_1.json").read_text(encoding="utf-8") == raw  # the file as saved, verbatim
+    assert hashlib.sha256(raw.encode()).hexdigest() == res.edits_sha256 == json.loads((d / "edits_1_result.json").read_text())["edits_sha256"]
+    rows = [json.loads(x) for x in (d / "log.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert [r["entry_id"] for r in rows] == [E1, E2] and all(r["status"] == "APPLIED" for r in rows)
+    r1 = rows[0]
+    cell = r1["cells"][0]
+    assert (cell["slot"], cell["from"], cell["to"]) == ("G", ALLEN, HILDEBY) and len(r1["cells"]) == 1
+    assert "Jake Allen" in cell["from_who"] and "Dennis Hildeby" in cell["to_who"] and "TBL G, $8,200" in cell["to_who"]
+    assert r1["reason"] and r1["evidence"] and r1["claimed_gain"] and r1["edit_type"] == "coverage"
+    assert r1["parent_version"] == 2 and r1["published_version"] == 3 and r1["sha256"] == sha256(_cur(run).read_bytes())
+    assert sorted(p.name for p in d.glob("engine_v*.csv")) == ["engine_v2.csv"]
+    assert (d / "engine_v2.csv").read_bytes() == run.version_file(2).read_bytes()
+    notes = (run.path / "RUN_NOTES.md").read_text(encoding="utf-8")
+    assert "## Model edits (C56)" in notes and E1 in notes and "Dennis Hildeby" in notes and "claimed gain" in notes
+    assert read_manifest(run)["versions"][-1]["phase"] == "EDIT1"
+    # a second run of edits does not touch the counterfactual, and a rejected edit is logged too
+    view = _view(run, runs)
+    slot, out_r, in_r = _swap_down(view, "5298507706", same_team=True)
+    res2 = _apply(run, runs, outs, [E("5298507706", [C(slot, in_r, out_r)]), E(E1, [C("G", ALLEN, HILDEBY)], reason="put him back")], now=T_NJD_STARTED)
+    assert sorted(p.name for p in d.glob("engine_v*.csv")) == ["engine_v2.csv"]
+    assert (d / "engine_v2.csv").read_bytes() == run.version_file(2).read_bytes()
+    rows2 = [json.loads(x) for x in (d / "log.jsonl").read_text(encoding="utf-8").splitlines()][2:]
+    assert {r["entry_id"]: (r["status"], r["rule"]) for r in rows2} == {"5298507706": ("APPLIED", ""), E1: ("REJECTED", "not_addable")}
+    assert res2.published_version == 4
+
+
+def test_restore_returns_the_previous_version_byte_for_byte_and_appends_history(base, tmp_path):
+    run, runs, outs = _fresh(base, tmp_path)
+    v2 = run.version_file(2).read_bytes()
+    _apply(run, runs, outs, _two_goalie_edits())
+    v3 = _cur(run).read_bytes()
+    res = _restore(run, runs, outs)
+    assert res.published_version == 4 and run.version_numbers() == [1, 2, 3, 4]  # history is append-only
+    assert _cur(run).read_bytes() == v2 and sha256(_cur(run).read_bytes()) == sha256(v2)
+    d = Path(res.delivery_path)
+    assert d.read_bytes() == v2 and d.name.split("_")[2][:8] == sha256(v2)[:8] and res.delivery_version == _published(outs, run)["delivery_version"]
+    assert [o.entry_id for o in res.applied] == [E1, E2] and read_manifest(run)["versions"][-1]["phase"] == "RESTORE1"
+    again = _restore(run, runs, outs)  # a restore of the restore goes forward again
+    assert again.published_version == 5 and _cur(run).read_bytes() == v3
+    assert "Model edits" in (run.path / "RUN_NOTES.md").read_text(encoding="utf-8")
+
+
+def test_a_restore_that_would_add_a_started_players_cell_is_refused_even_when_the_other_cell_is_open(base, tmp_path):
+    """Allen (NJD@WSH) was swapped for Hildeby (VAN@TBL). After 17:00Z Hildeby's cell is still open, but restoring would put Allen back."""
+    run, runs, outs = _fresh(base, tmp_path)
+    _apply(run, runs, outs, [E(E1, [C("G", HILDEBY, ALLEN)])])
+    state = _state(run, outs)
+    res = _restore(run, runs, outs, now=T_NJD_STARTED)
+    assert res.published_version is None and "refused" in res.stop_reason and "Jake Allen" in res.stop_reason and E1 in res.stop_reason
+    assert _state(run, outs) == state
+
+
+def test_a_restore_that_would_change_a_pinned_cell_is_refused_naming_the_cell(base, tmp_path):
+    run, runs, outs = _fresh(base, tmp_path)
+    view = _view(run, runs)
+    eid = E1
+    k = next(k for k, r in enumerate(view.lineups[eid]) if view.pool.by_role_id[r].team in ("TBL", "VAN") and not view.pool.by_role_id[r].is_goalie)
+    cand = next(r for r in view.pool.rows if r.team in ("NJD", "WSH") and slot_accepts(view.slots[k], r, view.mode) and _playing(view, r)
+                and r.role_id not in view.lineups[eid] and r.salary <= view.pool.by_role_id[view.lineups[eid][k]].salary)
+    label = edits_mod.slot_labels(view.mode)[k]
+    res = _apply(run, runs, outs, [E(eid, [C(label, cand.role_id, view.lineups[eid][k])])])
+    assert res.entries[0].status == "APPLIED", res.entries[0].reason
+    state = _state(run, outs)
+    res = _restore(run, runs, outs, now=T_NJD_STARTED)  # the added NJD or WSH player's game has started: his cell is pinned now
+    assert res.published_version is None and "pinned now" in res.stop_reason and f"entry {eid} {label}" in res.stop_reason
+    assert _state(run, outs) == state
+
+
+def test_a_restore_with_nothing_to_undo_says_so(base, tmp_path):
+    run, runs, outs = _fresh(base, tmp_path)
+    res = _restore(run, runs, outs)
+    assert res.published_version is None and "no previous edit version" in res.stop_reason
+
+
+def test_the_cli_restores_the_delivery_file(base, tmp_path, capsys):
+    from nhl_dfs import cli
+
+    run, runs, outs = _fresh(base, tmp_path)
+    _apply(run, runs, outs, _two_goalie_edits())
+    argv = ["--run", run.run_id, "--runs-root", str(runs), "--outputs-root", str(outs), "--as-of", "2026-10-17T16:30:00Z"]
+    capsys.readouterr()
+    assert cli.main(["edit-restore", *argv]) == 0
+    out = capsys.readouterr().out
+    assert "EDIT_RESTORE" in out and "delivery_file=" in out and "FILE_VALID=TRUE" in out
+
+
+# -- the two checks the model may override (flag 125) ----------------------------------------------------------------
+
+def _facing_swap(view, eid):
+    """(slot label, out id, in id): put a skater of the entry's own goalie's opponent in the lineup, legal on cap and teams."""
+    from nhl_dfs.build import own_goalie as og
+
+    opp = og.opponent_map(view.pool)
+    lu = view.lineups[eid]
+    goalie = next(view.pool.by_role_id[r] for r in lu if view.pool.by_role_id[r].is_goalie)
+    labels = edits_mod.slot_labels(view.mode)
+    for k, rid in enumerate(lu):
+        row = view.pool.by_role_id[rid]
+        if row.is_goalie:
+            continue
+        for cand in sorted(view.pool.rows, key=lambda r: (-r.salary, r.role_id)):
+            if cand.team != opp[goalie.team] or cand.is_goalie or cand.role_id in lu or cand.salary > row.salary or not _playing(view, cand) \
+                    or not slot_accepts(view.slots[k], cand, view.mode):
+                continue
+            new = list(lu)
+            new[k] = cand.role_id
+            if len({view.pool.by_role_id[r].team for r in new if not view.pool.by_role_id[r].is_goalie}) >= 3:
+                return labels[k], rid, cand.role_id
+    raise AssertionError("no facing swap")
+
+
+def test_an_own_goalie_breach_needs_an_override_and_prints_it(base, tmp_path):
+    run, runs, outs = _fresh(base, tmp_path)
+    m = read_manifest(run)
+    m["families"] = {e: "large_gpp" for e in _view(run, runs).lineups}  # the rule covers these contests
+    write_manifest(run, m)
+    view = _view(run, runs)
+    slot, out_r, in_r = _facing_swap(view, E1)
+    cell = [C(slot, in_r, out_r)]
+    state = _state(run, outs)
+    res = _apply(run, runs, outs, [E(E1, cell)])
+    assert res.entries[0].rule == "own_goalie" and "needs an override" in res.entries[0].reason and _state(run, outs) == state
+    wrong_rule = _apply(run, runs, outs, [E(E1, cell, override={"rule": "risk_budget", "reason": "the budget is not what this is about"})])
+    assert wrong_rule.entries[0].rule == "own_goalie"  # an override for another rule does not excuse this one
+    ok = _apply(run, runs, outs, [E(E1, cell, override=RULE)])
+    assert ok.entries[0].status == "APPLIED" and ok.entries[0].flags[0].startswith("OVERRIDE(own_goalie)") and RULE["reason"] in ok.entries[0].flags[0]
+    assert read_manifest(run)["statuses"]["OWN_GOALIE"].startswith("RELAXED(")  # reported, not hidden
+    assert "OVERRIDE(own_goalie)" in "\n".join(ok.lines())
+    short = _apply(run, runs, outs, [E(E2, [C("G", KOCHETKOV, THOMPSON)], override={"rule": "own_goalie", "reason": "too short"})])
+    assert short.entries[0].rule == "malformed" and "at least 5 words" in short.entries[0].reason
+
+
+def test_a_risk_budget_breach_needs_an_override_and_an_existing_breach_is_not_blamed_on_the_edit(base, tmp_path):
+    run, runs, outs = _fresh(base, tmp_path)
+    m = read_manifest(run)
+    m["scenario"] = {"skipped": "test stub: no scenario pass", "caps": {"goalie_fee_share": None, "goalie_lineups": 6, "game_fee_share": None, "game_lineups": None}}  # the engine's own cap
+    write_manifest(run, m)
+    to_allen = [C("G", ALLEN, THOMPSON)]  # Allen would be in 7 lineups, over the cap of 6 and over the 6 it has now
+    state = _state(run, outs)
+    res = _apply(run, runs, outs, [E(E2, to_allen)])
+    assert res.entries[0].rule == "risk_budget" and "goalie entries 7.00 > the run's cap 6.00 (was 6.00)" in res.entries[0].reason
+    assert _state(run, outs) == state
+    ok = _apply(run, runs, outs, [E(E2, to_allen, override={"rule": "risk_budget", "reason": "the extra Allen entry is the best first place shot"})])
+    assert ok.entries[0].status == "APPLIED" and any(f.startswith("BREACHED(risk_budget)") for f in ok.entries[0].flags)
+    assert read_manifest(run)["statuses"].get("RISK_BUDGET", "").startswith(f"BREACHED(edit v{ok.published_version}")
+    # a portfolio the engine already left above a smaller cap: an edit that lowers or keeps it is never blamed
+    run2, runs2, outs2 = _fresh(base, tmp_path / "b")
+    m = read_manifest(run2)
+    m["scenario"] = {"skipped": "test stub: no scenario pass", "caps": {"goalie_fee_share": None, "goalie_lineups": 4, "game_fee_share": None, "game_lineups": None}}
+    write_manifest(run2, m)
+    fine = _apply(run2, runs2, outs2, [E(E1, [C("G", HILDEBY, ALLEN)])])
+    assert fine.entries[0].status == "APPLIED" and not any(f.startswith(("BREACHED", "OVERRIDE")) for f in fine.entries[0].flags)
+    # without recorded caps the budget is not evaluated and the edit proceeds
+    run3, runs3, outs3 = _fresh(base, tmp_path / "c")
+    assert _apply(run3, runs3, outs3, [E(E2, to_allen)]).entries[0].status == "APPLIED"
+
+
+# -- the B150 guardrails (flag 130) -------------------------------------------------------------------------------------
+
+def _news(run, role_id, effective):
+    (run.path / "news").mkdir(exist_ok=True)
+    (run.path / "news" / "accepted_overrides.json").write_text(json.dumps([{
+        "type": "override", "role_id": role_id, "nhl_id": None, "game_id": None, "field": "goalie_start", "old": False, "new": True,
+        "effective_utc": effective.isoformat(), "expiry_utc": (effective + timedelta(hours=8)).isoformat(),
+        "source_url": "https://www.dailyfaceoff.com/starting-goalies", "claim": "confirmed starter", "confidence": 0.9, "source": "DAILYFACEOFF"}]))
+
+
+def test_a_news_edit_needs_a_dated_source_that_is_not_older_than_the_news_it_contradicts(base, tmp_path):
+    run, runs, outs = _fresh(base, tmp_path)
+    _news(run, HILDEBY, T_OPEN - timedelta(minutes=30))  # an accepted override for Hildeby, effective 16:00Z
+    cell = [C("G", HILDEBY, ALLEN)]
+    stale = {"url": "https://example.com/hildeby", "published_utc": "2026-10-17T15:00:00Z", "fetched_utc": "2026-10-17T16:25:00Z"}
+    fresh = {"url": "https://example.com/hildeby", "published_utc": "2026-10-17T16:10:00Z", "fetched_utc": "2026-10-17T16:25:00Z"}
+    undated = _apply(run, runs, outs, [E(E1, cell, edit_type="news", source_url="https://example.com/hildeby")])
+    assert undated.entries[0].rule == "malformed" and "published_utc" in undated.entries[0].reason
+    old = _apply(run, runs, outs, [E(E1, cell, edit_type="news", sources=[stale])])
+    assert old.entries[0].rule == "source_stale" and "older than the news it contradicts" in old.entries[0].reason and old.published_version is None
+    new = _apply(run, runs, outs, [E(E1, cell, edit_type="news", sources=[fresh])])
+    assert new.entries[0].status == "APPLIED"
+    assert json.loads((run.path / "edits" / "log.jsonl").read_text().splitlines()[-1])["sources"][0]["published_utc"].startswith("2026-10-17T16:10")
+
+
+def test_a_wrong_id_is_caught_when_the_edit_says_who_it_expects(base, tmp_path):
+    run, runs, outs = _fresh(base, tmp_path)
+    state = _state(run, outs)
+    for extra, word in (({"team": "VAN"}, "expected team VAN"), ({"name": "Pyotr Kochetkov"}, "expected Pyotr Kochetkov")):
+        res = _apply(run, runs, outs, [E(E1, [C("G", HILDEBY, ALLEN, **extra)])])
+        assert res.entries[0].rule == "identity" and word in res.entries[0].reason and "wrong id" in res.entries[0].reason
+    assert _state(run, outs) == state
+    shown = _apply(run, runs, outs, [E(E1, [C("G", HILDEBY, ALLEN)])]).entries[0].cells[0]  # with no guard the identity is still printed
+    assert shown["in_who"].startswith("Dennis Hildeby (TBL G, $8,200, VAN@TBL)") and shown["out_who"].startswith("Jake Allen (NJD G, $7,600")
+
+
+def test_a_goalie_who_is_not_confirmed_is_flagged_and_queued_for_a_recheck(base, tmp_path):
+    run, runs, outs = _fresh(base, tmp_path)
+    pk = _view(run, runs).pool.by_role_id[HILDEBY].person_key
+    m = read_manifest(run)
+    m["goalies"] = {"GOALIE_GATE": "CLEAR", "page": {}, "problems": [], "rows": [], "persons": {pk: {"status": "EXPECTED", "name": "Dennis Hildeby", "team": "TBL"}}}
+    write_manifest(run, m)
+    res = _apply(run, runs, outs, [E(E1, [C("G", HILDEBY, ALLEN)])])
+    assert res.entries[0].status == "APPLIED" and res.entries[0].flags[0].startswith("UNCONFIRMED_GOALIE: Dennis Hildeby (TBL) is EXPECTED")
+    q = json.loads((run.path / "edits" / "recheck.json").read_text())
+    assert q[0]["recheck_before_utc"] == "2026-10-17T19:55:00Z" and q[0]["goalie"] == "Dennis Hildeby"  # VAN@TBL 20:00Z less the 300 s edit stop
+    assert any(l.startswith("RECHECK_BEFORE=2026-10-17T19:55:00Z") for l in res.lines())
+    run2, runs2, outs2 = _fresh(base, tmp_path / "b")
+    m = read_manifest(run2)
+    m["goalies"] = {"GOALIE_GATE": "CLEAR", "page": {}, "problems": [], "rows": [], "persons": {pk: {"status": "CONFIRMED"}}}
+    write_manifest(run2, m)
+    ok = _apply(run2, runs2, outs2, [E(E1, [C("G", HILDEBY, ALLEN)])])
+    assert not ok.entries[0].flags and not (run2.path / "edits" / "recheck.json").exists()
+
+
+# -- the edit stop per game; QA's T-8 does not apply (flag 126) -----------------------------------------------------
+
+def test_t8_blocks_qa_but_not_an_edit_and_the_edit_stop_is_per_game(base, tmp_path):
+    t = datetime(2026, 10, 17, 16, 53, 30, tzinfo=UTC)  # T-8 of NJD@WSH (16:52Z) has passed; its edit stop (16:55Z) has not
+    run, runs, outs = _fresh(base, tmp_path)
+    ok, why = controller.permitted(run, 1, packet.load_qa_config(), t, runs)
+    assert not ok and "T-8" in why  # QA is closed
+    res = _apply(run, runs, outs, [E(E1, [C("G", HILDEBY, ALLEN)])], now=t)
+    assert res.entries[0].status == "APPLIED", res.entries[0].reason  # the edit is not
+    # at 16:57Z NJD@WSH is inside its edit stop: Allen's cell is pinned, a cell between two other games is not
+    run2, runs2, outs2 = _fresh(base, tmp_path / "b")
+    view = _view(run2, runs2)
+    slot, out_r, in_r = _two_game_edit(view, "5298507706")
+    res2 = _apply(run2, runs2, outs2, [E(E1, [C("G", HILDEBY, ALLEN)]), E("5298507706", [C(slot, in_r, out_r)])], now=T_NJD_STOP)
+    by = {o.entry_id: o for o in res2.entries}
+    assert by[E1].rule == "pinned" and "edit stop" in by[E1].reason and by["5298507706"].status == "APPLIED", by["5298507706"].reason
+    # at 19:45Z only VAN@TBL is open: a TBL cell may change, a CAR cell may not
+    run3, runs3, outs3 = _fresh(base, tmp_path / "c")
+    view3 = _view(run3, runs3)
+    tbl = _swap_down(view3, E1, same_team=True, exclude_teams={"NJD", "WSH", "CAR", "WPG"})
+    car_e = next(e for e, lu in view3.lineups.items() if any(view3.pool.by_role_id[r].team in ("CAR", "WPG") and not view3.pool.by_role_id[r].is_goalie for r in lu))
+    car = _swap_down(view3, car_e, same_team=True, exclude_teams={"NJD", "WSH", "TBL", "VAN"})
+    res3 = _apply(run3, runs3, outs3, [E(E1, [C(tbl[0], tbl[2], tbl[1])]), E(car_e, [C(car[0], car[2], car[1])])], now=T_TWO_STARTED)
+    by3 = {o.entry_id: o for o in res3.entries}
+    assert by3[E1].status == "APPLIED", by3[E1].reason
+    assert by3[car_e].rule == "pinned"
+
+
+def test_a_boundary_crossed_while_the_edit_is_being_checked_publishes_nothing(base, tmp_path):
+    """Read at 16:54:30Z (open); by the time the publish lock is held the clock says 16:55:30Z, NJD@WSH is at its edit stop."""
+    run, runs, outs = _fresh(base, tmp_path)
+    state = _state(run, outs)
+    t0, t1 = datetime(2026, 10, 17, 16, 54, 30, tzinfo=UTC), datetime(2026, 10, 17, 16, 55, 30, tzinfo=UTC)
+    res = _apply(run, runs, outs, [E(E1, [C("G", HILDEBY, ALLEN)])], now=t0, clock=lambda: t1)
+    assert res.published_version is None and "lock boundary was crossed" in res.stop_reason
+    assert _state(run, outs) == state
+
+
+def test_a_delivery_that_touches_a_game_about_to_lock_says_so(base, tmp_path):
+    run, runs, outs = _fresh(base, tmp_path)
+    view = _view(run, runs)
+    now = datetime(2026, 10, 17, 19, 10, tzinfo=UTC)  # CAR@WPG locks at 19:30Z, 20 minutes away
+    car_e = next(e for e, lu in view.lineups.items() if any(view.pool.by_role_id[r].team in ("CAR", "WPG") and not view.pool.by_role_id[r].is_goalie for r in lu))
+    slot, out_r, in_r = _swap_down(view, car_e, same_team=True, exclude_teams={"NJD", "WSH", "TBL", "VAN"})
+    res = _apply(run, runs, outs, [E(car_e, [C(slot, in_r, out_r)])], now=now)
+    assert res.entries[0].status == "APPLIED", res.entries[0].reason
+    assert any(l.startswith("EDIT_LOCK_SOON=CAR@WPG locks 2026-10-17T19:30:00Z (in 20 min)") for l in res.lines()), res.lines()
+
+
+# -- the real 10-17 bytes, when the full files are on this machine -------------------------------------------------------
+
+def _real_files():
+    d = Path(os.environ.get("NHL_DFS_C56_REAL_DIR", REAL))
+    for sal, ent in (("DKSalaries_20261017.csv", "DKEntries_20261017.csv"), ("DKSalaries_nhl_classic.csv", "DKEntries_nhl_classic.csv")):
+        if (d / sal).exists() and (d / ent).exists():
+            return d / sal, d / ent
+    return None
+
+
+def test_the_two_edits_on_the_real_10_17_v3_bytes(tmp_path):
+    """The exit check on the file that was delivered on 2026-10-17 (v3, 82d7107e). Skips loudly when the full files are absent
+    (they are personal and gitignored: put them in tests/fixtures/real/ as DKSalaries_20261017.csv and DKEntries_20261017.csv,
+    or point NHL_DFS_C56_REAL_DIR at a folder that holds them)."""
+    files = _real_files()
+    if files is None:
+        pytest.skip("C56: the full 2026-10-17 DKSalaries and DKEntries files are not on this machine; the exit check ran on the minimized fixture only")
+    sal, ent = files
+    r = run_slate(sal, ent, offline=True, baseline_only=True, out_root=tmp_path / "runs", outputs_root=tmp_path / "outputs",
+                  clock=lambda: T_OPEN - timedelta(hours=1))
+    assert r.ok, r.manifest["failed"]
+    run, runs, outs = r.run, tmp_path / "runs", tmp_path / "outputs"
+    entered = TESTS.parent / "data" / "entered" / "classic-20261017-2529349813.csv"
+    if not entered.exists():
+        pytest.skip("C56: the entered record is not on this machine")
+    pool = packet.RunView(run, runs).pool
+    lineups = {}
+    import csv
+
+    for row in list(csv.reader(entered.open(newline="", encoding="utf-8-sig")))[1:]:
+        ids = [c.rsplit("(", 1)[1].rstrip(") ") for c in row[4:13]]
+        perm = (0, 1, 2, 3, 4, 5, 6, 8, 7)  # the template's order (C C W W W D D G UTIL) to canonical slots
+        lineups[row[0]] = {perm[i]: ids[i] for i in range(9)}
+    tmp_file = tmp_path / "v3.csv"
+    ef = read_entries(run.inputs / "DKEntries.csv")
+    data = late_swap.splice_cells(ef, pool, lineups, tmp_file)
+    assert hashlib.sha256(data).hexdigest().startswith("82d7107e")  # the delivered v3, reproduced from the two files
+    rep = check_file(tmp_file, run.inputs / "DKSalaries.csv", run.inputs / "DKEntries.csv")
+    assert rep.ok
+    pub = publish(run, data, rep, read_manifest(run)["slate_id"], outputs_root=outs,
+                  expect_public_sha=sha256(run.version_file(1).read_bytes()))
+    m = read_manifest(run)
+    m["versions"].append({"version": pub.version, "phase": "ENTERED", "sha256": rep.out_sha256, "path": str(pub.version_path),
+                          "public_replaced": True, "public_detail": "", "delivery_version": pub.delivery_version,
+                          "delivery_path": str(pub.delivery_path), "created_utc": T_OPEN.isoformat()})
+    write_manifest(run, m)
+    res = _apply(run, runs, outs, _two_goalie_edits())
+    assert [o.status for o in res.entries] == ["APPLIED", "APPLIED"], [(o.rule, o.reason) for o in res.entries]
+    assert [o.total for o in res.entries] == [49_200, 49_700]
+    assert Path(res.delivery_path).exists() and res.published_version == pub.version + 1

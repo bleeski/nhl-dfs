@@ -691,7 +691,7 @@ def _record(run, res: EditResult, m: dict, now: datetime, d: Path) -> EditResult
             "file": res.k, "kind": res.kind, "version": res.published_version, "delivery_version": res.delivery_version,
             "applied": [o.entry_id for o in res.applied], "rejected": [{"entry_id": o.entry_id, "rule": o.rule} for o in res.rejected],
             "edits": [{"entry_id": o.entry_id, "flags": o.flags, **ed, "cells": [f"{c['slot']}: {c['out_who']} -> {c['in_who']}"
-                                                                              for c in o.cells]} for o in res.applied for ed in o.edits]})
+                                                                              for c in o.cells]} for o in res.applied for ed in (o.edits or [{}])]})
         m["messages"] = list(m.get("messages", [])) + [
             f"{'Restore' if res.kind == 'restore' else 'Model edit file'} {res.k} published v{res.published_version} "
             f"({len(res.applied)} entr{'y' if len(res.applied) == 1 else 'ies'}; log in runs/{res.run_id}/edits/)"]
