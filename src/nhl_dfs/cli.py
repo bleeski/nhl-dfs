@@ -717,7 +717,7 @@ def cmd_edit_apply(args: argparse.Namespace) -> int:
             print(line)
     _print_risk_budget(run)
     _print_goalies(_goalie_refresh(run))
-    return 0 if res.published_version else 1
+    return 0 if res.delivery_path else 1  # a version that was written but not delivered is not a success (the public file was open elsewhere)
 
 
 def cmd_edit_restore(args: argparse.Namespace) -> int:
@@ -738,7 +738,7 @@ def cmd_edit_restore(args: argparse.Namespace) -> int:
         for line in lines:
             print(line)
     _print_risk_budget(run)
-    return 0 if res.published_version else 1
+    return 0 if res.delivery_path else 1
 
 
 def _goalie_refresh(run):

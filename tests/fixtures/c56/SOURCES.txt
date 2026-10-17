@@ -1,6 +1,6 @@
 C56 minimized 2026-10-17 fixture (made by make_fixture.py; inputs are not committed)
-input DKSalaries_20261017.csv sha256 ac5b17cf21290b76b634dd31e4a3c141641bffc169d941e4e5e841f3b2f6923d (152 players)
-input DKEntries_20261017.csv sha256 b8f0285188b48f928831eec00f42d5897cc04ce7f361364e9a6ee752aef5dbd4 (13 entries)
+input DKSalaries_nhl_classic.csv sha256 ac5b17cf21290b76b634dd31e4a3c141641bffc169d941e4e5e841f3b2f6923d (152 players)
+input DKEntries_nhl_classic.csv sha256 b8f0285188b48f928831eec00f42d5897cc04ce7f361364e9a6ee752aef5dbd4 (13 entries)
 input data/entered/classic-20261017-2529349813.csv sha256 33c3e189809b27bcd6eb13695e6497c6393d4c83ce905675ef3141192d2e4d26
 kept 101 players: 49 in the entered lineups, every goalie, up to {'C': 2, 'W': 3, 'D': 2} more skaters per team
 output DKSalaries.csv 10602 bytes sha256 4afb61c2ae302d1d

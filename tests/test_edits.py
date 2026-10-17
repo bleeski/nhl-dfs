@@ -797,3 +797,32 @@ def test_a_notes_error_after_the_publish_is_a_message_and_the_delivery_still_pri
     assert cli.main(argv) == 0
     out = capsys.readouterr().out
     assert "delivery_file=" in out and "RUN_NOTES.md could not be written (ValueError: a renderer failure)" in out
+
+
+def test_a_version_written_but_not_delivered_is_not_a_success(base, tmp_path, monkeypatch, capsys):
+    """The public file is open in another program: the version is written, nothing is delivered, the command says so and exits 1."""
+    from nhl_dfs import cli
+    from nhl_dfs.build import state
+
+    run, runs, outs = _fresh(base, tmp_path)
+    real = state.atomic_write
+
+    def locked_public(path, data):
+        if outs in Path(path).parents and Path(path).name == "DKEntries.csv":
+            raise PermissionError("the file is open in Excel")
+        return real(path, data)
+
+    monkeypatch.setattr(state, "atomic_write", locked_public)
+    f = tmp_path / "edits.json"
+    f.write_text(json.dumps([E(E2, [C("G", KOCHETKOV, THOMPSON)])]))
+    argv = ["edit-apply", "--run", run.run_id, "--runs-root", str(runs), "--outputs-root", str(outs), "--as-of", "2026-10-17T16:30:00Z",
+            "--edits", str(f)]
+    assert cli.main(argv) == 1
+    out = capsys.readouterr().out
+    assert "published: v3 (the public file was not replaced)" in out and "DELIVERY=NONE" in out and "late swap" in out
+    assert "DELIVERY_CURRENT=FALSE" in out and "delivery_file=NONE" in out  # verify says the same: do not upload
+    monkeypatch.undo()
+    # the run is stuck until a delivery names it: neither another edit nor a restore may publish from it
+    res = _apply(run, runs, outs, [E(E1, [C("G", HILDEBY, ALLEN)])])
+    assert res.published_version is None and "not the slate's current delivery" in res.stop_reason
+    assert _restore(run, runs, outs).stop_reason.startswith("refused:")

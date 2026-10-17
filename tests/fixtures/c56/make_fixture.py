@@ -102,8 +102,8 @@ def main(argv: list[str]) -> int:
 
     lines = [
         "C56 minimized 2026-10-17 fixture (made by make_fixture.py; inputs are not committed)",
-        f"input DKSalaries_20261017.csv sha256 {sha(sal_p)} ({len(body)} players)",
-        f"input DKEntries_20261017.csv sha256 {sha(ent_p)} ({len(ent_rows)} entries)",
+        f"input {sal_p.name} sha256 {sha(sal_p)} ({len(body)} players)",
+        f"input {ent_p.name} sha256 {sha(ent_p)} ({len(ent_rows)} entries)",
         f"input data/entered/classic-20261017-2529349813.csv sha256 {sha(ENTERED)}",
         f"kept {len(kept_sal)} players: {len(lineup_ids)} in the entered lineups, every goalie, up to {DEPTH} more skaters per team",
     ]

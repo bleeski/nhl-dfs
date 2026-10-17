@@ -260,6 +260,7 @@ class EditResult:
     delivery_path: str | None = None
     sha256: str | None = None
     stop_reason: str = ""
+    public_detail: str = ""  # why the public file was not replaced, when it was not
     record_path: str | None = None
     edits_sha256: str | None = None
     recheck: list[dict] = field(default_factory=list)
@@ -296,6 +297,10 @@ class EditResult:
         else:
             out.append(f"published: v{self.published_version} (the public file was not replaced)" if self.published_version
                        else "published: nothing (the checked file stands)")
+            if self.published_version:
+                out.append(f"DELIVERY=NONE: {self.public_detail or 'the public file was not replaced'}. Nothing new was delivered and DKEntries.csv still holds the previous "
+                           "version. Close the file if it is open in another program, then run a late swap from the delivered version and apply the edits to that run "
+                           "(this run's next edit is refused until a delivery names it).")
         for r in self.recheck:
             out.append(f"RECHECK_BEFORE={r['recheck_before_utc']} {r['goalie']} ({r['team']}, {r['status']}): {r['why']}")
         out += [f"EDIT_LOCK_SOON={x}" for x in self.lock_soon]
@@ -648,6 +653,7 @@ def _publish_checked(run, v, data: bytes, report, changes: dict[str, dict[int, s
     except (PublishRefused, LockTimeout) as exc:
         return None, f"publish failed ({exc}): the checked file stands"
     res.published_version, res.delivery_version = pub.version, pub.delivery_version
+    res.public_detail = pub.public_detail or ""
     res.delivery_path = str(pub.delivery_path) if pub.delivery_path else None
     res.sha256 = report.out_sha256
     m2 = _read(run)
