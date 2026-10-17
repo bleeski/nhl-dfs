@@ -227,6 +227,30 @@ chunks:
     findings: []
     checks:
       - pytest -m c54 -q
+  - id: C56
+    title: Referee-checked edit command, the model's write path
+    depends: [C10]
+    marker: c56
+    band: 1
+    size: L
+    effort: "high: build/controller.py (apply_round: the splice, referee check and compare-and-swap publish), the pinned-cell rules in build/late_swap.py, the export and referee packages, cli.py (a new command beside qa-apply), docs/proposal_schema.md"
+    breakpoint: "first commit: the command with the legality, pinned-cell and started-game checks and the publish, rehearsed on the late_swap fixture; second: the edit log and restore of the previous version; third: edits allowed until the edit stop of each game they touch"
+    impact: "Band 1 and 2 (Ben, 2026-10-17: the engine supplies deterministic projections and the model decides the lineups for the goals). On 2026-10-17 the session found a gap (11 of 13 lineups on one game's goalies, none on CAR or TBL) and two legal fixes and could not apply them: QA round 2 was closed, the controller takes only first-place gains and CLAUDE.md bars edits. Judgment, unmeasured: model edits can lower modeled equity, which C57 measures."
+    backlog: [B141]
+    checks:
+      - pytest -m c56 -q
+  - id: C57
+    title: Gap report, the model's reasoning pass and grading of its edits
+    depends: [C56]
+    marker: c57
+    band: 1
+    size: L
+    effort: "high: build/packet.py (a coverage table for every goalie in the pool, flags for a team or game with no lineup), .claude/agents/nhl-adversary.md and .claude/skills/nhl-run/SKILL.md (the goals and the required review), the paired-scenario delta report on each edit, settle's grading of edited against engine-only lineups, CLAUDE.md, docs/proposal_schema.md, config/qa.yaml"
+    breakpoint: "first commit: the packet coverage table and flags (B140 steps 1 and 2) with a rehearsal that still echoes its canary; second: the delta report on each edit and the reasoning pass in the nhl-run skill; third: settle grading by edit type and the CLAUDE.md and schema text"
+    impact: "Band 1 and 2: without a gap report the model cannot see an unused goalie, and without deltas and grading nobody can tell whether its edits help. Evidence is the 2026-10-17 run: the packet listed four goalies and the adversary proposed no goalie change in either reply. Judgment, unmeasured: the reasoning pass finds gaps the engine does not."
+    backlog: [B141, B140]
+    checks:
+      - pytest -m c57 -q
   - id: C48
     title: Forecast record per entered lineup and the scored bank, kept beside the entered record
     depends: [C18]
@@ -464,6 +488,18 @@ chunks:
     backlog: [B75]
     checks:
       - pytest -m c42 -q
+  - id: C58
+    title: Goalie coverage floor experiment (preregistered)
+    depends: [C20]
+    marker: c58
+    band: 2
+    size: M
+    effort: "high: build/portfolio.py and build/exposure.py (a coverage arm), config/risk.yaml discovery.goalie_term and per_goalie, scripts/c20_goalie_experiment.py as the pattern, a docs/experiments preregistration written before any arm runs, the real caches of B102 on Ben's machine"
+    breakpoint: "first commit: the preregistration, committed before any code or number; second: the arms and the verdict on the synthetic bed; third: the same arms on real caches when Ben runs B102"
+    impact: "Band 2 (prevent portfolio washouts): on 2026-10-17 selection held no CAR or TBL goalie and 66% of fees on one game's goalies. Hypothesis, unmeasured: a coverage floor lowers P(lose >= 80%) at a small first-place cost, as the kappa 2 point did (0.103 to 0.087 at utility 0.853 to 0.848, SE 0.038). An experiment chunk is DONE when its challenger is rejected."
+    backlog: [B140]
+    checks:
+      - pytest -m c58 -q
   - id: C26
     title: Controller safety, known exclusions in repairs, caps after QA, transactional override batches, export hash
     depends: [C18]

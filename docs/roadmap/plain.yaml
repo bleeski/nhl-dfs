@@ -61,6 +61,8 @@ asks:
     recommendation: Ask Claude in a local session to walk you through the copy-and-paste PowerShell block in docs/experiments/chalk_core_2026-10-13.md (goalie leverage, stack size, chalk core). The Showdown Captain block (docs/experiments/captain_2026-10-13.md) also needs saved Showdown runs from Oct 3 on, and as of Oct 13 your machine has none because those slates ran in the cloud, so for now it can only check the Captain pattern in your Oct 2 results. Nothing changes your lineups unless a test passes and you agree.
 
 updates:
+  - date: 2026-10-17
+    text: New top of the queue. You asked for Claude to have real authority to change lineups while the engine supplies the point projections. That is now C56 and C57, ranked first and second. The goalie spreading experiment is C58, the first washout item. Nothing is built yet, and tonight's slate still runs under the old rules.
   - date: 2026-10-16
     text: C41 finished on your machine. Ownership forecasts have been chalkier than the real field every time we checked. Testing picks against a flatter and a chalkier field showed the miss can change picks, but redrawing the same field changes most picks as well, so that close-call problem is now its own backlog item (B139) ahead of the next selection test (C42). Lineups are unchanged; the new report and the new selection option are both off. Next up is C42.
   - date: 2026-10-16
@@ -280,6 +282,25 @@ chunks:
     why: That record lives only inside the run folder today, and a cloud session loses it. The forecasts for 181 entries from Oct 3 to Oct 9 are already gone.
     matters: Without it we cannot check whether the engine's predictions hold up, and the main Classic measurement (C51) cannot run. Every slate without it is a permanent loss.
     waiting: Your decision on repository privacy (see Waiting on you).
+  C56:
+    title_seen: "Referee-checked edit command, the model's write path"
+    name: Let Claude fix lineups when the engine has a gap
+    what: Today Claude can point out a problem in the lineups but cannot fix it, because every change has to pass a strict test built for first-place gains. This adds a controlled way for Claude to change lineups itself. Any open slot, any number of entries, a reason written down, a check for legality and locks, and a record kept so the old file can be restored.
+    why: On Oct 17 Claude saw that 11 of 13 lineups sat on one game's goalies with no Carolina or Tampa goalie, found two legal fixes, and could not apply either.
+    matters: The engine is good at point projections and bad at noticing what is missing. Claude's job is to notice, and that only helps if it can act before lock.
+  C57:
+    title_seen: "Gap report, the model's reasoning pass and grading of its edits"
+    name: Show Claude what is missing and grade its changes
+    what: Gives Claude a table of every goalie on the slate and a warning when a team or game has no lineup, makes a review of gaps part of every run, prints what each change does to first-place and washout odds, and later checks whether Claude's changes beat the engine's own lineups.
+    why: Claude could not see the unused goalies, and nobody can tell yet whether its edits help.
+    matters: Authority to change lineups should grow where it wins and shrink where it does not.
+  C58:
+    title_seen: "Goalie coverage floor experiment (preregistered)"
+    name: Test spreading goalies across the slate
+    what: A planned experiment on whether keeping at least one lineup on each starting goalie lowers the chance of a total washout without costing first-place chances.
+    why: The Oct 17 lineups held no Carolina or Tampa goalie and put two thirds of the money on one game's goalies.
+    matters: A washout is every lineup missing at once, and the goalie is the biggest single swing in a lineup.
+    waiting: The real-slate version waits on the saved runs from your machine (B102).
   C40:
     title_seen: Daily Faceoff age gate keeps the last known lines
     name: Keep line combinations when Daily Faceoff's page looks old
