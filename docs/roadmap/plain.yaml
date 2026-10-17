@@ -62,6 +62,8 @@ asks:
 
 updates:
   - date: 2026-10-17
+    text: Queue reshaped after an outside review of the goalie question. The model's own numbers say holding the best goalie lifts first-place odds only a little, while the standings say it matters hugely, so checking that comes first after the edit command (C59). Then a fair scorer for changes (C62), the gap report and reasoning pass (C57), a research check on the teams we stack (C61), small logged projection adjustments (C60), and the goalie-first experiment (C58). Nothing is built yet.
+  - date: 2026-10-17
     text: New top of the queue. You asked for Claude to have real authority to change lineups while the engine supplies the point projections. That is now C56 and C57, ranked first and second. The goalie spreading experiment is C58, the first washout item. Nothing is built yet, and tonight's slate still runs under the old rules.
   - date: 2026-10-16
     text: C41 finished on your machine. Ownership forecasts have been chalkier than the real field every time we checked. Testing picks against a flatter and a chalkier field showed the miss can change picks, but redrawing the same field changes most picks as well, so that close-call problem is now its own backlog item (B139) ahead of the next selection test (C42). Lineups are unchanged; the new report and the new selection option are both off. Next up is C42.
@@ -294,12 +296,37 @@ chunks:
     what: Gives Claude a table of every goalie on the slate and a warning when a team or game has no lineup, makes a review of gaps part of every run, prints what each change does to first-place and washout odds, and later checks whether Claude's changes beat the engine's own lineups.
     why: Claude could not see the unused goalies, and nobody can tell yet whether its edits help.
     matters: Authority to change lineups should grow where it wins and shrink where it does not.
+  C59:
+    title_seen: "Replay settled contests to check the model's goalie link and field strength"
+    name: Check the model's goalie link against real standings
+    what: A planned replay of past contests in the simulator to see whether the model gives the best goalie of the night as much credit as the real standings do. In the Oct 17 seven-entry contest the model says holding the best goalie raises our chance of finishing first by only about 2 points, while the standings synthesis found the winning goalie in almost every top lineup.
+    why: Every goalie decision, and every check Claude will run on a lineup change, rests on how the model links goalies to first place.
+    matters: If the model understates goalies we leave first-place chances on the table. If the standings overstate them we would be chasing one week's pattern.
+    waiting: The replay needs your saved runs and standings, so the last step runs on your machine.
+  C62:
+    title_seen: "Edit evaluator on held-out draws with a Pareto accept rule"
+    name: A fair scorer for lineup changes
+    what: Builds the tool that scores any proposed change on both goals, using simulated nights the original lineups were not chosen on, and accepts a change automatically only when it is clearly better on one goal and worse on neither.
+    why: The same swap scored as a loss on one set of simulated nights and a much smaller loss on another, so a scorer that reuses the nights that built the lineups will find gains that are noise.
+    matters: Claude will test many ideas before lock. Without a fair scorer, the more it tries the more false wins it finds.
+  C61:
+    title_seen: "Research request covers the lines and power plays of stacked teams"
+    name: Ask the researcher about the teams we stack
+    what: Today the research step only checks goalies. This also asks it to check the lines and power-play units of the teams our lineups stack, when the page the engine reads is more than a day old.
+    why: On Oct 17 Tampa held 23 of 56 skater slots in the seven-entry contest on line information the engine had thrown out as stale, and nobody checked it.
+    matters: A stack is only as good as the lines behind it.
+  C60:
+    title_seen: "Projection adjustments from research with provenance, bounds and grading"
+    name: Let research change projections, in small logged steps
+    what: Claude can change a player's line or power-play unit today, but not how many points he is expected to score. This adds small, capped, dated and sourced adjustments to a player's expected minutes, average and ceiling, logs each one, and later grades it against what the player really scored.
+    why: On Oct 17 four teams' line pages were a day old and unused, so even a researcher who found a line change could not have moved the projections.
+    matters: Projections are what the lineup builder trusts, so better inputs help every lineup and not only the ones Claude edits.
   C58:
-    title_seen: "Goalie coverage floor experiment (preregistered)"
-    name: Test spreading goalies across the slate
-    what: A planned experiment on whether keeping at least one lineup on each starting goalie lowers the chance of a total washout without costing first-place chances.
-    why: The Oct 17 lineups held no Carolina or Tampa goalie and put two thirds of the money on one game's goalies.
-    matters: A washout is every lineup missing at once, and the goalie is the biggest single swing in a lineup.
+    title_seen: "Goalie-first allocation experiment (preregistered)"
+    name: Test building lineups goalie first
+    what: A planned experiment that builds each entry around its goalie, spreads the goalies across a contest's entries by how much each is worth, and compares that with today's lineups and with the rule of using every goalie once.
+    why: On Oct 17 the seven-entry contest used two goalies. Covering all six sounds right, but a second entry on the best goalie can be worth more than a first entry on a long shot, so we measure before we choose.
+    matters: The goalie is the biggest single swing in a lineup, and spreading goalies also lowers the chance every lineup misses at once.
     waiting: The real-slate version waits on the saved runs from your machine (B102).
   C40:
     title_seen: Daily Faceoff age gate keeps the last known lines

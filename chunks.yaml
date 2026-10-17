@@ -236,21 +236,81 @@ chunks:
     effort: "high: build/controller.py (apply_round: the splice, referee check and compare-and-swap publish), the pinned-cell rules in build/late_swap.py, the export and referee packages, cli.py (a new command beside qa-apply), docs/proposal_schema.md"
     breakpoint: "first commit: the command with the legality, pinned-cell and started-game checks and the publish, rehearsed on the late_swap fixture; second: the edit log and restore of the previous version; third: edits allowed until the edit stop of each game they touch"
     impact: "Band 1 and 2 (Ben, 2026-10-17: the engine supplies deterministic projections and the model decides the lineups for the goals). On 2026-10-17 the session found a gap (11 of 13 lineups on one game's goalies, none on CAR or TBL) and two legal fixes and could not apply them: QA round 2 was closed, the controller takes only first-place gains and CLAUDE.md bars edits. Judgment, unmeasured: model edits can lower modeled equity, which C57 measures."
-    backlog: [B141]
+    backlog: [B141, B150]
     checks:
       - pytest -m c56 -q
+  - id: C59
+    title: Replay settled contests to check the model's goalie link and field strength
+    depends: [C11, C41]
+    marker: c59
+    band: 1
+    size: M
+    effort: "high: scripts/c17_replay.py and the C41 replays as the pattern, learn/ (settle and the entry history) for the settled contests' standings, build/objectives.py and sim/ for the simulated field and top-1% lineups, models/field.py; the real inputs (data/standings, runs/) live on Ben's machine"
+    breakpoint: "first commit: the preregistration (the three numbers, the decision table A, B, C and the minimum detectable effect) before any number; second: the replay on the saved 09-29 and 09-30 caches; third: the remaining settled contests on Ben's machine"
+    impact: "Band 1 (the first-place goal rests on the model): on the 2026-10-17 Dime Time contest the model gives holding the slate's best goalie a first-place lift of only +2.1 +/- 1.0 points (18.0% against 15.9%, 6,000 draws), while the 2026-10-03 standings synthesis (B45) found the winning goalie in 91.8% of top-1% lineups (14 contests, one week, in-sample). Candidate causes (Opus read, judgment): the scenarios tie a goalie too loosely to his own skaters, or the simulated field is too weak (seven entries win 16.3%, 4.7 times their fair share), or the standings overstate the link. Every goalie, coverage and what-if result rests on which it is."
+    backlog: [B142]
+    checks:
+      - pytest -m c59 -q
+  - id: C62
+    title: Edit evaluator on held-out draws with a Pareto accept rule
+    depends: [C56]
+    marker: c62
+    band: 1
+    size: M
+    effort: "high: build/controller.py evaluate (the paired comparison over the selection draws and one referee block), build/swap_objective.py ScenarioObjective, build/objectives.py own_totals and joint, cli.py (a what-if command), config/qa.yaml"
+    breakpoint: "first commit: the what-if command over the existing evaluate with both goals' deltas and standard errors; second: held-out scoring, the goalie-starting conditional and the payout-curve weight; third: the Pareto accept rule and the claimed-gain field in the edit log"
+    impact: "Band 1 and 2: the controller's evaluate already scores the joint total of every owned entry in a touched contest on paired draws, but it credits only first-place gain (safety is a cap at a placeholder 0.60) and is reachable only through qa-apply. The same swap scored -0.019 +/- 0.005 on selection draws and -0.010 +/- 0.010 on referee draws (entry 5298507816, Allen to Hildeby, 2026-10-17), so repeated what-if queries on the draws that chose the portfolio will mine noise (Opus read, judgment)."
+    backlog: [B147, B152]
+    checks:
+      - pytest -m c62 -q
   - id: C57
     title: Gap report, the model's reasoning pass and grading of its edits
-    depends: [C56]
+    depends: [C56, C62]
     marker: c57
     band: 1
     size: L
-    effort: "high: build/packet.py (a coverage table for every goalie in the pool, flags for a team or game with no lineup), .claude/agents/nhl-adversary.md and .claude/skills/nhl-run/SKILL.md (the goals and the required review), the paired-scenario delta report on each edit, settle's grading of edited against engine-only lineups, CLAUDE.md, docs/proposal_schema.md, config/qa.yaml"
-    breakpoint: "first commit: the packet coverage table and flags (B140 steps 1 and 2) with a rehearsal that still echoes its canary; second: the delta report on each edit and the reasoning pass in the nhl-run skill; third: settle grading by edit type and the CLAUDE.md and schema text"
+    effort: "high: build/packet.py (a coverage table for every goalie in the pool, flags for a team or game with no lineup), .claude/agents/nhl-adversary.md and .claude/skills/nhl-run/SKILL.md (the goals and the required review), settle's grading of edited against engine-only lineups, CLAUDE.md, docs/proposal_schema.md, config/qa.yaml"
+    breakpoint: "first commit: the packet coverage table and flags (B140 steps 1 and 2) with a rehearsal that still echoes its canary; second: the reasoning pass and the staged timeline in the nhl-run skill; third: settle grading by edit type and the CLAUDE.md and schema text"
     impact: "Band 1 and 2: without a gap report the model cannot see an unused goalie, and without deltas and grading nobody can tell whether its edits help. Evidence is the 2026-10-17 run: the packet listed four goalies and the adversary proposed no goalie change in either reply. Judgment, unmeasured: the reasoning pass finds gaps the engine does not."
-    backlog: [B141, B140]
+    backlog: [B141, B140, B143, B153, B81]
     checks:
       - pytest -m c57 -q
+  - id: C61
+    title: Research request covers the lines and power plays of stacked teams
+    depends: [C54]
+    marker: c61
+    band: 1
+    size: S
+    effort: "medium: build/packet.py research_request (the players list and max_players 25), config/qa.yaml research.max_players and urls, the researcher agent's instructions, tests/test_goalie_factor.py as the pattern"
+    breakpoint: "one commit: the request lists the stacked teams' top skaters when their page is stale or low-confidence; the researcher's reply already carries line and power-play overrides"
+    impact: "Band 1 (inputs that move lineups): on 2026-10-17 the request listed 13 goalies only (B37 made goalie pairs its scope) while Daily Faceoff pages for CAR, TBL, VAN and WPG were 24.1 to 26.1 h old and unused and NJD lines were 23.4 h old and flagged low confidence. TBL held 23 of 56 Dime Time skater slots and Mikheyev sat in 5 of 13 entries, and nothing asked the researcher to check TBL's lines or power play."
+    backlog: [B144]
+    checks:
+      - pytest -m c61 -q
+  - id: C60
+    title: Projection adjustments from research with provenance, bounds and grading
+    depends: [C61, C59]
+    marker: c60
+    band: 1
+    size: L
+    effort: "high: models/overrides.py (FIELDS and validate), models/roles.py, sim/ and the params table (where a mean or ceiling multiplier enters), build/swap_objective.py build_role_model, learn/ (settle grading), docs/packet_schema.md"
+    breakpoint: "first commit: the typed adjustment with its bounds, expiry and log, the engine applying a sourced line, power-play or minutes change before re-optimizing; second: bounded mean and ceiling multipliers; third: settle grades adjusted against unadjusted projections on realized points, ceiling included, and model-proposed statistics are logged as hypotheses"
+    impact: "Band 1: overrides carry four role fields and a URL, so research that finds a changed role moves nothing but the role itself and the model cannot say a player's minutes, mean or ceiling should change. Opus read (judgment): one week of standings disposes of nothing, so a hard backtest gate would kill the channel; allow small bounded logged adjustments, grade the adjusted players (about 5 to 10 a night) against unadjusted projections, and backtest statistics on history as the data allows."
+    backlog: [B145, B146]
+    checks:
+      - pytest -m c60 -q
+  - id: C58
+    title: Goalie-first allocation experiment (preregistered)
+    depends: [C20, C59]
+    marker: c58
+    band: 1
+    size: M
+    effort: "high: build/portfolio.py (selection is greedy per entry) and build/exposure.py, config/risk.yaml discovery.goalie_term and per_goalie, scripts/c20_goalie_experiment.py as the pattern, a docs/experiments preregistration written before any arm runs, the real caches of B102 on Ben's machine"
+    breakpoint: "first commit: the preregistration, committed before any code or number; second: the arms and the verdict on the synthetic bed; third: the same arms on real caches when Ben runs B102"
+    impact: "Band 1 and 2: on 2026-10-17 selection held no CAR or TBL goalie and 66% of fees on one game's goalies, and all 7 Dime Time entries held NJD or WSH goalies. Opus read (judgment): a hard every-goalie-once rule is wrong as a rule, because a repeat on the best goalie can beat a first entry on a long shot; allocate goalies by marginal value and build the skaters around each. Hypothesis, unmeasured: that lowers P(lose >= 80%) at no first-place cost, as the kappa 2 point did (0.103 to 0.087 at utility 0.853 to 0.848, SE 0.038). An experiment chunk is DONE when its challenger is rejected."
+    backlog: [B140, B148, B151]
+    checks:
+      - pytest -m c58 -q
   - id: C48
     title: Forecast record per entered lineup and the scored bank, kept beside the entered record
     depends: [C18]
@@ -488,18 +548,6 @@ chunks:
     backlog: [B75]
     checks:
       - pytest -m c42 -q
-  - id: C58
-    title: Goalie coverage floor experiment (preregistered)
-    depends: [C20]
-    marker: c58
-    band: 2
-    size: M
-    effort: "high: build/portfolio.py and build/exposure.py (a coverage arm), config/risk.yaml discovery.goalie_term and per_goalie, scripts/c20_goalie_experiment.py as the pattern, a docs/experiments preregistration written before any arm runs, the real caches of B102 on Ben's machine"
-    breakpoint: "first commit: the preregistration, committed before any code or number; second: the arms and the verdict on the synthetic bed; third: the same arms on real caches when Ben runs B102"
-    impact: "Band 2 (prevent portfolio washouts): on 2026-10-17 selection held no CAR or TBL goalie and 66% of fees on one game's goalies. Hypothesis, unmeasured: a coverage floor lowers P(lose >= 80%) at a small first-place cost, as the kappa 2 point did (0.103 to 0.087 at utility 0.853 to 0.848, SE 0.038). An experiment chunk is DONE when its challenger is rejected."
-    backlog: [B140]
-    checks:
-      - pytest -m c58 -q
   - id: C26
     title: Controller safety, known exclusions in repairs, caps after QA, transactional override batches, export hash
     depends: [C18]
@@ -820,6 +868,9 @@ deferred:
   - item: "Goalie leverage term on real saved caches (B102, B45 part 2)"
     trigger: "Ben runs scripts/c20_goalie_experiment.py on the real 2026-09-29 and 2026-09-30 inputs (the PowerShell block in the C20 report), or the next 5 settled Classic slates give a real-cache arm"
     backlog: [B102]
+  - item: "Leverage review against public ownership and projection pages (B149)"
+    trigger: "Ben names the public sources a session may read (nothing paid, nothing behind a login), and the model-versus-standings replay (C59) and the goalie term's real-slate run (B102) have reported"
+    backlog: [B149]
   - item: "The Phase A baseline (v1) cannot honor the own-goalie rule: families are unknown when it is built (B103)"
     trigger: "a run published with --baseline in a large_gpp-heavy slate, or Ben asks; OWN_GOALIE on v1 prints the count of lineups facing their own goalie meanwhile"
     backlog: [B103]
